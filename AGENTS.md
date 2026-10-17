@@ -73,4 +73,4 @@ These build without activating. For deployment or adapter changes, also run `jus
 
 ## Documentation
 
-[README.md](README.md) is the user-facing entry point, written in Chinese. [CONTEXT.md](CONTEXT.md) holds the composition model and `docs/` holds operator procedures; update the relevant guide when public behavior changes. Agent constraints live only in this file.
+[README.md](README.md) is the entry point, [CONTEXT.md](CONTEXT.md) the composition model and `docs/` the operator procedures; all three are user-facing and written in concise Chinese. Update the relevant guide when public behavior changes. Agent constraints live only in this file, in English.

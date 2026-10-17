@@ -1,12 +1,18 @@
-# Desktop session
+# 桌面工作階段
 
-UWSM starts Hyprland and owns the graphical session. Arch supplies native executables; Home Manager supplies managed user configuration and user-service policy. Give each application one startup owner. The desktop and user capability switches in `configuration.nix` choose which contributions appear in the next home generation; disabling one does not erase application data.
+UWSM 啟動 Hyprland 並擁有圖形工作階段。Arch 提供原生執行檔，Home Manager 提供使用者設定與 user service。每個應用程式只有一個啟動來源。`configuration.nix` 裡的桌面與使用者開關決定下一個 home 世代包含哪些內容；停用不會清除應用資料。
 
-Noctalia owns the StatusNotifier watcher, and tray consumers start after it. Vicinae uses bounded degraded startup when the watcher is delayed. Vesktop keeps its compatibility flags in its own service. Sunshine uses Wayland `wlr` capture. The development profile uses `pass` through `programs.password-store` with GPG and Git credential helpers. The owning modules define the exact current packages and service units.
+- Noctalia 擁有 StatusNotifier watcher，系統匣程式在它之後啟動。
+- watcher 延遲時，Vicinae 會在有限時間內降級啟動。
+- Vesktop 的相容性參數放在它自己的 service。
+- Sunshine 使用 Wayland `wlr` 擷取。
+- dev profile 透過 `programs.password-store` 使用 `pass`，搭配 GPG 與 Git credential helper。
 
-## Noctalia storage first activation
+確切的套件與 unit 以各自的模組為準。
 
-Noctalia's file-backed encrypted storage keeps its master key under `~/.local/share/noctalia/file-key-v1/`, outside Git and the Nix store. Back up the key with the data it protects. On a new home, stop Noctalia before the first activation:
+## Noctalia 加密儲存的首次啟用
+
+Noctalia 的檔案式加密儲存把主金鑰放在 `~/.local/share/noctalia/file-key-v1/`，不在 Git 也不在 Nix store。備份資料時一併備份金鑰。在新的 home 上，第一次啟用前先停止 Noctalia：
 
 ```bash
 systemctl --user stop noctalia.service
@@ -14,9 +20,9 @@ just arch-workstation
 systemctl --user start noctalia.service
 ```
 
-Activation prepares storage once. Existing clipboard and calendar directories that require isolation move to defined archive locations before the new state is published. Archive collisions, symlinks and conflicting overrides stop activation. A `ready` marker with a missing key is not permission to create a replacement: restore the original key. For an interrupted initialization, keep the key, markers and archives intact, stop Noctalia and rerun activation.
+啟用只會初始化一次儲存。需要隔離的既有剪貼簿與行事曆目錄，會在新狀態發布前移到固定的封存位置。封存位置衝突、symlink 或互相衝突的覆寫都會中止啟用。有 `ready` 標記卻缺金鑰時，不代表可以產生新金鑰，要還原原本的金鑰。初始化被中斷時，保留金鑰、標記與封存，停止 Noctalia 後重跑啟用。
 
-## Inspect the session
+## 檢查工作階段
 
 ```bash
 systemctl --user is-active noctalia.service
@@ -25,13 +31,13 @@ busctl --user call org.freedesktop.DBus /org/freedesktop/DBus \
 systemctl --user show noctalia.service -p MainPID
 ```
 
-The watcher PID should belong to Noctalia. Shell restarts should not restart unrelated applications merely to restore the tray. The [Noctalia configuration guide](noctalia-config.md) covers preference capture and deployment separately from encrypted storage. Source tests use synthetic Home Manager configurations and fake commands; run `just check` without connecting to the live desktop.
+watcher 的 PID 應該屬於 Noctalia。重啟 shell 時，不應為了恢復系統匣而重啟無關的應用程式。偏好設定的擷取與部署見 [Noctalia 設定](noctalia-config.md)。原始碼測試使用合成的 Home Manager 設定與假指令，`just check` 不會連到實際的桌面。
 
-## Live configuration development mode
+## 即時開發模式
 
-By default, Neovim and Hyprland configurations are immutable inputs pinned in `flake.nix` (`nvim-config` and `hypr-config`), projected into `~/.config/nvim` and `~/.config/hypr` through Home Manager with safety preflights that reject projections targeting Git worktrees or backup suffixes.
+Neovim 與 Hyprland 設定預設是 `flake.nix` 裡鎖定版本的 input（`nvim-config`、`hypr-config`），由 Home Manager 投射到 `~/.config/nvim` 與 `~/.config/hypr`，並在啟用前檢查不會覆蓋 Git worktree 或備份目錄。
 
-To enable live local editing directly against local Git worktrees without store rebuilds or activation preflight errors, declare user `development` absolute paths in `configuration.nix`:
+要直接編輯本機 worktree、不必重建 store 也不被預檢擋下，在 `configuration.nix` 設定絕對路徑：
 
 ```nix
 users.users.abnertu.development = {
@@ -40,10 +46,11 @@ users.users.abnertu.development = {
 };
 ```
 
-The moonlit desktop's Hyprland appearance, persistent workspaces 1–5, Noctalia layer blur, and `SUPER+SHIFT+P` Control Center binding live in the external Hyprland worktree. Its own README and key hints describe the bindings. The Noctalia wallpaper, bar and widgets remain in this repository's [Noctalia guide](noctalia-config.md). The development link makes source edits available to Hyprland; a compositor reload is a separate live action.
+設定後：
 
-When a development path is set:
-- Home Manager uses `mkOutOfStoreSymlink` to link directly to the specified worktree path instead of the pinned Nix store derivation.
-- Projection safety checks for that target are bypassed so Home Manager does not reject linking to a local Git worktree.
-- Changes in the local worktree take effect immediately in live editor or window manager reload cycles without requiring `just arch-workstation` or `home-switch`.
-- Setting a path back to `null` (or omitting it) restores the pinned external flake input and strict worktree protection.
+- Home Manager 用 `mkOutOfStoreSymlink` 直接連到該路徑，而不是鎖定版本的 store 路徑。
+- 該目標略過 worktree 保護檢查。
+- 本機修改在編輯器或視窗管理器重新載入時立即生效，不需 `just arch-workstation`。
+- 設回 `null`（或不設定）即恢復鎖定版本與完整的保護檢查。
+
+Hyprland 的外觀、固定工作區 1–5、Noctalia 圖層模糊與 `SUPER+SHIFT+P` 控制中心快捷鍵在外部的 Hyprland worktree，按鍵說明見它自己的 README。Noctalia 的桌布、工作列與小工具見 [Noctalia 設定](noctalia-config.md)。重新載入 compositor 是另一個手動動作。

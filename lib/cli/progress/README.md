@@ -1,13 +1,10 @@
-# Shared task progress
+# 共用任務進度
 
-This module gives the workstation's Bash and Python tools one Rich display.
-The active task updates on one terminal line; its final result and elapsed time
-remain in scrollback. Callers own task execution, subprocess I/O, errors, and
-recovery. The module owns presentation only.
+讓工作站的 Bash 與 Python 工具共用同一個 Rich 進度顯示：進行中的任務在同一行更新，結束後的結果與耗時留在 scrollback。任務執行、子行程 I/O、錯誤與復原由呼叫端負責，這個模組只負責顯示。Python 實作在 `nix-adapter`，這裡提供 Bash 端的接法。
 
-## Try it without changing workstation state
+## 試用（不改動系統）
 
-From the repository root, enter `nix develop`, then run this synthetic example:
+在 repo 根目錄進入 `nix develop`，執行這個合成範例：
 
 ```bash
 python - <<'PY'
@@ -30,37 +27,20 @@ with Progress("Example") as progress:
 PY
 ```
 
-The example leaves two completed task records and the child's original output.
-Work without a known total displays a spinner. Counts describe actual completed
-work, not elapsed-time estimates. Use static, non-sensitive task labels; never
-pass command arguments, environment contents, credentials, or registration data.
+執行後會留下兩筆完成紀錄與子行程的原始輸出。沒有總數的工作顯示 spinner；數字代表實際完成量，不是時間估計。任務標籤用固定且不含敏感資訊的文字，不要放指令參數、環境變數、憑證或註冊資料。
 
-## Python interface
+## Python 介面
 
-Import `Progress` from `nix_adapter`. A `Progress` context closes its display on
-exit; a `task` context records success or failure without suppressing the task's
-exception. `task.update(completed, total=...)` reports measured progress and
-`task.finish("skip")` records an explicit skip. Sequential and nested tasks use
-the same display owner.
+從 `nix_adapter` 匯入 `Progress`。`Progress` context 結束時關閉顯示；`task` context 記錄成功或失敗，但不吞掉例外。`task.update(completed, total=...)` 回報實際進度，`task.finish("skip")` 記錄明確的略過。循序與巢狀任務共用同一個顯示。
 
-Use `task.external_output()` before any subprocess or local print that writes
-directly to the terminal. The context clears and suspends the active row before
-yielding, then resumes after the writer returns. Existing captured or suppressed
-subprocess streams must retain that handling. In particular, a progress display
-does not make sensitive command output suitable for logging.
+子行程或本地 print 要直接寫到終端機前，先進入 `task.external_output()`：它會清除並暫停進度列，寫入結束後再恢復。原本就擷取或隱藏的子行程輸出要維持原樣；有進度顯示不代表敏感輸出可以寫進 log。
 
-## Bash and Nix composition
+## Bash 與 Nix 組合
 
-Import [default.nix](default.nix) with `{ inherit pkgs; }`. It provides the Rich
-Python environment (`python`), module import directory (`pythonPath`), renderer
-package (`renderer`), and a Bash preamble (`shell`). Concatenate `shell` before
-the application's Bash source in `writeShellApplication`. Python applications
-use `python` and set `PYTHONPATH` to `pythonPath` in their Nix-built entry point.
-
-The Bash interface is:
+以 `{ inherit pkgs adapterPython; }` 匯入 [default.nix](default.nix)，它提供 renderer 套件（`renderer`）與 Bash 前導程式碼（`shell`）。在 `writeShellApplication` 裡把 `shell` 接在應用程式的 Bash 原始碼之前。
 
 ```bash
-progress_init "Example" 0  # Second argument is the verbose flag (0 or 1).
+progress_init "Example" 0  # 第二個參數是 verbose（0 或 1）
 trap 'status=$?; progress_exit "$status"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
@@ -72,30 +52,21 @@ done
 progress_finish 'done'
 ```
 
-`progress_suspend` and `progress_resume` hand the terminal to an external writer.
-The suspend operation waits for the renderer to acknowledge the handoff before
-the writer starts. `progress_finish` accepts `done`, `skip`, or `failed`.
-`progress_exit` takes the saved numeric exit status and closes the renderer;
-applications with existing cleanup must call it from their own cleanup handler.
-The module does not replace application traps. Call `progress_close` before an
-`exec` handoff and let the new process report its own result.
+- `progress_suspend` / `progress_resume` 把終端機交給外部寫入者；suspend 會等 renderer 確認交接後才返回。
+- `progress_finish` 接受 `done`、`skip` 或 `failed`。
+- `progress_exit` 接收保存的結束代碼並關閉 renderer；已有 cleanup 的應用程式要在自己的 cleanup 裡呼叫它。模組不取代應用程式的 trap。
+- `exec` 交棒前呼叫 `progress_close`，由新行程回報自己的結果。
 
-The Bash adapter uses dedicated control channels. It does not consume application
-stdin, redirect child output, or send commands to the renderer. Display failures
-must not replace the application's result or erase its diagnostics.
+Bash 端使用專用的控制通道，不讀應用程式的 stdin、不導向子行程輸出，也不傳指令給 renderer。顯示失敗不能取代應用程式的結果或抹掉診斷。
 
-## Terminal behavior and tests
+## 終端機行為與測試
 
-Progress writes to stderr. Non-terminal output, verbose mode, `TERM=dumb`, and
-the presence of `NO_COLOR`, and nonempty `CI` select plain transition records. Native tools retain
-their own output while the shared display is suspended. The display uses the
-normal terminal scrollback, not an alternate screen.
+進度寫到 stderr。非終端機輸出、verbose、`TERM=dumb`、設定了 `NO_COLOR` 或非空的 `CI` 時，改用純文字的狀態紀錄。顯示暫停期間，原生工具保留自己的輸出。使用一般的 scrollback，不切換到備用畫面。
 
-The isolated renderer and bridge tests are managed and verified in `nix-adapter`:
+renderer 與橋接的隔離測試在 `nix-adapter`：
 
 ```bash
 nix flake check github:gin31259461/nix-adapter
 ```
 
-See the [operator runbook](../../../docs/deployment.md#progress-and-diagnostics) for how
-the workstation commands present progress.
+工作站指令如何顯示進度，見[部署指南](../../../docs/deployment.md#進度與診斷)。

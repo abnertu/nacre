@@ -1,35 +1,36 @@
-# Arch system settings
+# 系統設定
 
-`configuration.nix` selects native system capabilities; `platforms/arch/system/` reconciles them, and `platforms/arch/core/` owns the remaining core files, units, groups and kernel runtime values. Each adapter reads one Nix-generated manifest, so convergence and purge cover the same declarations. Nix generates fixed systemd drop-in content, including the fstrim timer policy. The Python adapter checks the live filesystem, ownership, native commands and units before writing or starting anything. Home Manager does not own these `/etc` files.
+`configuration.nix` 選擇要管理的原生系統功能。`platforms/arch/system/` 負責語系、時區、防火牆等設定，`platforms/arch/core/` 負責其餘的核心檔案、unit、群組與核心參數。每個轉接器只讀一份由 Nix 產生的 manifest，所以收斂與 purge 涵蓋相同的宣告。轉接器在寫入或啟動任何東西之前，會先檢查實際的檔案、所有權、原生指令與 unit。這些 `/etc` 檔案不屬於 Home Manager。
 
-| Public area | Native responsibility |
+| 選項 | 管理內容 |
 | --- | --- |
-| `i18n`, `time`, `console` | Locale, timezone, keymap and font |
-| `networking.hostname`, `networking.firewall`, `networking.hotspot` | Host identity, UFW and prepared NetworkManager AP |
-| `services.timesyncd`, `services.journald`, `services.logind`, `services.fstrim`, `services.powerpanel` | Native systemd policy, UPS daemon configuration, and service state |
+| `i18n`、`time`、`console` | 語系、時區、鍵盤配置與字型 |
+| `networking.hostname`、`networking.firewall`、`networking.hotspot` | 主機名稱、UFW、既有的 NetworkManager AP |
+| `services.timesyncd`、`services.journald`、`services.logind`、`services.fstrim`、`services.powerpanel` | systemd 原生設定、UPS daemon 設定與服務狀態 |
 
-System preflight is a core stage. Missing declared hotspot interfaces, unavailable assets, conflicting providers or ownership, and failed commands stop deployment; they are not optional skips. Before first enabling a capability, inspect current ownership from a local recovery-capable session. In particular, review time providers, storage discard, console assets, NetworkManager and UFW. For firewall policy:
+系統預檢屬於核心階段：宣告的熱點介面不存在、資源缺漏、與其他提供者或擁有者衝突、指令失敗，都會中止部署，不會被當成可選模組略過。第一次啟用某項功能前，先在能自行復原的本機工作階段確認現有的擁有者，特別是時間同步、儲存裝置 discard、console 資源、NetworkManager 與 UFW。防火牆可以這樣查：
 
 ```bash
 sudo ufw status verbose
 ```
 
-See [hotspot](hotspot.md) for AP adoption. A disabled declaration withdraws management but does not automatically remove existing native files, accounts, packages or service state.
+接管 AP 見[熱點](hotspot.md)。停用宣告只是不再管理，不會移除既有的檔案、帳號、套件或服務狀態。
 
-### PowerPanel (CyberPower UPS)
+## PowerPanel（CyberPower UPS）
 
-`services.powerpanel` manages CyberPower UPS control via `/etc/pwrstatd.conf`, the `powerpanel` AUR package, and `pwrstatd.service`.
-- Auto-shutdown upon outage is based on Remaining Runtime (`powerfailShutdown = false`, `runtimeThreshold = 300`, `lowbattShutdown = true`), avoiding shutting down immediately on power failure.
-- The deployment user is automatically added to the `power` login group, allowing non-root execution of `pwrstat -status` and `pwrstat -config`.
-- Changes to `/etc/pwrstatd.conf` record a pending marker and automatically restart `pwrstatd.service`.
+`services.powerpanel` 透過 `/etc/pwrstatd.conf`、AUR 套件 `powerpanel` 與 `pwrstatd.service` 管理 UPS：
 
-## Changes and recovery
+- 停電時依剩餘時間關機（`powerfailShutdown = false`、`runtimeThreshold = 300`、`lowbattShutdown = true`），不會一停電就關機。
+- 部署使用者會加入 `power` 群組，不需 root 即可執行 `pwrstat -status` 與 `pwrstat -config`。
+- `/etc/pwrstatd.conf` 變更時記錄 pending 標記，並自動重啟執行中的 `pwrstatd.service`。
 
-The adapter checks file content, ownership and mode, then uses atomic replacement when a managed file actually differs. It records pending actions under `/var/lib/nix-config/arch/` before mutations and clears each marker only after the associated action succeeds. A healthy rerun neither rewrites identical files nor restarts healthy services. Logind changes wait for a boot boundary instead of restarting active login sessions. The TRIM timer keeps the native schedule and disables catch-up; conflicting timing overrides require operator review.
+## 變更與復原
 
-After a failure, correct the reported cause and rerun with markers intact. `just arch-workstation verbose` shows native commands and captured diagnostics; failures retain stdout, stderr and partial timeout output. Never include protected credentials or unrelated application data in a report.
+轉接器比對檔案內容、所有權與權限，只在真的不同時以原子方式取代。變更前於 `/var/lib/nix-config/arch/` 記錄 pending 標記，對應動作成功後才清除。健康的重跑不會改寫相同的檔案，也不會重啟正常的服務。logind 的變更等到下次開機才生效，不會重啟登入中的工作階段。TRIM timer 保留原生排程並關閉補跑；與其他排程衝突時需要人工確認。
 
-Source-only validation:
+失敗時修正回報的原因，保留標記重跑。`just arch-workstation verbose` 會顯示原生指令與診斷，失敗時保留 stdout、stderr 與逾時前的部分輸出。回報問題時不要附上憑證或無關的應用資料。
+
+只驗證原始碼：
 
 ```bash
 nix build --no-link --show-trace --print-build-logs \
@@ -40,4 +41,4 @@ nix build --no-link --show-trace --print-build-logs \
   .#checks.x86_64-linux.system-firewall-integration
 ```
 
-These checks use temporary roots, fake commands and an isolated VM. Full repository validation is `just check`.
+這些檢查使用暫存目錄、假的原生指令與隔離 VM。完整驗證用 `just check`。

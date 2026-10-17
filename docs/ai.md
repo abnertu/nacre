@@ -1,18 +1,16 @@
-# Local AI service
+# 本機 AI 服務
 
-The AI capability runs declared GGUF models with a pinned native llama.cpp build behind llama-swap. Nix generates the public router, Caddy and systemd policy; the Arch adapter checks prepared assets, ownership and service state before applying it. Compiled binaries and models remain outside the Nix store under their declared native locations.
+AI 功能以鎖定版本的原生 llama.cpp 執行宣告的 GGUF 模型，前面由 llama-swap 路由。Nix 產生路由、Caddy 與 systemd 設定；Arch 轉接器在套用前檢查已準備的資源、所有權與服務狀態。編譯出的執行檔與模型放在宣告的原生路徑，不在 Nix store。
 
 ```text
 Tailnet HTTPS → Tailscale Serve → loopback Caddy → loopback llama-swap → loopback llama-server
 ```
 
-Caddy forwards only `/health` and `/v1/*`. Management endpoints are not published. The model, profile, revision and checksum inventories belong to the AI module's Nix declarations.
+Caddy 只轉送 `/health` 與 `/v1/*`，不公開管理端點。模型、profile、版本與 checksum 清單在 AI 模組的 Nix 宣告裡。
 
-## Select resident models
+## 選擇常駐模型
 
-`programs.ai.llama.model.name` selects the default agent. An empty `llama.models`
-keeps the legacy single-model behavior. With explicit entries, enable every
-desired model, including `model.name`:
+`programs.ai.llama.model.name` 是預設模型。`llama.models` 為空時維持舊的單一模型行為；有明確項目時，每個要用的模型（包含 `model.name`）都要啟用：
 
 ```nix
 programs.ai.llama = {
@@ -37,151 +35,55 @@ programs.ai.llama = {
 };
 ```
 
-Each model has independent device, context, cache, batch, parallel-slot and
-offload settings. The agent inherits legacy `llama.model` overrides before
-per-model overrides. Profiles share a model process and control request
-sampling/thinking. They cannot change backend allocation. Unknown fields,
-unselected profile targets, invalid batches and conflicting thinking flags fail
-evaluation.
+- 每個模型各自設定裝置、context、cache、batch、平行 slot 與 offload；預設模型先套用舊的 `llama.model` 覆寫，再套用個別設定。
+- profile 共用模型行程，只控制取樣與 thinking，不能改變後端配置。
+- 未知欄位、指向未選模型的 profile、無效的 batch 與衝突的 thinking 設定，在評估時就會失敗。
+- 啟用並行時，選取的數量不能超過 `maxLoadedModels`。後端在第一次請求時載入，之後常駐不回收，請求可同時執行；只調高上限不會啟動模型。停用並行時上限必須是 1，模型依需求切換。
+- 準備只涵蓋選取的模型；取消選取不會刪除資源。
 
-With concurrency enabled, selected count must not exceed `maxLoadedModels`.
-Backends load on their first request and stay resident without idle eviction;
-requests can execute simultaneously. Raising the limit alone does not start
-models. With concurrency disabled, the limit must be one and models swap on
-demand. Preparation covers selected models only; deselection leaves assets intact.
+`vramEstimateMiB` 與 `memoryBudgetMiB` 描述實測的運作預算：設定預算時每個選取的模型都要有估計值，總和不能超過預算。它們不限制實際配置。`--fit-target` 是保留的可用記憶體，不是配置上限。用固定的 offload、context 與 batch 搭配 `fit = false`，可避免結果依載入順序而變。量測 prompt 處理的峰值，為桌面與 Sunshine 保留餘裕，換模型或執行環境後重新量測。
 
-`vramEstimateMiB` and `memoryBudgetMiB` describe a measured operating budget.
-Every selected model needs an estimate when a budget is set, and their sum must
-fit. These fields do not constrain the allocator. `--fit-target` is a free-memory
-margin, not an allocation ceiling. Fixed offload/context/batches with `fit = false`
-avoid load-order-dependent fitting. Measure prompt-processing peaks, reserve
-desktop/Sunshine headroom, and retest after model or runtime changes.
-
-The legacy `qwen3.6-35b-a3b-ud-q5-k-m` option name remains for compatibility;
-its actual file is MXFP4_MOE. Thinking profile suffixes remain available for the
-selected agent. Inspect `/v1/models` for exact API IDs.
+`qwen3.6-35b-a3b-ud-q5-k-m` 這個選項名稱為了相容而保留，實際檔案是 MXFP4_MOE。thinking profile 的後綴仍可用於預設模型；確切的 API ID 查 `/v1/models`。
 
 ## Agent skills
 
-Home Manager installs the explicitly selected skills into `~/.agents/skills`
-and `~/.gemini/config/skills` as complete directory links. Enablement follows
-`programs.ai.enable`, `programs.ai.skillsPresets.enable` for the shared agent
-directory, and `programs.ai.agy.enable` plus `programs.ai.agy.skills.enable` for
-the Antigravity directory. These switches are independent of llama.cpp asset
-preparation. The source and selection registry lives in
-[`modules/ai/skills.nix`](../modules/ai/skills.nix).
+Home Manager 把明確選取的 skill 以完整目錄連結安裝到 `~/.agents/skills` 與 `~/.gemini/config/skills`：
 
-The `matt-pocock-skills` flake input owns Matt's skill content, including bundled
-references, scripts and agent metadata. The `vercel-skills` input owns
-`find-skills`. Both revisions are fixed in `flake.lock`. The six custom skills
-remain in this repository, with their agent-specific content preserved.
-Deployment uses the sources already captured by the built Home Manager
-activation package; it does not run `npx`, download skills during activation,
-or maintain the Skills CLI's runtime lock file.
+- 共用的 agent 目錄由 `programs.ai.enable` 與 `programs.ai.skillsPresets.enable` 控制。
+- Antigravity 目錄由 `programs.ai.agy.enable` 與 `programs.ai.agy.skills.enable` 控制。
+- 這些開關與 llama.cpp 資源的準備無關。
 
-Deploy the selected revisions with the normal workstation command:
+來源與選取清單在 [`modules/ai/skills.nix`](../modules/ai/skills.nix)。`matt-pocock-skills` input 提供 Matt 的 skill（含參考資料、腳本與 metadata），`vercel-skills` input 提供 `find-skills`，兩者的版本都鎖在 `flake.lock`；自訂 skill 留在這個 repo。部署使用 Home Manager 啟用套件裡已建置好的來源，不會執行 `npx`、不在啟用時下載，也不維護 Skills CLI 的 lock 檔。
 
-```bash
-just arch-workstation
-```
-
-Update only the skill sources, review the changed revisions and upstream
-changes, then validate the resulting generation:
+只更新 skill 來源、審閱上游變更後驗證：
 
 ```bash
 nix flake update matt-pocock-skills vercel-skills
-just check-fast
 just check
 just build
-nix build --no-link --show-trace --print-build-logs \
-  '.#homeConfigurations."abnertu@arch".activationPackage'
-git diff --check
 ```
 
-Either input can be updated on its own. After review and successful checks,
-run `just arch-workstation` to activate the new version and commit the reviewed
-lock change. `just arch-workstation update` controls native package convergence;
-it does not advance skill source revisions. To undo an update, restore the
-reviewed earlier lock entries, rebuild and redeploy. Source checks do not perform
-live activation.
+兩個 input 可以分開更新。確認無誤後執行 `just arch-workstation` 啟用並 commit lock 變更；要還原就把 lock 改回先前的版本再重新部署。`just arch-workstation update` 只負責原生套件，不會推進 skill 版本。
 
-Adding a skill requires an explicit registry change. A selected upstream path
-that disappears or loses its `SKILL.md` fails evaluation, so source updates
-cannot silently drop selected skills. Local modifications to upstream skills
-are replaced by the upstream version during this migration; make intentional
-custom forks separately owned before editing installed content. Home Manager
-handles the old links it previously owned during activation and reports
-unmanaged file collisions rather than overwriting them. No custom directory
-cleanup or backup operation is added.
+新增 skill 需要修改選取清單。選取的上游路徑消失或缺少 `SKILL.md` 時評估會失敗，所以更新不會悄悄漏掉 skill。不要用 `npx skills update` 覆寫這些由 Home Manager 管理的連結；要修改上游 skill，先另外 fork 成自訂 skill。需要專案層級的設定時，在各專案另外執行 `setup-matt-pocock-skills`。Antigravity 的全域 skill 路徑見其[官方說明](https://antigravity.google/docs/skills)。
 
-This migration retires `batch-grill-me`, `design-an-interface`, `edit-article`,
-`qa`, `request-refactor-plan`, `resolving-merge-conflicts`,
-`ubiquitous-language` and `writing-great-skills`, which no longer exist under
-those names upstream. The confirmed rename `writing-great-skills` is replaced
-by `writing-for-agents`; other newly introduced skills are not automatically
-selected. See the [upstream changelog](https://github.com/mattpocock/skills/blob/main/CHANGELOG.md).
+## Codex 本機 profile
 
-The [Matt installation guide](https://github.com/mattpocock/skills#installation-30-second-setup)
-also supports installing through the
-[Skills CLI](https://github.com/vercel-labs/skills). That CLI is provided by
-`vercel-labs/skills`, not by Matt's repository. Its optional interactive
-`find-skills` prompt is skipped with `--yes` or noninteractive input; this
-configuration selects that skill explicitly. Use Nix input updates for these
-Home Manager-owned skills; do not use `npx skills update` to overwrite their
-installed links. Run `setup-matt-pocock-skills` separately for each project when
-you want its project-specific workflow configuration.
+AI、Codex 與 llama.cpp 都啟用時，Home Manager 依預設模型的 API ID 與 context 產生 `~/.codex/llama-cpp.config.toml`：
 
-Antigravity's [official skill guide](https://antigravity.google/docs/skills)
-documents `~/.gemini/config/skills` for its IDE/global configuration. This
-preserves the existing projection; Gemini CLI and Antigravity CLI have separate
-agent-specific directories and are not additional targets of this migration.
+- provider 為 `llama_cpp`（Responses API，`http://127.0.0.1:11434/v1`），這個 profile 關閉網頁搜尋。
+- 在 context 的 75% 自動壓縮；預設 16K 時於 12K token 壓縮，留約 4K 給當前回合。這是壓縮門檻，不是輸出上限。
+- 關閉 Codex 的 multi-agent 工具，因為鎖定版本的 llama.cpp Responses 轉換只支援 function tool；一般的 function tool 與 shell 仍可用，其他 profile 不受影響。
 
-## Codex local profile
+用 `codex --profile llama-cpp` 或 `codex exec --profile llama-cpp "任務"` 選用（需要 [Codex 0.134 以上](https://learn.chatgpt.com/docs/config-file/config-advanced)）。使用前先準備 AI 資源並收斂服務。換模型或 context 後，下一個 Home Manager 世代啟用時生效。
 
-When AI, Codex and llama.cpp are enabled, Home Manager writes
-`~/.codex/llama-cpp.config.toml` from the selected default agent's API ID and
-effective context size. The file defines a `llama_cpp` Responses API provider at
-`http://127.0.0.1:11434/v1`, disables web search for this profile and sets
-automatic compaction at 75% of the context window. With the default 16K agent,
-Codex compacts at 12K tokens, leaving about 4K tokens for the active turn; this
-is a compaction trigger, not a hard output limit. A model or context change is
-reflected when the next Home Manager generation is activated.
+Qwen3.5 使用受管理的 chat template，依對話順序保留多個 system/developer 指令（包含使用者訊息後的指令更新），原本的 tool 與 thinking 格式不變。GGUF 內建的範本會以 HTTP 500（`System message must be at the beginning`）拒絕這些指令，Codex 可能顯示成一般的高負載錯誤。範本更新後重新部署即可，不需重新下載或建置模型。
 
-The local profile disables Codex multi-agent tools. Codex 0.160 enables the
-`multi_agent_v1` namespace by default, while this pinned llama.cpp Responses
-converter only supports function tools. Ordinary function tools and shell use
-remain available in this profile; multi-agent behavior in other Codex profiles
-is unchanged.
+`--profile` 讀的是預設 `~/.codex` 下的檔案；自訂 `CODEX_HOME` 時不會讀到。`programs.ai.codex.localProfile.enable = false` 可停止管理。這個檔案獨立於 `~/.codex/config.toml`，模組不管理 Codex 的其他設定、憑證或權限；啟用前先處理既有的同名檔案。
 
-Select the generated profile with `codex --profile llama-cpp` or
-`codex exec --profile llama-cpp "your task"`. Standalone profiles require
-[Codex 0.134 or newer](https://learn.chatgpt.com/docs/config-file/config-advanced);
-profile loading, streaming and a shell-tool round trip
-were verified with Codex 0.160.0 against a disposable synthetic backend.
-The Qwen3.5 template correction was also verified with the actual prepared
-4B GGUF and native llama.cpp: a streamed reply and a `pwd` tool round trip
-both completed through the Responses API using an isolated Codex home.
-Prepare the AI assets and converge the native service before using the profile.
+## FIM 補全
 
-Qwen3.5 uses a managed chat template that preserves multiple system/developer
-instructions in conversation order, including instruction updates after user
-messages. Its original tool and thinking formats remain intact. The embedded
-GGUF template rejects these Codex instructions with HTTP 500 (`System message
-must be at the beginning`), which Codex may display as a generic high-demand
-error. Redeploy after a template update; the model does not need downloading
-or rebuilding.
-
-`--profile` uses the profile file under the default `~/.codex` directory; a custom `CODEX_HOME` uses its own Codex home and
-does not read this generated file. Set `programs.ai.codex.localProfile.enable =
-false` to stop managing it. The profile file is an independent Home Manager
-file; the module does not own or rewrite `~/.codex/config.toml`, credentials,
-permissions or other Codex settings. Resolve an existing file collision before
-activating Home Manager.
-
-## FIM completion
-
-Use base completion weights through `/v1/completions`, with raw prefix/suffix
-tokens rather than chat messages:
+透過 `/v1/completions` 使用 base completion 權重，以原始的 prefix/suffix token 而非 chat 訊息：
 
 ```bash
 curl --fail http://127.0.0.1:11434/v1/completions \
@@ -189,23 +91,13 @@ curl --fail http://127.0.0.1:11434/v1/completions \
   --data '{"model":"Qwen2.5-Coder-3B-Q4_K_M.gguf","prompt":"<|fim_prefix|>def add(a, b):\n    <|fim_suffix|>\n\nassert add(2, 3) == 5\n<|fim_middle|>","max_tokens":64,"temperature":0,"stop":["<|fim_pad|>","<|endoftext|>","<|im_end|>"]}'
 ```
 
-Both completion candidates contain these FIM tokens. Stop strings are explicit
-because their GGUF EOS declarations differ. Embedded generic chat templates do
-not make base weights instruction-tuned. Configure editor plugins with a
-separate completion ID and the prefix/suffix format. Include a file/language
-context in the prefix (for example `# Nix expression`) when syntax is ambiguous.
-The agent default has 16K total context; configure the harness to compact before
-that prompt-plus-output limit. A larger context needs fresh speed measurements.
+兩個補全候選模型都有這些 FIM token；因為它們的 GGUF EOS 宣告不同，所以明確設定 stop。內建的 chat 範本不會讓 base 權重變成 instruct 模型。編輯器外掛用另一個補全 ID 與 prefix/suffix 格式；語法不明確時，在 prefix 加上檔案或語言提示（例如 `# Nix expression`）。預設模型總 context 為 16K，讓工具在 prompt 加輸出達到上限前壓縮；加大 context 要重新量測速度。
 
-## Measure locally
+## 本機量測
 
-These opt-in tools perform live GPU work, separate from deployment and flake
-checks. Download candidates to scratch at declared revisions and verify SHA-256.
-Avoid a duplicate large agent alongside the managed router. For isolated tests,
-stop the router during an agreed window and restore it afterwards without
-changing `/etc`, receipts or the prepared selector.
+這些工具會實際使用 GPU，與部署和 flake checks 分開。候選模型下載到暫存目錄並驗證 SHA-256。避免在受管理的路由之外再跑一個大型模型；需要隔離測試時，在約定的時間停止路由，結束後恢復，不要修改 `/etc`、收據或已準備的 selector。
 
-Identify the dedicated GPU's sysfs path rather than assuming `card0`:
+先找出獨立顯示卡的 sysfs 路徑，不要假設是 `card0`：
 
 ```bash
 for device in /sys/class/drm/card[0-9]/device; do
@@ -223,11 +115,7 @@ python modules/ai/benchmark.py \
   --min-free-mib 4096 --output /var/tmp/ai-bench.json
 ```
 
-The sequential matrix records PP512/PP4096/TG128 with three native repetitions,
-binary revision, model checksum, arguments, raw diagnostics and sampled VRAM
-peaks. Add `--depths 8192` to measure generation after a longer prefix. The
-reserve monitor terminates its own test process on a breach or timeout; polling
-cannot prevent transient allocations and is not a hard cap.
+依序量測 PP512、PP4096、TG128，各重複三次，記錄執行檔版本、模型 checksum、參數、原始診斷與 VRAM 峰值。`--depths 8192` 可量測較長前綴後的生成速度。保留量監控在超出或逾時時終止自己的測試行程；輪詢擋不住瞬間配置，不是硬上限。
 
 ```bash
 python modules/ai/probe.py --base-url http://127.0.0.1:11434 \
@@ -237,43 +125,26 @@ python modules/ai/probe.py --base-url http://127.0.0.1:11434 \
   --model COMPLETION_ID --mode fim --output /var/tmp/ai-fim.json
 ```
 
-Probes use synthetic prompts, compare thinking off/on, and repeat prefixes to
-expose cache reuse. They separate first SSE event, reasoning and visible answer,
-and retain failures/partial output. Router aliases can enforce their declared
-thinking flag; use `--thinking-model` to compare the matching thinking alias
-against the default model. A token limit can end thinking before the
-final answer. Never infer long-context speed from empty-context TG128.
+probe 使用合成的 prompt，比較 thinking 開關，並重複前綴以觀察 cache 重用。它分開記錄第一個 SSE 事件、推理與可見回答，失敗與部分輸出也會保留。路由的別名可能強制 thinking 設定，用 `--thinking-model` 與預設模型比較；token 上限可能在最終回答前就結束 thinking。不要用空 context 的 TG128 推論長 context 的速度。
 
-Agent latency includes loading, queueing, prompt ingestion, reasoning and visible
-generation. Stable prefixes help cache reuse. MTP accelerates decoding, requires
-MTP tensors and adds memory; the pinned Qwen3.6 MXFP4 artifact has none. Test MTP
-only when decoding is the bottleneck and the shared budget permits it. Upstream
-[HIP PP regression #18823](https://github.com/ggml-org/llama.cpp/issues/18823) and
-[MTP reservation #26038](https://github.com/ggml-org/llama.cpp/issues/26038) are
-diagnostic leads, not proof that this machine has those bugs.
+agent 延遲包含載入、排隊、prompt 處理、推理與可見輸出；穩定的前綴有助 cache 重用。MTP 能加速解碼，但需要 MTP tensor 並增加記憶體，目前鎖定的 Qwen3.6 MXFP4 檔案沒有；只有解碼是瓶頸且預算允許時才測。上游的 [HIP PP 退化 #18823](https://github.com/ggml-org/llama.cpp/issues/18823) 與 [MTP 預留 #26038](https://github.com/ggml-org/llama.cpp/issues/26038) 只是排查線索，不代表這台機器有這些問題。
 
-See [local measurements](ai-benchmarks.md) for hardware, chosen parameters and
-limits. Test simultaneous residency and requests during actual Sunshine
-streaming before claiming remote-streaming performance is verified.
+硬體、選定參數與限制見[本機量測結果](ai-benchmarks.md)。宣稱遠端串流效能前，要在實際 Sunshine 串流時測試同時常駐與並行請求。
 
-## Prepare outside deployment
+## 準備（部署之外）
 
 ```bash
-just prepare-ai          # Build and verify every declared asset.
-just prepare-ai build    # Prepare the pinned llama.cpp build.
-just prepare-ai model    # Download and fully verify declared models.
+just prepare-ai          # 建置並驗證所有宣告的資源
+just prepare-ai build    # 只準備鎖定版本的 llama.cpp
+just prepare-ai model    # 只下載並完整驗證宣告的模型
 ```
 
-Preparation uses the declared llama.cpp source revision and reviewed build patch, installs the binary under a revision directory and atomically updates the `current` selector. Model downloads stage by declared identity, pass full SHA-256 verification and publish atomically. A root-owned receipt records each verified model. Routine deployment compares its identity and file metadata without hashing the entire GGUF on every run; `just prepare-ai model` performs explicit full verification and refreshes matching receipts. Unknown staging state, mismatched selectors and checksums require operator review. The build needs the native C++/ROCm/Vulkan toolchain.
+- 建置使用宣告的 llama.cpp 版本與審閱過的 patch，安裝到以版本命名的目錄，再以原子方式更新 `current` selector。需要原生的 C++、ROCm 與 Vulkan 工具鏈。
+- 模型依宣告的身分暫存，通過完整 SHA-256 驗證後才以原子方式發布，並寫入 root 擁有的收據。日常部署只比對收據的身分與檔案 metadata，不會每次雜湊整個 GGUF；`just prepare-ai model` 會完整驗證並更新相符的收據。
+- 未知的暫存狀態、不符的 selector 或 checksum 需要人工確認。
+- 下載使用 `hf download --local-dir`，不用 `--cache-dir`，metadata 留在自己的暫存目錄。下載失敗時重跑 `just prepare-ai model`：相同身分的暫存會被沿用，完成後仍須通過 SHA-256 驗證；屬於其他宣告的暫存仍需人工確認。見 [Hugging Face 下載說明](https://huggingface.co/docs/huggingface_hub/guides/download)。
 
-Downloads use `hf download --local-dir` without `--cache-dir`; local-directory
-metadata stays inside the owned download stage. If a download fails, rerun
-`just prepare-ai model`: a stage with the same declared identity is reused,
-then the completed GGUF must pass SHA-256 verification before publication.
-A stage belonging to a different declaration still requires operator review.
-See the [Hugging Face download guide](https://huggingface.co/docs/huggingface_hub/guides/download).
-
-## Deploy and inspect
+## 部署與檢查
 
 ```bash
 just arch-workstation
@@ -283,13 +154,8 @@ sudo tailscale serve status --json
 systemctl status llama-swap.service caddy.service
 ```
 
-If the build selector has never been prepared, workstation deployment highlights an optional AI skip and leaves its files and services alone. Once the selector exists, a missing model, invalid build or model receipt, changed checksum, unmanaged Caddy policy, service failure or readiness change after preflight stops the run. Prepared assets are verified before services converge. Use `just arch-workstation verbose` for native command diagnostics.
+從未準備過 build selector 時，部署會醒目地略過 AI，不碰它的檔案與服務。selector 存在之後，缺模型、build 或模型收據無效、checksum 改變、Caddy 設定不受管理、服務失敗，或預檢後狀態改變，都會中止部署。服務收斂前會先驗證已準備的資源。需要原生指令的診斷時用 `just arch-workstation verbose`。
 
-The retired standalone `llama-server` preset and drop-in are recognized against
-fixed historical policy, independently of the current selected models and
-residency limit. Exact known files may remain in place during migration to
-llama-swap; deployment stops/disables the old service if necessary. Modified
-presets, drop-ins and manual local overrides still require explicit adoption.
-No legacy files or model assets are automatically removed.
+舊的獨立 `llama-server` preset 與 drop-in 以固定的歷史內容辨識，與目前選取的模型無關。內容完全相符的舊檔在遷移到 llama-swap 期間可以保留，部署會在需要時停用舊服務；被修改過的 preset、drop-in 與手動覆寫仍需明確接管。舊檔與模型資源不會被自動移除。
 
-Disabling AI withdraws convergence; it does not remove prepared binaries, models, native files, pending markers or Tailscale routes. The AI capability also declares client tools and skill presets through its public option interface; inspect [configuration](configuration.md) and the owning module for the current switches. [Deployment](deployment.md) describes shared progress and recovery.
+停用 AI 只是停止收斂，不會移除已準備的執行檔、模型、原生檔案、pending 標記或 Tailscale 路由。進度與復原見[部署](deployment.md)。

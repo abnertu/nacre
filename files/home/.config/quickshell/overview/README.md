@@ -1,12 +1,12 @@
-# Quickshell workspace overview
+# Quickshell 工作區總覽
 
-This checked-in Hyprland overview shows workspaces and live window previews with keyboard navigation and drag-and-drop. Its source lives under `files/home/.config/quickshell/overview/`; the workstation's Home Manager file module projects it into the selected user's home. The graphical-session module owns `quickshell-overview.service`. Do not clone another copy into the managed runtime path or add a second Hyprland startup entry.
+Hyprland 的工作區總覽：顯示各工作區與即時視窗預覽，支援鍵盤導覽與拖放。原始碼在 `files/home/.config/quickshell/overview/`，由 Home Manager 投射到使用者的 home；`quickshell-overview.service` 由 graphical-session 模組負責。不要在受管理的執行路徑另外 clone 一份，也不要再加一個 Hyprland 啟動項目。
 
-![Overview screenshot](assets/image.png)
+![總覽截圖](assets/image.png)
 
-## Use
+## 使用
 
-When `desktop.overview.enable` is selected and the home generation is active, UWSM and the user service start the overview. The current IPC controls are:
+選取 `desktop.overview.enable` 並啟用 home 世代後，UWSM 與 user service 會啟動總覽。IPC 控制：
 
 ```bash
 qs ipc -c overview call overview toggle
@@ -14,15 +14,15 @@ qs ipc -c overview call overview open
 qs ipc -c overview call overview close
 ```
 
-The module supports clicking a window to focus it, middle-clicking to close it, dragging windows between workspaces, arrow-key navigation and Escape/Enter to close. Edit this repository's `common/Config.qml` for grid dimensions and scale, or `common/Appearance.qml` for visual style, then build and activate the next home generation. Changes made only in the managed runtime path may be replaced by activation.
+點擊視窗切換焦點、中鍵關閉、在工作區之間拖放視窗、方向鍵導覽、Escape 或 Enter 關閉。網格大小與縮放改 `common/Config.qml`，外觀改 `common/Appearance.qml`，再建置並啟用下一個 home 世代；只改受管理執行路徑的內容會在啟用時被覆蓋。
 
-## Validate source
+## 驗證原始碼
 
 ```bash
 nix build --no-link --show-trace --print-build-logs \
   .#checks.x86_64-linux.overview-refresh
 ```
 
-The overview's query and refresh tests use fake signals and preserve the last valid state after a native query failure. The wider session behavior is covered by `just check` and [desktop session](../../../../../docs/desktop-session.md).
+查詢與重新整理的測試使用假訊號，並確認原生查詢失敗時保留最後一次的有效狀態。更大範圍的工作階段行為由 `just check` 與[桌面工作階段](../../../../../docs/desktop-session.md)涵蓋。
 
-This component was adapted from the overview in [illogical-impulse](https://github.com/end-4/dots-hyprland) by end-4 and the standalone [quickshell-overview](https://github.com/Shanu-Kumawat/quickshell-overview) project. Preserve upstream attribution when redistributing.
+改寫自 end-4 的 [illogical-impulse](https://github.com/end-4/dots-hyprland) 總覽與獨立的 [quickshell-overview](https://github.com/Shanu-Kumawat/quickshell-overview) 專案，再散布時請保留上游的出處。
