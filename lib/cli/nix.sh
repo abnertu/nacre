@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Sourced by Just recipes before Nix builds the runtime progress module.
 # Callers choose privilege and the preserved environment; helpers add diagnostics.
 nix_progress_init() {

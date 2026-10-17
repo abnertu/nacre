@@ -38,6 +38,7 @@ fail() {
 
 step 'Build the container deployment'
 deployment=$(nix build --no-link --print-out-paths "$source_root#container-deployment")
+# shellcheck disable=SC2016 # the single-quoted text is a Nix expression
 read -r user home <<<"$(nix eval --raw "$source_root#lib.container" \
   --apply 'c: "${c.username} ${c.homeDirectory}"')"
 binary=$(find "$deployment/bin" -mindepth 1 -maxdepth 1 -printf '%f\n' | head -n1)
@@ -96,8 +97,8 @@ podman cp "$source_root/scripts/bootstrap.sh" "$name:/tmp/bootstrap.sh"
 as_user bash /tmp/bootstrap.sh >"$work/bootstrap.log" 2>&1 || { show bootstrap.log; fail 'bootstrap failed'; }
 
 step 'Import the deployment closure'
-nix-store --export $(nix-store --query --requisites "$deployment") |
-  podman exec -i "$name" nix-store --import >/dev/null
+mapfile -t closure < <(nix-store --query --requisites "$deployment")
+nix-store --export "${closure[@]}" | podman exec -i "$name" nix-store --import >/dev/null
 
 step 'Routine deployment refuses missing packages'
 status=0

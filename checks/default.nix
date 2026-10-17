@@ -4,7 +4,6 @@
   arch-switch,
   archDeployment,
   deploymentName,
-  adapterPython ? pkgs.python3,
 }:
 {
   home-source-assets = import ./assets.nix { inherit pkgs; };

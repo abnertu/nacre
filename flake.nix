@@ -89,6 +89,7 @@
         configuration = import ./checks/configuration.nix { inherit lib pkgs inputs; };
         capabilities = import ./checks/capabilities.nix { inherit lib pkgs inputs; };
         source-format = import ./checks/format.nix { inherit lib pkgs; };
+        source-lint = import ./checks/lint.nix { inherit lib pkgs; };
         python-types = import ./checks/python-types.nix {
           inherit lib pkgs;
           inherit (d) nixAdapter;
@@ -97,7 +98,7 @@
       }
       // (import ./checks {
         inherit lib pkgs;
-        inherit (d) arch-switch deploymentName adapterPython;
+        inherit (d) arch-switch deploymentName;
         archDeployment = d.deployment;
       })
       // (import ./platforms/arch/checks.nix {

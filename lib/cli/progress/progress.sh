@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Presentation-only Bash adapter. Callers retain traps and subprocess ownership.
 # Each bounded frame is acknowledged before another one is sent. Application
 # stdin/stdout are never used for the renderer's control protocol.

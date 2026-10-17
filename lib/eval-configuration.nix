@@ -65,7 +65,7 @@ let
     powerpanel = cfg.services.powerpanel;
     arch = cfg.arch;
     users = lib.mapAttrs (
-      name: user:
+      _: user:
       (builtins.removeAttrs user [ "home" ])
       // {
         profiles = selected user.profiles;

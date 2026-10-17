@@ -44,8 +44,8 @@ let
       lib.intersectLists [ "antigravity-cli" "openai-codex-bin" ] (archFor { programs.ai = raw; }).aur
     );
   validConfig = module: (builtins.tryEval (builtins.deepSeq (evaluate module).host true)).success;
-  valid =
-    name: raw:
+  validAi =
+    raw:
     (builtins.tryEval (
       builtins.deepSeq (import ../modules/ai/interface.nix {
         inherit lib;
@@ -129,7 +129,6 @@ let
     inherit lib pkgs;
     config = selectedModelsConfig;
     artifacts = selectedModels.artifacts;
-    hardware = host.hardware;
     tailscale = false;
   };
   legacyBaselineConfig = import ../modules/ai/interface.nix {
@@ -148,7 +147,6 @@ let
     inherit lib pkgs;
     config = legacyBaselineConfig;
     artifacts = legacyBaseline.artifacts;
-    hardware = host.hardware;
     tailscale = false;
   };
   preserveOverride = ai {
@@ -168,11 +166,6 @@ let
     enable = true;
     kvm.gui.enable = true;
   };
-  host =
-    (import ../lib/eval-configuration.nix {
-      inherit lib;
-      modules = [ ./fixtures/configuration.nix ];
-    }).host;
   fixtures = import ./lib.nix { inherit inputs lib; };
   home = fixtures.home [ ] "abnertu";
   homeDisabled = fixtures.home [ { programs.ai.enable = false; } ] "abnertu";
@@ -326,16 +319,16 @@ assert lib.all (module: !(validConfig module)) [
   { virtualization.enable = "true"; }
   { virtualization.typo = true; }
 ];
-assert !(valid "ai" { enable = "true"; }) && !(valid "ai" { typo = true; });
-assert !(valid "ai" { codex.enabel = true; });
-assert !(valid "ai" { codex.localProfile.enable = "true"; });
-assert !(valid "ai" { agy.enabel = true; });
-assert !(valid "ai" { llama.proxy.httpsPort = 0; });
-assert !(valid "ai" { llama.model.microBatchSize = 4096; });
-assert !(valid "ai" { llama.model.name = "unknown"; });
-assert !(valid "ai" { llama.models.unknown.enable = true; });
+assert !(validAi { enable = "true"; }) && !(validAi { typo = true; });
+assert !(validAi { codex.enabel = true; });
+assert !(validAi { codex.localProfile.enable = "true"; });
+assert !(validAi { agy.enabel = true; });
+assert !(validAi { llama.proxy.httpsPort = 0; });
+assert !(validAi { llama.model.microBatchSize = 4096; });
+assert !(validAi { llama.model.name = "unknown"; });
+assert !(validAi { llama.models.unknown.enable = true; });
 assert
-  !(valid "ai" {
+  !(validAi {
     llama.models."qwen3.5-4b-q4-k-m" = {
       enable = true;
       vramEstimateMiB = 4096;
@@ -352,7 +345,7 @@ assert
     llama.maxLoadedModels = 2;
   });
 assert
-  !(valid "ai" {
+  !(validAi {
     llama.models."qwen3.5-4b-q4-k-m" = {
       enable = true;
       vramEstimateMiB = 4096;
@@ -367,14 +360,14 @@ assert
     llama.model.name = "qwen3.5-4b-q4-k-m";
   });
 assert
-  !(valid "ai" {
+  !(validAi {
     llama.models."qwen3.5-4b-q4-k-m".enable = true;
     llama.models."qwen2.5-coder-1.5b-q8-0".enable = true;
     llama.concurrentModels = true;
     llama.maxLoadedModels = 2;
   });
 assert
-  !(valid "ai" {
+  !(validAi {
     llama.models."qwen3.5-4b-q4-k-m" = {
       enable = true;
       vramEstimateMiB = 4096;
@@ -386,14 +379,14 @@ assert
     llama.model.name = "qwen3.5-4b-q4-k-m";
   });
 assert
-  !(valid "ai" {
+  !(validAi {
     llama.models."qwen3.6-35b-a3b-ud-q5-k-m" = {
       enable = true;
       preserveThinking = true;
     };
     llama.profiles.coding.enableThinking = true;
   });
-assert valid "ai" {
+assert validAi {
   llama.models."qwen3.6-35b-a3b-ud-q5-k-m" = {
     enable = true;
     preserveThinking = true;
@@ -404,7 +397,7 @@ assert valid "ai" {
   };
 };
 assert
-  !(valid "ai" {
+  !(validAi {
     llama.models."qwen3.6-35b-a3b-ud-q5-k-m" = {
       enable = true;
       enableThinking = true;
@@ -412,7 +405,7 @@ assert
     };
   });
 assert
-  !(valid "ai" {
+  !(validAi {
     llama.models."qwen3.5-4b-q4-k-m" = {
       enable = true;
       batchSize = 128;
@@ -420,13 +413,13 @@ assert
     llama.model.name = "qwen3.5-4b-q4-k-m";
   });
 assert
-  !(valid "ai" {
+  !(validAi {
     llama.concurrentModels = false;
     llama.maxLoadedModels = 2;
   });
-assert !(valid "ai" { llama.source.revision = "main"; });
+assert !(validAi { llama.source.revision = "main"; });
 assert
-  !(valid "ai" {
+  !(validAi {
     llama.profiles.invalid = {
       enableThinking = true;
       preserveThinking = true;

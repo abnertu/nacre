@@ -50,7 +50,6 @@ let
     inherit lib pkgs;
     config = host.ai;
     artifacts = ai.artifacts;
-    hardware = host.hardware;
     tailscale = capabilities.tailscale;
   };
   powerpanel = import ../modules/powerpanel {

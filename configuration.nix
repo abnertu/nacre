@@ -1,4 +1,6 @@
 # Single entry point: imported values are defaults; ordinary definitions here win.
+# The examples below use these module arguments.
+# deadnix: skip
 { config, lib, ... }:
 # let
 #   archUsers = import ./hosts/arch/users.nix { inherit config lib; };

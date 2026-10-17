@@ -47,7 +47,7 @@ let
       null
     else
       import ./ai {
-        inherit lib pkgs hardware;
+        inherit lib pkgs;
         config = aiConfig;
         artifacts = aiArtifacts;
         tailscale = capabilities.tailscale;

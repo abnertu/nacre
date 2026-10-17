@@ -62,7 +62,7 @@ nix build --no-link --show-trace --print-build-logs \
 git diff --check
 ```
 
-These build without activating. For deployment or adapter changes, also run `just container-test` when podman is available: it deploys into a disposable container, never the host. Deployment, preparation, registration, package installation and service operations change live state and need the user's go-ahead. For documentation-only edits, check Markdown syntax, relative links and `git diff --check`.
+These build without activating. For deployment or adapter changes, also run `just container-test` when podman is available: it deploys into a disposable container, never the host. Deployment, preparation, registration, package installation and service operations change live state and need the user's go-ahead. For documentation-only edits, run `nix build .#checks.x86_64-linux.source-lint` (relative links and anchors) and `git diff --check`.
 
 ## Git
 

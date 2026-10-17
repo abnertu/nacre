@@ -3,7 +3,6 @@
   pkgs,
   config,
   artifacts,
-  hardware,
   tailscale,
 }:
 let
