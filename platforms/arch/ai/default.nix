@@ -101,38 +101,7 @@ let
     };
     models = switcherModels;
   };
-  legacyModel = artifacts.legacy.model;
-  legacyServer = artifacts.legacy.server;
   prefix = artifacts.source.installPrefix + "/current";
-  legacyChatTemplateKwargs =
-    "{"
-    + lib.concatStringsSep "," (
-      lib.filter (value: value != null) [
-        (
-          if legacyModel.reasoningEffort or null == null then
-            null
-          else
-            ''"reasoning_effort":${builtins.toJSON legacyModel.reasoningEffort}''
-        )
-        (
-          if legacyModel.enableThinking or null == null then
-            null
-          else
-            ''"enable_thinking":${builtins.toJSON legacyModel.enableThinking}''
-        )
-        (
-          if legacyModel.preserveThinking or null == null then
-            null
-          else
-            ''"preserve_thinking":${builtins.toJSON legacyModel.preserveThinking}''
-        )
-      ]
-    )
-    + "}";
-  escapedChatTemplateKwargs = lib.replaceStrings [ "\"" ] [ "\\\"" ] (legacyChatTemplateKwargs);
-  reasoningEffort = lib.optionalString (
-    legacyModel.reasoningEffort or null != null
-  ) " --reasoning-effort ${legacyModel.reasoningEffort}";
   switcherConfig = builtins.toJSON {
     inherit (switcher)
       startPort
@@ -165,11 +134,6 @@ let
     import /etc/caddy/conf.d/*
   '';
   packageCaddy = builtins.readFile ./package-caddy.Caddyfile;
-  packageCaddyWithSite =
-    lib.replaceStrings
-      [ "# Import additional caddy config files in /etc/caddy/conf.d/\n" ]
-      [ "${legacyCaddySite}\n# Import additional caddy config files in /etc/caddy/conf.d/\n" ]
-      packageCaddy;
   caddySite = ''
     :${toString artifacts.proxy.localPort} {
         bind 127.0.0.1
@@ -184,41 +148,6 @@ let
         respond 404
     }
   '';
-  legacyCaddySite = lib.replaceStrings [ "    " ] [ "\t" ] caddySite;
-  legacyPreset = ''
-    version = 1
-
-    [*]
-    parallel = ${toString legacyModel.parallel}
-    cont-batching = true
-    jinja = true
-
-    [${legacyModel.id}]
-    model = ${legacyModel.path}
-    device = ${legacyModel.device}
-    ctx-size = ${toString legacyModel.contextSize}
-    fit = true
-    fit-target = ${toString legacyModel.fitTarget}
-    fit-ctx = ${toString legacyModel.contextSize}
-    flash-attn = on
-    cache-type-k = ${legacyModel.cacheTypeK}
-    cache-type-v = ${legacyModel.cacheTypeV}
-    batch-size = ${toString legacyModel.batchSize}
-    ubatch-size = ${toString legacyModel.microBatchSize}
-    load-on-startup = true
-  '';
-  legacyDropin = ''
-    [Unit]
-    After=network-online.target
-
-    [Service]
-    Environment=LD_LIBRARY_PATH=${prefix}/lib:${prefix}/lib64
-    ExecStart=
-    ExecStart=${prefix}/bin/llama-server --models-preset /etc/llama/server/models.ini --models-max ${toString legacyServer.modelsMax} --host ${legacyServer.host} --port ${toString legacyServer.port} --no-webui --temp ${builtins.toJSON legacyModel.temperature} --top-p ${builtins.toJSON legacyModel.topP} --top-k ${toString legacyModel.topK} --min-p ${builtins.toJSON legacyModel.minP} --presence-penalty ${builtins.toJSON legacyModel.presencePenalty} --repeat-penalty ${builtins.toJSON legacyModel.repetitionPenalty}${reasoningEffort} --chat-template-kwargs ${escapedChatTemplateKwargs}
-    SupplementaryGroups=render video
-    Restart=on-failure
-    RestartSec=3
-  '';
 in
 {
   inherit llama proxy;
@@ -229,7 +158,6 @@ in
         source
         server
         profiles
-        legacy
         ;
       switcher = {
         binary = lib.optionalString llama "${pkgs.llama-swap}/bin/llama-swap";
@@ -243,12 +171,8 @@ in
       paths = {
         switcherConfig = "/etc/llama-swap/config.yaml";
         switcherUnit = "/etc/systemd/system/llama-swap.service";
-        legacyPreset = "/etc/llama/server/models.ini";
-        legacyDropin = "/etc/systemd/system/llama-server.service.d/60-nix-config.conf";
-        legacyLocalDropin = "/etc/systemd/system/llama-server.service.d/60-local.conf";
         caddyMain = "/etc/caddy/Caddyfile";
         caddySite = "/etc/caddy/conf.d/nix-config-llama.caddy";
-        legacyOllamaSite = "/etc/caddy/conf.d/nix-config-ollama.caddy";
       };
       generated = {
         inherit
@@ -257,9 +181,6 @@ in
           caddyMain
           caddySite
           packageCaddy
-          packageCaddyWithSite
-          legacyPreset
-          legacyDropin
           ;
       };
     }

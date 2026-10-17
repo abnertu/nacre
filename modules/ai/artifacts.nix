@@ -33,16 +33,6 @@ let
   };
 in
 rec {
-  # Exact historical policy used only to recognize the retired standalone service.
-  legacy = {
-    model =
-      models."qwen3.6-35b-a3b-ud-q5-k-m".artifact
-      // models."qwen3.6-35b-a3b-ud-q5-k-m".runtime
-      // {
-        device = "ROCm0";
-      };
-    inherit server;
-  };
   source = {
     repository = "https://github.com/ggml-org/llama.cpp.git";
     revision = "434ddbbc0e30522e897670681e503b797c12b7c1";

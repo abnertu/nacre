@@ -148,6 +148,4 @@ systemctl status llama-swap.service caddy.service
 
 Until the build selector exists, deployment skips AI visibly and leaves its files and services alone. Afterwards, a missing model, invalid build or model receipt, checksum change, unmanaged Caddy configuration, failed service or state change after preflight stops the run.
 
-Legacy standalone `llama-server` presets and drop-ins are recognized by their fixed historical content. Exact matches may stay during the migration to llama-swap; modified ones need explicit adoption. Nothing is removed automatically.
-
 Disabling AI stops convergence and removes nothing. `purge` withdraws the Tailscale Serve route, the Caddy site and `llama-swap`, keeping prepared binaries, models and receipts.

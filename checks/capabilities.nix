@@ -132,24 +132,6 @@ let
     artifacts = selectedModels.artifacts;
     tailscale = false;
   };
-  legacyBaselineConfig = import ../modules/ai/interface.nix {
-    inherit lib;
-    raw.llama.model.device = "ROCm0";
-  };
-  legacyBaseline = import ../modules/ai {
-    inherit lib;
-    config = legacyBaselineConfig;
-    skillSources = {
-      matt-pocock = inputs.matt-pocock-skills;
-      vercel = inputs.vercel-skills;
-    };
-  };
-  legacyBaselineArch = import ../platforms/arch/ai {
-    inherit lib pkgs;
-    config = legacyBaselineConfig;
-    artifacts = legacyBaseline.artifacts;
-    tailscale = false;
-  };
   preserveOverride = ai {
     llama.models."qwen3.6-35b-a3b-ud-q5-k-m" = {
       enable = true;
@@ -460,8 +442,7 @@ pkgs.runCommand "capabilities-check" { nativeBuildInputs = [ pkgs.python3 ]; } '
       ${codexProfileText "codex-default" codexProfile} \
       ${codexProfileExpected "codex-default" codexProfile} \
       ${codexProfileText "codex-selected" selectedCodexProfile} \
-      ${codexProfileExpected "codex-selected" selectedCodexProfile} \
-      ${legacyBaselineArch.manifest} <<'PY'
+      ${codexProfileExpected "codex-selected" selectedCodexProfile} <<'PY'
   import json
   import sys
   import tomllib
@@ -482,11 +463,6 @@ pkgs.runCommand "capabilities-check" { nativeBuildInputs = [ pkgs.python3 ]; } '
   check_codex_profile(sys.argv[4], sys.argv[5])
 
   manifest = json.load(open(sys.argv[1], encoding="utf-8"))
-  baseline = json.load(open(sys.argv[6], encoding="utf-8"))
-  for field in ("legacyPreset", "legacyDropin"):
-      assert manifest["generated"][field] == baseline["generated"][field], (
-          "legacy ownership recognition must not change with selected models or overrides", field
-      )
   router = json.loads(manifest["generated"]["switcherConfig"])
   models = router["models"]
   assert router["globalTTL"] == 0

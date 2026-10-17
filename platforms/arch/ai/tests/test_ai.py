@@ -185,13 +185,6 @@ class AITests(unittest.TestCase):
             "caddyMain": '{\n    admin "unix//run/caddy/admin.socket"\n}\nimport /etc/caddy/conf.d/*\n',
             "caddySite": site,
             "packageCaddy": package_caddy,
-            "packageCaddyWithSite": package_caddy.replace(
-                "# Import additional caddy config files in /etc/caddy/conf.d/\n",
-                site
-                + "\n# Import additional caddy config files in /etc/caddy/conf.d/\n",
-            ),
-            "legacyPreset": "",
-            "legacyDropin": "",
         }
         self.generated = cast(dict[str, Any], self.desired["generated"])
         model = self.root / "var/lib/llama/models/model.gguf"
@@ -255,7 +248,8 @@ class AITests(unittest.TestCase):
         self.assertTrue((self.root / "opt/llama/current").exists())
 
     def test_disabled_preserves_state(self):
-        path = self.root / "etc/llama/server/models.ini"
+        path = self.root / "etc/llama-swap/config.yaml"
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("existing")
         marker = self.root / "var/lib/nix-config/arch/system-ai-llama.pending"
         marker.write_text("")
@@ -313,44 +307,6 @@ class AITests(unittest.TestCase):
         self.assertFalse(self.files.pending("ai-llama"))
         self.assertIn(("systemctl", "daemon-reload"), self.native.calls)
 
-    def test_rejects_legacy_runtime_files_before_writes(self):
-        legacy = self.root / "etc/systemd/system/llama-server.service.d/60-local.conf"
-        legacy.write_text("manual\n")
-        with self.assertRaises(runtime.Conflict):
-            self.ai().preflight()
-        legacy.unlink()
-        (self.root / "etc/caddy/conf.d/nix-config-ollama.caddy").write_text("legacy\n")
-        with self.assertRaises(runtime.Conflict):
-            self.ai().preflight()
-        self.assertFalse((self.root / "etc/llama/server/models.ini").exists())
-
-    def test_known_legacy_policy_is_accepted_but_modified_policy_is_rejected(self):
-        paths = {
-            "legacyPreset": "etc/llama/server/models.ini",
-            "legacyDropin": "etc/systemd/system/llama-server.service.d/60-nix-config.conf",
-        }
-        for field, relative in paths.items():
-            self.generated[field] = f"known historical {field}\n"
-            path = self.root / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(self.generated[field])
-        self.assertTrue(self.ai().preflight())
-        self.native.calls.clear()
-        for field, relative in paths.items():
-            with self.subTest(field=field):
-                path = self.root / relative
-                original = path.read_text()
-                path.write_text(original + "operator customization\n")
-                with self.assertRaisesRegex(
-                    runtime.Conflict, "requires explicit adoption"
-                ):
-                    self.ai().preflight()
-                self.assertEqual(self.native.calls, [])
-                self.assertEqual(
-                    path.read_text(), original + "operator customization\n"
-                )
-                path.write_text(original)
-
     def test_rejects_mismatched_prepared_receipt(self):
         (self.root / "opt/llama/current/nix-config-build").write_text("other 20000\n")
         with self.assertRaises(runtime.Conflict):
@@ -374,8 +330,6 @@ class AITests(unittest.TestCase):
     def test_adopts_exact_package_caddyfile(self):
         path = self.root / "etc/caddy/Caddyfile"
         path.write_text(self.generated["packageCaddy"])
-        self.assertEqual(self.ai().caddy_main(), self.generated["caddyMain"])
-        path.write_text(self.generated["packageCaddyWithSite"])
         self.assertEqual(self.ai().caddy_main(), self.generated["caddyMain"])
 
 

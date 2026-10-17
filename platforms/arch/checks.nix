@@ -35,7 +35,7 @@
   ai-generated-artifacts =
     pkgs.runCommand "ai-generated-artifacts" { nativeBuildInputs = [ adapterPython ]; }
       ''
-        python ${./ai/tests/test_generated.py} ${aiManifest} ${./ai/package-caddy.Caddyfile}
+        python ${./ai/tests/test_generated.py} ${aiManifest}
         touch "$out"
       '';
   ai-diagnostic-tools =
