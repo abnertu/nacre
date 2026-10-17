@@ -30,6 +30,11 @@ class System(BaseAdapter):
         root = getattr(files, "root", Path("/")) if files else Path("/")
         super().__init__(desired=desired, root=root, runner=native, files=files)
 
+    def boot_id(self):
+        # A kernel pseudo-file, not a managed path: skip ownership checks.
+        path = self.files.root / "proc/sys/kernel/random/boot_id"
+        return path.read_text() if path.is_file() else ""
+
     def service(self, name, action, restart=False):
         state = self.ready_unit(name)
         if state.get("UnitFileState") != "enabled":
@@ -48,7 +53,7 @@ class System(BaseAdapter):
             state.get("ActiveState") != "active"
             or state.get("UnitFileState") != "enabled"
         ):
-            raise Conflict("required system unit did not become ready")
+            raise Conflict(f"required system unit {name} did not become ready")
 
     def localtime(self):
         return get_timezone(runner=self.native, root=self.files.root)
@@ -136,8 +141,11 @@ class System(BaseAdapter):
             }.items():
                 if d.get(capability) is not None:
                     commands.update(required)
-            if any(not self.native.available(command) for command in commands):
-                raise Conflict("a required native system command is missing")
+            missing = sorted(c for c in commands if not self.native.available(c))
+            if missing:
+                raise Conflict(
+                    "required native system commands are missing: " + " ".join(missing)
+                )
         # Read/validate all owned state before writes; no mutation during preflight.
         for capability, action in {
             "locale": "locale",
@@ -164,7 +172,7 @@ class System(BaseAdapter):
             )
         if d.get("timeZone") is not None:
             if installed and not f.zone_exists(d["timeZone"]):
-                raise Conflict("declared zoneinfo is unavailable")
+                raise Conflict(f"declared zoneinfo is unavailable: {d['timeZone']}")
             self.localtime()
         if d.get("hostname") is not None:
             f.read(self.path_str("hostnameFile", "/etc/hostname"))
@@ -181,7 +189,7 @@ class System(BaseAdapter):
             if installed:
                 self.check_console_assets()
         if d.get("power") is not None:
-            if not f.read("/proc/sys/kernel/random/boot_id").strip():
+            if not self.boot_id().strip():
                 raise Conflict("boot identity is unavailable")
         if d.get("trim") is not None:
             f.timer_dropin(d["trimDropin"])
@@ -216,8 +224,16 @@ class System(BaseAdapter):
                 f.mark("locale")
                 self.run("locale-gen")
                 self.actions += 1
-                if not wanted <= available():
-                    raise Conflict("required locales were not generated")
+                absent = wanted - available()
+                if absent:
+                    names = [
+                        name
+                        for name in value["generated"]
+                        if name.lower().replace("-", "") in absent
+                    ]
+                    raise Conflict(
+                        "required locales were not generated: " + " ".join(names)
+                    )
             locale_conf_path = self.path_str("localeConf", "/etc/locale.conf")
             self.write(
                 locale_conf_path,
@@ -333,7 +349,7 @@ class System(BaseAdapter):
 
     def power(self, path, text):
         f = self.files
-        boot = f.read("/proc/sys/kernel/random/boot_id").strip()
+        boot = self.boot_id().strip()
         digest = hashlib.sha256(text.encode()).hexdigest()
         receipt = f"{boot} {digest}\n"
         if not f.matches(path, text):

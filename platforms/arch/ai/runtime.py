@@ -146,8 +146,11 @@ class AI(BaseAdapter):
             required = {"systemctl", "curl"}
             if d["proxy"]:
                 required |= {"caddy", "stat", "systemd-tmpfiles", "tailscale"}
-            if any(not self.native.available(command) for command in required):
-                raise Conflict("a required native AI command is missing")
+            missing = sorted(c for c in required if not self.native.available(c))
+            if missing:
+                raise Conflict(
+                    "required native AI commands are missing: " + " ".join(missing)
+                )
             if d["proxy"]:
                 self.require_unit("caddy.service")
         return True
@@ -167,7 +170,7 @@ class AI(BaseAdapter):
             state.get("ActiveState") != "active"
             or state.get("UnitFileState") != "enabled"
         ):
-            raise Conflict("required AI service did not become ready")
+            raise Conflict(f"required AI service {name} did not become ready")
 
     def _curl_ready(self, port, endpoint="/v1/models", retries=10, delay=2):
         url = f"http://127.0.0.1:{port}{endpoint}"
