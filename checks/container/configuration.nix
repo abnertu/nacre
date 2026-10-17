@@ -13,8 +13,9 @@
   boot.kernel.sysctl = {
     # Not namespaced: a container network namespace has no such key.
     "net.core.default_qdisc" = lib.mkForce null;
-    # Exists only while the host has br_netfilter loaded.
+    # Exist only while the host has br_netfilter and tcp_bbr loaded.
     "net.bridge.bridge-nf-call-iptables" = lib.mkForce null;
+    "net.ipv4.tcp_congestion_control" = lib.mkForce null;
   };
   # Local worktrees do not exist inside the container.
   users.users.${config.deployment.username}.development = lib.mkForce {
