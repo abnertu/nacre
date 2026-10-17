@@ -140,8 +140,10 @@ fi
 
 step 'Plan agrees that nothing is left to change'
 deploy plan.log --plan || { show plan.log; fail 'plan failed'; }
+# Upstream may publish packages between update and plan: available upgrades
+# are information, not deployment drift.
 if ! grep -Fxq 'Core plan: 0 files to update, 0 runtime actions.' "$work/plan.log" ||
-  grep -E '^[~+!] ' "$work/plan.log"; then
+  grep -E '^[~+!] ' "$work/plan.log" | grep -v 'repository package upgrades available'; then
   last_log=plan.log
   fail 'plan reported changes after a converged deployment'
 fi
