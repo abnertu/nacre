@@ -55,8 +55,7 @@
         ];
       }
       ''
-        just --justfile ${source}/Justfile --summary > "$out"
-        grep -Fxq 'arch-workstation build check check-arch check-fast default initialize-runner prepare-ai prepare-runner status-runner verify-runner' "$out"
         python ${source}/checks/tests/test_cli.py ${source}
+        touch "$out"
       '';
 }

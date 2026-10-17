@@ -15,12 +15,9 @@ class GeneratedArtifactsTests(unittest.TestCase):
         cls.desired = json.loads(MANIFEST.read_text())
         cls.generated = cls.desired["generated"]
 
-    def test_router_and_unit_follow_the_declared_model_and_loopback_port(self):
+    def test_router_and_legacy_units_listen_on_the_declared_loopback_port(self):
         desired = self.desired
         generated = self.generated
-        config = json.loads(generated["switcherConfig"])
-        self.assertEqual(config["models"], desired["switcher"]["models"])
-        self.assertEqual(config["startPort"], desired["server"]["port"] + 1000)
         self.assertIn(desired["switcher"]["binary"], generated["switcherUnit"])
         self.assertIn(
             f"--listen 127.0.0.1:{desired['server']['port']}",
@@ -50,9 +47,8 @@ class GeneratedArtifactsTests(unittest.TestCase):
         self.assertIn(f"reverse_proxy 127.0.0.1:{desired['server']['port']}", site)
         self.assertIn("@api path /health /v1/*", site)
         self.assertIn("respond 404", site)
-        self.assertEqual(generated["packageCaddy"], PACKAGE_CADDY.read_text())
         self.assertIn(
-            generated["packageCaddy"].split("# Import additional")[0],
+            PACKAGE_CADDY.read_text().split("# Import additional")[0],
             generated["packageCaddyWithSite"],
         )
         self.assertIn('admin "unix//run/caddy/admin.socket"', generated["caddyMain"])

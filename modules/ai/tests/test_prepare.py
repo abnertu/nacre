@@ -46,6 +46,8 @@ class PrepareTests(unittest.TestCase):
         )
         hf.chmod(0o755)
         text = SOURCE.read_text()
+        # The isolated run must never contend for the host lock.
+        self.assertIn("/run/lock/nix-config-llama-prepare.lock", text)
         text = text.replace(
             "((EUID == 0)) || { report_error \"run llama-prepare as root (sudo nix --extra-experimental-features 'nix-command flakes' run .#llama-prepare)\"; exit 1; }",
             "true",

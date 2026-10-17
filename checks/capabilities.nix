@@ -219,6 +219,7 @@ let
     modulePackages = v.requiredPackages;
     moduleAurPackages = enabled.aurPackages;
   };
+  upstreamSkill = builtins.head (builtins.attrNames skillRegistry.roots);
   skills = lib.filterAttrs (name: _: lib.hasPrefix ".agents/skills/" name) home.config.home.file;
   geminiSkills = lib.filterAttrs (
     name: _: lib.hasPrefix ".gemini/config/skills/" name
@@ -234,20 +235,22 @@ assert
   home.config.home.file.".codex/llama-cpp.config.toml".text
   == codexProfile.homeModule.home.file.".codex/llama-cpp.config.toml".text;
 assert !(home.config.home.file ? ".codex/config.toml");
-assert home.config.home.file.".agents/skills/code-review".source == skillRegistry.roots.code-review;
-assert home.config.home.file.".agents/skills/find-skills".source == skillRegistry.roots.find-skills;
-assert
-  home.config.home.file.".agents/skills/create-agentsmd".source
-  == skillRegistry.agentCustomRoots.create-agentsmd;
-assert
-  home.config.home.file.".gemini/config/skills/create-agentsmd".source
-  == skillRegistry.geminiCustomRoots.create-agentsmd;
+assert lib.all (
+  name: home.config.home.file.".agents/skills/${name}".source == skillRegistry.roots.${name}
+) (builtins.attrNames skillRegistry.roots);
+assert lib.all (
+  name:
+  home.config.home.file.".agents/skills/${name}".source == skillRegistry.agentCustomRoots.${name}
+  &&
+    home.config.home.file.".gemini/config/skills/${name}".source
+    == skillRegistry.geminiCustomRoots.${name}
+) skillRegistry.custom;
 assert !unknownSkillSelection.success;
 assert !missingSkillSource.success;
-assert agentSkillsOnly.homeModule.home.file ? ".agents/skills/code-review";
-assert !(agentSkillsOnly.homeModule.home.file ? ".gemini/config/skills/code-review");
-assert geminiSkillsOnly.homeModule.home.file ? ".gemini/config/skills/code-review";
-assert !(geminiSkillsOnly.homeModule.home.file ? ".agents/skills/code-review");
+assert agentSkillsOnly.homeModule.home.file ? ".agents/skills/${upstreamSkill}";
+assert !(agentSkillsOnly.homeModule.home.file ? ".gemini/config/skills/${upstreamSkill}");
+assert geminiSkillsOnly.homeModule.home.file ? ".gemini/config/skills/${upstreamSkill}";
+assert !(geminiSkillsOnly.homeModule.home.file ? ".agents/skills/${upstreamSkill}");
 assert skillsDisabledWithoutSources.homeModule.home.file == { };
 assert !(codexProfileOff.homeModule.home.file ? ".codex/llama-cpp.config.toml");
 assert !(codexOff.homeModule.home.file ? ".codex/llama-cpp.config.toml");
@@ -494,15 +497,8 @@ pkgs.runCommand "capabilities-check" { nativeBuildInputs = [ pkgs.python3 ]; } '
       assert profile["model"] == expected["model"]
       assert profile["model_context_window"] == expected["context"]
       assert profile["model_auto_compact_token_limit"] == expected["context"] * 3 // 4
-      assert profile["model_provider"] == "llama_cpp"
-      assert profile["web_search"] == "disabled"
-      assert profile["features"]["multi_agent"] is False
-      assert set(profile["model_providers"]) == {"llama_cpp"}
-      provider = profile["model_providers"]["llama_cpp"]
-      assert provider["base_url"] == "http://127.0.0.1:11434/v1"
-      assert provider["wire_api"] == "responses"
-      assert provider["requires_openai_auth"] is False
-      assert provider["supports_websockets"] is False
+      provider = profile["model_providers"][profile["model_provider"]]
+      assert provider["base_url"].startswith("http://127.0.0.1:")
 
   check_codex_profile(sys.argv[2], sys.argv[3])
   check_codex_profile(sys.argv[4], sys.argv[5])

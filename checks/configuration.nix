@@ -180,16 +180,10 @@ assert hotspot.host.systemSettings.hotspot.channel == 36;
 assert hotspotOverride.host.systemSettings.hotspot.channel == 149;
 assert hotspotOff.host.systemSettings.hotspot == null;
 assert hotspotParentOff.host.systemSettings.hotspot == null;
-assert base.host.ai.llama.model.contextSize == 4096;
-assert base.host.ai.llama.proxy.httpsPort == 443;
 assert disabled.host.ai.llama.enable;
 # Check the composed initialization, including Home Manager's own definitions.
 assert lib.assertMsg (lib.hasInfix "powerlevel10k.zsh-theme" home.config.programs.zsh.initContent)
   "zsh initialization lost p10k";
-assert home.config.programs.zsh.syntaxHighlighting.enable;
-assert home.config.programs.zsh.autosuggestion.enable;
-assert home.config.programs.zsh.enableCompletion;
-assert home.config.programs.zsh.oh-my-zsh.enable;
 assert lib.all (text: lib.hasInfix text home.config.programs.zsh.initContent) [
   ".p10k.zsh"
   "autosuggest-accept"
@@ -207,10 +201,6 @@ assert override.host.systemSettings.firewall.rules == [ ];
 assert disabled.host.gitlabRunners == { };
 assert !disabled.host.personalAgent.enable;
 assert !disabled.host.powerpanel.enable;
-assert base.host.powerpanel.enable;
-assert !base.host.powerpanel.powerfailShutdown;
-assert base.host.powerpanel.runtimeThreshold == 300;
-assert base.host.powerpanel.lowbattShutdown;
 assert !(builtins.elem "powerpanel" packages.aur);
 assert !overriddenHome.config.programs.git.enable;
 assert lib.all

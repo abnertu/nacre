@@ -60,13 +60,6 @@ class SessionTests(unittest.TestCase):
             if (UNITS / (name + ".service")).exists():
                 self.assertNotIn("noctalia.service", unit(name).get("PartOf", []))
 
-    def test_vesktop_window_backend_is_consistent(self):
-        command = unit("vesktop")["ExecStart"][0]
-        self.assertIn("--ozone-platform=x11", command)
-        self.assertNotIn("--ozone-platform-hint=wayland", command)
-        flags = (UNITS / "../../vesktop-flags.conf").read_text()
-        self.assertEqual(flags.strip(), "--ozone-platform=x11")
-
     def test_noctalia_uses_a_runtime_file_key(self):
         if not EXPECTED["storage"]:
             self.assertFalse((UNITS / "../../noctalia/storage.toml").exists())

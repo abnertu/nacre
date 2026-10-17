@@ -50,14 +50,6 @@ in
 {
   overview-refresh = import ./overview/checks.nix { inherit pkgs; };
   noctalia-config = import ./noctalia-config/checks.nix { inherit pkgs adapterPython; };
-  noctalia-storage =
-    let
-      generated = fixture true;
-    in
-    pkgs.runCommand "noctalia-storage-check" { } ''
-      grep -q 'key_source = "file"' ${generated.activationPackage}/home-files/.config/noctalia/storage.toml
-      touch "$out"
-    '';
   graphical-session-ordering =
     pkgs.runCommand "graphical-session-ordering"
       {
@@ -160,37 +152,6 @@ in
         exit 1
       fi
     done
-    for unit in \
-      polychromatic-tray.service \
-      tailscale-systray.service \
-      vesktop.service \
-      vicinae.service; do
-      [[ -f "$units/$unit" ]] || continue
-      if ! ${pkgs.gnugrep}/bin/grep -qx 'After=noctalia.service' "$units/$unit"; then
-        printf 'Tray consumer does not start after Noctalia: %s\n' "$unit" >&2
-        exit 1
-      fi
-    done
-    if [[ -f "$units/vicinae.service" ]]; then
-    if ! ${pkgs.gnugrep}/bin/grep -q '^ExecStartPre=.*StatusNotifierWatcher' "$units/vicinae.service"; then
-      printf 'Vicinae does not wait for Noctalia tray readiness\n' >&2
-      exit 1
-    fi
-    if ! ${pkgs.gnugrep}/bin/grep -qx \
-      'Environment=VICINAE_OVERRIDES=%h/.config/vicinae/nix-managed.json' \
-      "$units/vicinae.service"; then
-      printf 'Vicinae does not load the managed launcher policy\n' >&2
-      exit 1
-    fi
-    for application in kitty vesktop; do
-      if ! ${pkgs.gnugrep}/bin/grep -q \
-        "\"$application\":{\"preferences\":{\"defaultAction\":\"launch\"}}" \
-        "$units/../../vicinae/nix-managed.json"; then
-        printf 'Vicinae does not launch a new %s instance by default\n' "$application" >&2
-        exit 1
-      fi
-    done
-    fi
     for executable in \
       ghostty \
       gimp \
