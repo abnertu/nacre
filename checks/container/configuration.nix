@@ -8,8 +8,14 @@
   services.timesyncd.enable = false;
   services.fstrim.enable = false;
   services.gitlabRunner.enable = false;
-  # Not namespaced: a container network namespace has no such key.
-  boot.kernel.sysctl."net.core.default_qdisc" = lib.mkForce null;
+  # A rootless container cannot load modules; the host may lack them.
+  boot.kernelModules = lib.mkForce [ ];
+  boot.kernel.sysctl = {
+    # Not namespaced: a container network namespace has no such key.
+    "net.core.default_qdisc" = lib.mkForce null;
+    # Exists only while the host has br_netfilter loaded.
+    "net.bridge.bridge-nf-call-iptables" = lib.mkForce null;
+  };
   # Local worktrees do not exist inside the container.
   users.users.${config.deployment.username}.development = lib.mkForce {
     neovimPath = null;

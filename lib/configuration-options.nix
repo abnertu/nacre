@@ -84,6 +84,12 @@ in
     hotspot = systemSection system.hotspot { };
     firewall = systemSection system.firewall { };
   };
+  boot.kernelModules = mkOption {
+    type = types.listOf (types.strMatching "[a-zA-Z0-9_-]+");
+    default = [ ];
+    apply = lib.unique;
+    description = "Kernel modules loaded at boot and, when absent, at runtime.";
+  };
   boot.kernel.sysctl = option (types.attrsOf (
     types.nullOr (types.either types.str types.int)
   )) { } "Kernel parameters applied at boot and at runtime; null withdraws a default.";

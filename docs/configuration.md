@@ -30,9 +30,12 @@ nix eval --json .#lib.configurations.arch.networking.firewall
 | Locale, timezone and console | `i18n`, `time`, `console` |
 | Native services, AI, Runners and Personal Agent | `services`, `programs.ai` and their feature interfaces |
 | Hardware and virtualization | `hardware`, `virtualization` |
+| Kernel modules and parameters | `boot.kernelModules`, `boot.kernel.sysctl` |
 | Graphical session and user programs | `desktop`, `programs`, `users.users.<name>.home` |
 
 Parent capability switches gate their owned resources. A disabled Arch capability withdraws future management; it does not uninstall a package, retire a service, remove a registration or erase application state. Home Manager applies the next selected generation through its normal transition. An enabled optional module that has never completed required preparation may report `not ready`; invalid prepared state is an error.
+
+`boot.kernelModules` and `boot.kernel.sysctl` default to the container networking baseline (bridge modules, forwarding, BBR). Override a single parameter by key, set it to `null` to withdraw it, or replace the module list with `lib.mkForce`.
 
 AI selection lives under `programs.ai.llama.models.<inventory-key>`;
 `model.name` selects the default agent, while `concurrentModels` and

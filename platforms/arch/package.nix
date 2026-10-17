@@ -15,6 +15,7 @@
     enable = false;
   },
   sysctl ? { },
+  kernelModules ? [ ],
   powerpanel ? null,
   adapterPython ? pkgs.python3,
   progress ? import ../../lib/cli/progress { inherit pkgs adapterPython; },
@@ -39,6 +40,7 @@ let
       capabilities
       arch
       sysctl
+      kernelModules
       powerpanel
       ;
   };

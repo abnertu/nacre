@@ -9,6 +9,7 @@
   capabilities,
   arch,
   sysctl ? { },
+  kernelModules ? [ ],
   powerpanel ? null,
 }:
 let
@@ -23,7 +24,9 @@ let
       )
     )
     ++ [
-      (file "/etc/modules-load.d/nix-config-podman.conf" (read "container-network-modules.conf") null)
+      (file "/etc/modules-load.d/nix-config-podman.conf" (lib.concatMapStrings (
+        module: "${module}\n"
+      ) kernelModules) null)
       (file "/etc/sysctl.d/99-nix-config.conf" (lib.concatStrings (
         lib.mapAttrsToList (key: value: "${key} = ${toString value}\n") sysctl
       )) null)
@@ -92,9 +95,7 @@ let
           onlyIfActive = true;
         }
       ];
-    kernelModules = lib.filter (line: line != "" && !lib.hasPrefix "#" line) (
-      lib.splitString "\n" (read "container-network-modules.conf")
-    );
+    inherit kernelModules;
     sysctl = lib.mapAttrs (_: toString) sysctl;
     fileCapabilities =
       lib.optional (capabilities.desktop.enable && capabilities.programs.sunshine.enable)

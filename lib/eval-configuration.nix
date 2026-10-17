@@ -11,6 +11,11 @@ let
       ../platforms/arch/module.nix
       {
         # Container networking and throughput defaults; override individual keys.
+        boot.kernelModules = lib.mkDefault [
+          "bridge"
+          "br_netfilter"
+          "veth"
+        ];
         boot.kernel.sysctl = lib.mapAttrs (_: lib.mkDefault) {
           "net.core.default_qdisc" = "fq";
           "net.ipv4.tcp_congestion_control" = "bbr";
@@ -39,6 +44,7 @@ let
       initramfsImages = cfg.hardware.initramfs.images;
     };
     sysctl = lib.filterAttrs (_: value: value != null) cfg.boot.kernel.sysctl;
+    kernelModules = cfg.boot.kernelModules;
     # Feature interfaces add cross-field validation and derived values.
     ai = import ../modules/ai/interface.nix {
       inherit lib;

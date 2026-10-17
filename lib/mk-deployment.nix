@@ -74,7 +74,7 @@ let
     username = deployment.username;
     arch = host.arch;
     hardware = host.hardware;
-    sysctl = host.sysctl;
+    inherit (host) sysctl kernelModules;
     aiConfig = host.ai;
     aiArtifacts = ai.artifacts;
     personalAgentPackage = inputs.personal-agent.packages.${system}.personal-agent;
