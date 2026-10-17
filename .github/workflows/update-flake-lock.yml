@@ -1,8 +1,9 @@
 name: Update flake inputs
 
 # Proposes a reviewed lock update; merging the pull request is the intentional
-# adoption step. Pull requests opened with GITHUB_TOKEN do not start other
-# workflows, so this job runs the same checks before opening one.
+# adoption step. Pull requests opened with GITHUB_TOKEN start no workflows, but
+# workflow_dispatch does, so this job dispatches the checks and the container
+# deployment on the pull request branch, where their results show on it.
 on:
   schedule:
     - cron: "41 2 * * 1"
@@ -19,8 +20,9 @@ jobs:
   update:
     name: Update, check and propose
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 30
     permissions:
+      actions: write
       contents: write
       pull-requests: write
     steps:
@@ -44,18 +46,6 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Validate source and build all checks
-        if: steps.update.outputs.changed == 'true'
-        run: nix flake check --print-build-logs
-
-      - name: Build deployment artifacts without activation
-        if: steps.update.outputs.changed == 'true'
-        run: |
-          nix build --no-link .#arch-workstation .#arch-switch
-          if [[ "$(nix eval --json .#lib.runnerctlEnabled)" == "true" ]]; then
-            nix build --no-link .#runnerctl
-          fi
-
       - name: Open or refresh the pull request
         if: steps.update.outputs.changed == 'true'
         env:
@@ -76,9 +66,11 @@ jobs:
           git switch -C "$branch"
           git commit -m "chore(flake): update inputs" -m "$(sed -n '/Updated input/,$p' update.log)" flake.lock
           git push --force origin "$branch"
-          body="Weekly \`nix flake update\`. \`nix flake check\` and the deployment build passed in the workflow that opened this pull request. Review the input changes, run the container deployment workflow if deployment inputs moved, then merge to adopt them."
+          body="Weekly \`nix flake update\`. The Check and Container deployment workflows run on this branch; review the input changes and their results, then merge to adopt them."
           if gh pr view "$branch" --json state --jq .state 2>/dev/null | grep -q OPEN; then
             gh pr edit "$branch" --body "$body"
           else
             gh pr create --head "$branch" --title "chore(flake): update inputs" --body "$body"
           fi
+          gh workflow run check.yml --ref "$branch"
+          gh workflow run container-test.yml --ref "$branch"

@@ -101,4 +101,4 @@ CI（GitHub Actions）：
 
 - 每次 push 與 PR：`nix flake check` 與部署建置
 - 部署相關變更、每週排程：容器部署測試
-- 每週：自動開 PR 更新 flake inputs；Dependabot 更新 workflow actions
+- 每週：自動開 PR 更新 flake inputs（PR 上會跑 Check 與容器部署測試）；Dependabot 更新 workflow actions
