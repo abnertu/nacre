@@ -47,11 +47,11 @@
     "hypr-config": {
       "flake": false,
       "locked": {
-        "lastModified": 1790880208,
-        "narHash": "sha256-JCAinL4LR6AAFZ8ks8mjdfRBQFVSB/M5eHFp0nxmwQg=",
+        "lastModified": 1792249670,
+        "narHash": "sha256-StCs5bjBkLn7bTjYtQZ/dEyiGP0L3J4uA2hNdxebWKY=",
         "owner": "Orbit-Lua",
         "repo": "hypr",
-        "rev": "9d586d01aa53919bb8874f8673163afb5a5721e5",
+        "rev": "0ced1524ad2af5600b5b1875fbec58a5b780c942",
         "type": "github"
       },
       "original": {
