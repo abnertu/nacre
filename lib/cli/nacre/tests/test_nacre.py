@@ -1,3 +1,4 @@
+# pyright: standard
 """Run the built nacre command against fake nix, sudo and Home Manager state."""
 
 import os

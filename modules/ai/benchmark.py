@@ -12,6 +12,7 @@ import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any, cast
 
 
 def comma_values[Value](value: str, cast: Callable[[str], Value] = str) -> list[Value]:
@@ -24,17 +25,20 @@ def comma_values[Value](value: str, cast: Callable[[str], Value] = str) -> list[
     return values
 
 
-def parse_metrics(output):
+def parse_metrics(output: str) -> dict[str, Any]:
     """Parse llama-bench JSON while preserving every PP and TG measurement."""
     try:
-        parsed = json.loads(output)
+        parsed: object = json.loads(output)
     except json.JSONDecodeError:
         return {"parse_error": "llama-bench did not emit valid JSON"}
+    records: object
+    metadata: dict[str, Any]
     if isinstance(parsed, dict):
-        records = parsed.get("results", [parsed])
-        metadata = {key: value for key, value in parsed.items() if key != "results"}
+        document = cast("dict[str, Any]", parsed)
+        records = document.get("results", [document])
+        metadata = {key: value for key, value in document.items() if key != "results"}
     elif isinstance(parsed, list):
-        records, metadata = parsed, {}
+        records, metadata = cast("list[Any]", parsed), {}
     else:
         return {"parse_error": "llama-bench JSON must be an object or array"}
     if (
@@ -42,16 +46,16 @@ def parse_metrics(output):
         or not records
         or not all(
             isinstance(record, dict)
-            and isinstance(record.get("avg_ts"), (int, float))
-            and record["avg_ts"] > 0
-            for record in records
+            and isinstance(cast("dict[str, Any]", record).get("avg_ts"), (int, float))
+            and cast("dict[str, Any]", record)["avg_ts"] > 0
+            for record in cast("list[object]", records)
         )
     ):
         return {"parse_error": "llama-bench JSON has no valid throughput records"}
     return {"metadata": metadata, "records": records}
 
 
-def read_vram(device_path):
+def read_vram(device_path: Path) -> tuple[int, int]:
     """Read AMD DRM sysfs VRAM counters, returning (total_mib, used_mib)."""
     root = Path(device_path)
     total = int((root / "mem_info_vram_total").read_text().strip())
@@ -59,7 +63,7 @@ def read_vram(device_path):
     return total // (1024 * 1024), used // (1024 * 1024)
 
 
-def terminate(process):
+def terminate(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
     process.terminate()
@@ -70,7 +74,13 @@ def terminate(process):
         process.wait()
 
 
-def run_command(command, timeout, env, device_path, min_free_mib):
+def run_command(
+    command: list[str],
+    timeout: float,
+    env: dict[str, str],
+    device_path: Path,
+    min_free_mib: int,
+) -> dict[str, Any]:
     total, used = read_vram(device_path)
     if total - used < min_free_mib:
         raise RuntimeError(
@@ -123,7 +133,7 @@ def run_command(command, timeout, env, device_path, min_free_mib):
     }
 
 
-def sha256(path):
+def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as model:
         for chunk in iter(lambda: model.read(1024 * 1024), b""):
@@ -131,7 +141,7 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model", required=True, type=Path, help="explicit GGUF model file"
@@ -230,7 +240,8 @@ def main(argv=None):
         version_stdout = ""
         version_stderr = ""
         version_error = f"could not read llama-server version: {error}"
-    data = {
+    rows: list[dict[str, Any]] = []
+    data: dict[str, Any] = {
         "model": str(model),
         "model_sha256": sha256(model),
         "binary": str(binary),
@@ -239,7 +250,7 @@ def main(argv=None):
         "binary_version_stdout": version_stdout,
         "binary_version_stderr": version_stderr,
         "parameters": vars_json(args),
-        "rows": [],
+        "rows": rows,
     }
     if version_error:
         data["error"] = version_error
@@ -318,11 +329,11 @@ def main(argv=None):
                     **result,
                 }
                 row["parsed_metrics"] = parse_metrics(result["stdout"])
-                data["rows"].append(row)
+                rows.append(row)
                 args.output.write_text(json.dumps(data, indent=2) + "\n")
                 if result["error"]:
                     break
-            if data["rows"] and data["rows"][-1].get("error"):
+            if rows and rows[-1].get("error"):
                 break
     except (OSError, ValueError, RuntimeError) as error:
         data["error"] = str(error)
@@ -338,13 +349,13 @@ def main(argv=None):
             row.get("error")
             or row["returncode"] != 0
             or row["parsed_metrics"].get("parse_error")
-            for row in data["rows"]
+            for row in rows
         )
         else 0
     )
 
 
-def vars_json(args):
+def vars_json(args: argparse.Namespace) -> dict[str, Any]:
     return {
         key: str(value) if isinstance(value, Path) else value
         for key, value in vars(args).items()

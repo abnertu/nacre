@@ -5,9 +5,13 @@ from __future__ import annotations
 import ipaddress
 import json
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from nix_adapter import Change, Conflict
+from schema import Hotspot as HotspotSettings
+
+if TYPE_CHECKING:
+    from runtime import System
 
 
 def validate_hotspot_address(address_str: str) -> ipaddress.IPv4Interface:
@@ -26,11 +30,11 @@ def validate_hotspot_address(address_str: str) -> ipaddress.IPv4Interface:
         ) from None
 
 
-def hotspot_properties(desired: dict[str, Any]) -> dict[str, str]:
+def hotspot_properties(desired: HotspotSettings) -> dict[str, str]:
     """Build the dictionary of NetworkManager connection properties for the AP."""
     return {
         "connection.interface-name": desired["interface"],
-        "connection.autoconnect": "yes" if desired.get("autoconnect") else "no",
+        "connection.autoconnect": "yes" if desired["autoconnect"] else "no",
         "802-11-wireless.ssid": desired["ssid"],
         "802-11-wireless.band": desired["band"],
         "802-11-wireless.channel": str(desired["channel"]),
@@ -38,15 +42,18 @@ def hotspot_properties(desired: dict[str, Any]) -> dict[str, str]:
         "ipv4.addresses": desired["address"],
         "ipv4.shared-dhcp-range": "",
         "ipv4.shared-dhcp-lease-time": "0",
-        "ipv6.method": desired.get("ipv6", "shared"),
+        "ipv6.method": desired["ipv6"],
     }
 
 
 class Hotspot:
-    def __init__(self, system: Any):
+    def __init__(self, system: System):
+        desired = system.desired["hotspot"]
+        if desired is None:
+            raise Conflict("the hotspot is not managed")
         self.system = system
         self.files = system.files
-        self.desired = system.desired["hotspot"]
+        self.desired = desired
         self.uuid = ""
 
     def run(self, *args: Any, **kwargs: Any) -> Any:
@@ -87,13 +94,18 @@ class Hotspot:
             raise Conflict("hotspot and uplink interfaces must differ")
         self.system.ready_unit("NetworkManager.service")
 
-        links = json.loads(self.run("ip", "-j", "link", "show").stdout)
-        if not isinstance(links, list) or any(
-            not isinstance(link, dict) or not isinstance(link.get("ifname"), str)
-            for link in links
-        ):
-            raise Conflict("invalid native link inventory")
-        available = {link["ifname"] for link in links}
+        links: object = json.loads(self.run("ip", "-j", "link", "show").stdout)
+        available: set[str] = set()
+        entries = cast("list[object]", links) if isinstance(links, list) else [None]
+        for link in entries:
+            name = (
+                cast("dict[str, object]", link).get("ifname")
+                if isinstance(link, dict)
+                else None
+            )
+            if not isinstance(name, str):
+                raise Conflict("invalid native link inventory")
+            available.add(name)
         for role, name in (("wireless", d["interface"]), ("uplink", d["uplink"])):
             if name not in available:
                 raise Conflict(f"declared hotspot {role} interface is missing: {name}")
@@ -164,7 +176,7 @@ class Hotspot:
             and self.files.path(marker).exists()
             and self.files.read(marker) == "activate\n"
         )
-        return self.selected() or bool(self.desired.get("autoconnect", False)) or resume
+        return self.selected() or bool(self.desired["autoconnect"]) or resume
 
     def plan(self) -> list[Change]:
         self.preflight()

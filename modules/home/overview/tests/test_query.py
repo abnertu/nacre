@@ -1,3 +1,4 @@
+# pyright: standard
 """Exercise real Query QML against fake Quickshell signals, never native IPC."""
 
 import os

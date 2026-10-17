@@ -5,7 +5,9 @@ from __future__ import annotations
 import re
 import stat
 import subprocess
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any, Literal, TypedDict, cast
 
 from nix_adapter import (
     BaseServiceAdapter,
@@ -14,7 +16,29 @@ from nix_adapter import (
     Native,
     NotReady,
     run_adapter_cli,
+    validate,
 )
+
+
+class Unmanaged(TypedDict):
+    enabled: Literal[False]
+
+
+class Manifest(TypedDict):
+    """platforms/arch/personal-agent/default.nix: absolute paths and the unit."""
+
+    enabled: Literal[True]
+    executable: str
+    config: str
+    secrets: str
+    state: str
+    receipt: str
+    pending: str
+    unit: str
+    unitPath: str
+
+
+Run = Callable[..., subprocess.CompletedProcess[str]]
 
 
 def execute(
@@ -40,15 +64,21 @@ class _AdapterRunner(Native):
         self._adapter = adapter
 
     def run(
-        self, *argv: str, check: bool = True, **kwargs
+        self, *argv: str, check: bool = True, **kwargs: Any
     ) -> subprocess.CompletedProcess[str]:
         return self._adapter.run(*argv, allow_failure=not check)
 
 
-class PersonalAgent(BaseServiceAdapter):
-    def __init__(self, desired: dict[str, object], root: Path = Path("/"), run=execute):
+class PersonalAgent(BaseServiceAdapter[Manifest | Unmanaged]):
+    def __init__(
+        self, desired: Mapping[str, Any], root: Path = Path("/"), run: Run = execute
+    ):
         self.run = run
-        super().__init__(desired=desired, root=root, runner=_AdapterRunner(self))
+        super().__init__(
+            desired=cast(Manifest | Unmanaged, desired),
+            root=root,
+            runner=_AdapterRunner(self),
+        )
 
     def validate_file(self, key: str, mode_mask: int = 0o022) -> Path:
         path = self.path(key)
@@ -180,9 +210,14 @@ class PersonalAgent(BaseServiceAdapter):
         self.path("pending").unlink(missing_ok=True)
 
 
+def load(desired: dict[str, Any]) -> PersonalAgent:
+    schema = Manifest if desired.get("enabled") else Unmanaged
+    return PersonalAgent(validate(schema, desired, "Personal Agent manifest"))
+
+
 def main() -> int:
     return run_adapter_cli(
-        lambda desired: PersonalAgent(desired),
+        load,
         name="Personal Agent",
     )
 

@@ -1,3 +1,4 @@
+# pyright: standard
 """Check the Nix-built AI manifest consumed by the privileged adapter."""
 
 import json

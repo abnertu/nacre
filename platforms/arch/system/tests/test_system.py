@@ -1,3 +1,4 @@
+# pyright: standard
 """Stable adapter contracts, using temporary paths and a fake native runner."""
 
 import contextlib
@@ -11,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from nix_adapter import (
@@ -228,7 +230,22 @@ class SystemTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.files = Files(self.root, (os.getuid(), os.getgid()))
         self.native = Fake(self.files)
-        self.d = {}
+        # A manifest with every setting unmanaged; tests enable what they cover.
+        self.d: dict[str, Any] = {
+            key: None
+            for key in (
+                "locale",
+                "timeZone",
+                "hostname",
+                "console",
+                "timeSync",
+                "journal",
+                "power",
+                "trim",
+                "firewall",
+                "hotspot",
+            )
+        } | {"files": {}, "trimDropin": "[Timer]\nPersistent=false\n", "paths": {}}
         self.system = System(self.d, self.files, self.native)
         self.output = io.StringIO()
         self.enterContext(contextlib.redirect_stdout(self.output))
@@ -495,6 +512,7 @@ class SystemTests(unittest.TestCase):
             "channel": 6,
             "address": "192.0.2.1/24",
             "autoconnect": True,
+            "ipv6": "shared",
         }
         self.native.unit("NetworkManager.service")
         self.native.hotspot_rules = {

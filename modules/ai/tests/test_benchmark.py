@@ -1,3 +1,4 @@
+# pyright: standard
 """Exercise the opt-in benchmark controller with fake binaries and sysfs."""
 
 import importlib.util

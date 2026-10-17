@@ -12,10 +12,16 @@ import stat
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, cast
 
 from nix_adapter import dump_toml, parse_toml
+
+# A parsed TOML document.
+Settings = dict[str, Any]
+Runner = Callable[..., bytes]
 
 # Whole sections are owned together. Unknown/new sections require code review.
 SECTIONS = frozenset(
@@ -44,41 +50,41 @@ REVIEW = re.compile(
 )
 
 
-def require(ok, message):
+def require(ok: object, message: str) -> None:
     if not ok:
         raise RuntimeError(message)
 
 
-def safe_path(path):
+def safe_path(path: Path) -> None:
     require(path.is_absolute(), "Expected an absolute path")
     for item in (path, *path.parents):
         require(not item.is_symlink(), "Refusing a symlinked write/state path")
 
 
-def encode(data):
+def encode(data: Settings) -> bytes:
     return dump_toml(data).encode()
 
 
-def parse(raw):
+def parse(raw: bytes | str) -> Settings:
     return parse_toml(raw)
 
 
-def read(path):
+def read(path: Path) -> bytes:
     return path.read_bytes() if path.exists() else b""
 
 
-def needs_review(value):
+def needs_review(value: object) -> bool:
     if isinstance(value, dict):
         return any(
-            (REVIEW.search(key) and bool(item)) or needs_review(item)
-            for key, item in value.items()
+            (REVIEW.search(str(key)) and bool(item)) or needs_review(item)
+            for key, item in cast("dict[object, object]", value).items()
         )
     if isinstance(value, list):
-        return any(needs_review(item) for item in value)
+        return any(needs_review(item) for item in cast("list[object]", value))
     return False
 
 
-def select(data):
+def select(data: Settings) -> tuple[Settings, list[str]]:
     selected = {
         key: value
         for key, value in data.items()
@@ -87,17 +93,17 @@ def select(data):
     return selected, sorted(set(data) - set(selected))
 
 
-def merge(base, override):
+def merge(base: Settings, override: Settings) -> Settings:
     result = dict(base)
     for key, value in override.items():
         if isinstance(value, dict) and isinstance(result.get(key), dict):
-            result[key] = merge(result[key], value)
+            result[key] = merge(result[key], cast(Settings, value))
         else:
             result[key] = value
     return result
 
 
-def atomic_write(path, raw, mode=0o600):
+def atomic_write(path: Path, raw: bytes, mode: int = 0o600) -> None:
     safe_path(path)
     if (
         path.exists()
@@ -130,7 +136,9 @@ class CommandTimeout(RuntimeError):
 COMMAND_TIMEOUTS = {"query": 30, "deployment": 3600}
 
 
-def execute(argv, env=None, cwd=None):
+def execute(
+    argv: list[str], env: dict[str, str] | None = None, cwd: Path | None = None
+) -> bytes:
     deployment = argv[0] == "/usr/bin/nix" or Path(argv[0]).name == "activate"
     timeout = COMMAND_TIMEOUTS["deployment" if deployment else "query"]
     environment = dict(os.environ)
@@ -186,13 +194,13 @@ def execute(argv, env=None, cwd=None):
 class Sync:
     def __init__(
         self,
-        repo,
-        user,
-        home_configuration,
-        config,
-        state,
-        control,
-        run=execute,
+        repo: Path,
+        user: str,
+        home_configuration: str,
+        config: Path,
+        state: Path,
+        control: Path,
+        run: Runner = execute,
     ):
         require(bool(re.fullmatch(r"[a-z_][a-z0-9_-]*", user)), "Invalid login user")
         self.repo, self.run = repo, run
@@ -202,7 +210,7 @@ class Sync:
         self.home_configuration = home_configuration
         self.pending = control / "pending.json"
 
-    def validate(self, data):
+    def validate(self, data: Settings) -> None:
         with tempfile.TemporaryDirectory(prefix="noctalia-validate-") as directory:
             candidate = Path(directory) / "config.toml"
             candidate.write_bytes(encode(data))
@@ -230,10 +238,10 @@ class Sync:
                 "Raw diagnostics withheld to protect settings; no preferences written.",
             )
 
-    def export(self):
+    def export(self) -> Settings:
         return parse(self.run(["/usr/bin/noctalia", "config", "export"]))
 
-    def stopped(self):
+    def stopped(self) -> None:
         # pgrep's exit 1 is an expected negative result, not a command failure.
         result = subprocess.run(
             ["/usr/bin/pgrep", "-u", str(os.getuid()), "-x", "noctalia"],
@@ -248,7 +256,7 @@ class Sync:
         )
 
     @contextmanager
-    def locked(self):
+    def locked(self) -> Generator[None]:
         safe_path(self.control)
         self.control.mkdir(mode=0o700, parents=True, exist_ok=True)
         require(
@@ -263,7 +271,7 @@ class Sync:
             fcntl.flock(lock, fcntl.LOCK_EX)
             yield
 
-    def preflight(self):
+    def preflight(self) -> None:
         safe_path(self.target)
         safe_path(self.settings)
         safe_path(self.control)
@@ -289,7 +297,7 @@ class Sync:
             "An interrupted deployment exists; use deploy --recover",
         )
 
-    def capture(self, dry_run=False):
+    def capture(self, dry_run: bool = False) -> None:
         self.preflight()
         original = read(self.target)
         exported = self.export()
@@ -316,7 +324,7 @@ class Sync:
             "Preferences captured. Review locally before committing; no Git index changes made."
         )
 
-    def plan(self, replace):
+    def plan(self, replace: bool) -> tuple[Settings, bytes, bytes]:
         self.preflight()
         wanted = parse(read(self.target))
         eligible, excluded = select(wanted)
@@ -369,11 +377,11 @@ class Sync:
         )
         return wanted, original, replacement
 
-    def recover(self):
+    def recover(self) -> None:
         self.stopped()
         safe_path(self.pending)
         require(self.pending.is_file(), "No interrupted deployment to recover")
-        journal = json.loads(read(self.pending))
+        journal = cast(Settings, json.loads(read(self.pending)))
         require(
             journal["settings"] == str(self.settings),
             "Recovery root differs from interrupted deployment",
@@ -400,7 +408,9 @@ class Sync:
             "GUI overrides restored; Home Manager generation was not rolled back. Backup retained."
         )
 
-    def deploy(self, dry_run=False, replace=False, recover=False):
+    def deploy(
+        self, dry_run: bool = False, replace: bool = False, recover: bool = False
+    ) -> None:
         if recover:
             require(not dry_run, "Recovery cannot be combined with dry-run")
             with self.locked():
@@ -449,15 +459,16 @@ class Sync:
                 )
                 os.close(fd)
                 atomic_write(Path(backup), original)
+                mode = stat.S_IMODE(self.settings.stat().st_mode)
                 journal = {
                     "settings": str(self.settings),
                     "backup": Path(backup).name,
                     "before": hashlib.sha256(original).hexdigest(),
                     "after": hashlib.sha256(replacement).hexdigest(),
-                    "mode": stat.S_IMODE(self.settings.stat().st_mode),
+                    "mode": mode,
                 }
                 atomic_write(self.pending, json.dumps(journal).encode())
-                atomic_write(self.settings, replacement, journal["mode"])
+                atomic_write(self.settings, replacement, mode)
             try:
                 self.run([str(artifact / "activate"), "--driver-version", "0"])
                 effective = self.export()
@@ -478,7 +489,7 @@ class Sync:
             )
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(prog="noctalia-config", description=__doc__)
     parser.add_argument("operation", choices=("capture", "deploy"))
     parser.add_argument("--user", required=True, help=argparse.SUPPRESS)

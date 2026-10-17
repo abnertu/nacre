@@ -1,5 +1,6 @@
 {
   pkgs,
+  arch-switch,
   llama-prepare,
   aiManifest,
   adapterPython ? pkgs.python3,
@@ -7,6 +8,39 @@
   ...
 }:
 {
+  # Nix and the adapters agree on every manifest's keys.
+  adapter-manifests =
+    pkgs.runCommand "adapter-manifests" { nativeBuildInputs = [ adapterPython ]; }
+      ''
+        python - <<'PY'
+        import importlib.util
+        import json
+        import sys
+
+        def load(path, name):
+            spec = importlib.util.spec_from_file_location(name, path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+
+        from nix_adapter import validate
+
+        for directory, schema, manifest in (
+            ("${./core}", "CoreManifest", "${arch-switch.manifests.core}"),
+            ("${./system}", "SystemManifest", "${arch-switch.manifests.system}"),
+            ("${./ai}", "AIManifest", "${arch-switch.manifests.ai}"),
+        ):
+            data = json.load(open(manifest))
+            module = load(directory + "/schema.py", schema)
+            if schema == "AIManifest" and not data["llama"]:
+                schema = "Unmanaged"
+            validate(getattr(module, schema), data, manifest)
+        agent = load("${./personal-agent/adapter.py}", "personal_agent")
+        data = json.load(open("${arch-switch.manifests.personalAgent}"))
+        validate(agent.Manifest if data["enabled"] else agent.Unmanaged, data, "personal agent")
+        PY
+        touch "$out"
+      '';
   system-firewall-integration = import ./system/tests/firewall-vm.nix {
     inherit pkgs adapterPython;
   };
@@ -29,7 +63,7 @@
   ai-services-tests =
     pkgs.runCommand "ai-services-tests" { nativeBuildInputs = [ adapterPython ]; }
       ''
-        python ${./ai/tests/test_ai.py} ${./ai/package-caddy.Caddyfile} ${./ai/runtime.py}
+        python ${./ai}/tests/test_ai.py ${./ai/package-caddy.Caddyfile} ${./ai}/runtime.py
         touch "$out"
       '';
   ai-generated-artifacts =

@@ -1,3 +1,4 @@
+# pyright: standard
 """Isolated contract tests for the native llama.cpp adapter."""
 
 import hashlib
@@ -14,6 +15,7 @@ from nix_adapter import FakeNative, FakeProcess, Files
 
 SOURCE = Path(sys.argv.pop()).resolve()
 PACKAGE_CADDY = Path(sys.argv.pop()).resolve()
+sys.path.insert(0, str(SOURCE.parent))
 spec = importlib.util.spec_from_file_location("ai_runtime", SOURCE)
 assert spec is not None and spec.loader is not None
 runtime = importlib.util.module_from_spec(spec)

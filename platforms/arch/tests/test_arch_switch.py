@@ -1,3 +1,4 @@
+# pyright: standard
 """Exercise the actual shell orchestration without host access or privilege."""
 
 import fcntl

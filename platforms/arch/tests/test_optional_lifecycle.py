@@ -1,3 +1,4 @@
+# pyright: standard
 """Focused orchestration tests for optional modules and verbose adapters."""
 
 import importlib.util

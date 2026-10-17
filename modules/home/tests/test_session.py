@@ -1,3 +1,4 @@
+# pyright: standard
 """Assert systemd relationships on generated units, including repeated keys."""
 
 import json

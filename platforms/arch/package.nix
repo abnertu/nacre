@@ -7,7 +7,7 @@
   arch,
   hardware,
   capabilities,
-  systemSettings ? null,
+  systemSettings,
   aiConfig ? null,
   aiArtifacts ? null,
   personalAgentPackage ? null,
@@ -66,8 +66,23 @@ let
         package = personalAgentPackage;
         config = personalAgentConfig;
       };
+  # One manifest per adapter; checks validate them against the Python schemas.
+  manifests = {
+    core = core.manifestFile;
+    system = systemSettings.manifest;
+    ai =
+      if ai == null then
+        pkgs.writeText "unmanaged-ai.json" (builtins.toJSON { llama = false; })
+      else
+        ai.manifest;
+    personalAgent =
+      if personalAgent == null then
+        pkgs.writeText "unmanaged-personal-agent.json" (builtins.toJSON { enabled = false; })
+      else
+        personalAgent.manifest;
+  };
 in
-pkgs.writeShellApplication {
+(pkgs.writeShellApplication {
   name = "arch-switch";
   runtimeInputs = with pkgs; [
     coreutils
@@ -76,28 +91,13 @@ pkgs.writeShellApplication {
   text = ''
     readonly adapter_python=${adapterPython}/bin/python3
     readonly core_adapter=${source "core"}/adapter.py
-    readonly core_manifest=${core.manifestFile}
+    readonly core_manifest=${manifests.core}
     readonly system_adapter=${source "system"}/adapter.py
-    readonly system_manifest=${
-      if systemSettings == null then
-        pkgs.writeText "unmanaged-system.json" "{}"
-      else
-        systemSettings.manifest
-    }
+    readonly system_manifest=${manifests.system}
     readonly ai_adapter=${source "ai"}/adapter.py
-    readonly ai_manifest=${
-      if ai == null then
-        pkgs.writeText "unmanaged-ai.json" (builtins.toJSON { llama = false; })
-      else
-        ai.manifest
-    }
+    readonly ai_manifest=${manifests.ai}
     readonly personal_agent_adapter=${./personal-agent/adapter.py}
-    readonly personal_agent_manifest=${
-      if personalAgent == null then
-        pkgs.writeText "unmanaged-personal-agent.json" (builtins.toJSON { enabled = false; })
-      else
-        personalAgent.manifest
-    }
+    readonly personal_agent_manifest=${manifests.personalAgent}
     readonly fs_root=""
     readonly native_bin=/usr/bin
     readonly lizardbyte_conf=${./files/pacman-lizardbyte.conf}
@@ -113,4 +113,7 @@ pkgs.writeShellApplication {
   ''
   + progress.shell
   + builtins.readFile ./arch-switch.sh;
+})
+// {
+  inherit manifests;
 }

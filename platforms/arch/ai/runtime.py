@@ -2,18 +2,37 @@
 
 import os
 import time
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any, cast
 
-from nix_adapter import BaseAdapter, Change, Conflict
+from nix_adapter import BaseAdapter, Change, Conflict, Files, Native
+from schema import AIManifest, Model, Unmanaged
 
 
-class AI(BaseAdapter):
-    def __init__(self, desired, files=None, native=None):
-        root = getattr(files, "root", Path("/")) if files else Path("/")
-        super().__init__(desired=desired, root=root, runner=native, files=files)
+class AI(BaseAdapter[AIManifest | Unmanaged]):
+    def __init__(
+        self,
+        desired: Mapping[str, Any],
+        files: Files | None = None,
+        native: Native | None = None,
+    ):
+        root = files.root if files else Path("/")
+        super().__init__(
+            desired=cast(AIManifest | Unmanaged, desired),
+            root=root,
+            runner=native,
+            files=files,
+        )
+
+    def managed(self) -> AIManifest:
+        d = self.desired
+        if d["llama"] is True:
+            return d
+        raise Conflict("AI services are not managed")
 
     @staticmethod
-    def model_receipt(model, declaration):
+    def model_receipt(model: Path, declaration: Model) -> str:
         info = model.stat()
         fingerprint = ":".join(
             str(value)
@@ -36,8 +55,8 @@ class AI(BaseAdapter):
             ]
         )
 
-    def caddy_main(self):
-        generated = self.desired["generated"]
+    def caddy_main(self) -> str:
+        generated = self.managed()["generated"]
         current = self.files.read(self.path_str("caddyMain", "/etc/caddy/Caddyfile"))
         if current == generated["caddyMain"]:
             return current
@@ -51,10 +70,10 @@ class AI(BaseAdapter):
             return current
         raise Conflict("existing Caddyfile requires explicit adoption")
 
-    def preflight(self, installed=False):
-        d, f = self.desired, self.files
-        if not d["llama"]:
+    def preflight(self, installed: bool = False) -> bool:
+        if not self.desired["llama"]:
             return False
+        d, f = self.managed(), self.files
         if any(not Path(model["path"]).is_absolute() for model in d["models"].values()):
             raise Conflict("model paths must be absolute")
         install_prefix = d["source"]["installPrefix"]
@@ -121,12 +140,12 @@ class AI(BaseAdapter):
                 self.ready_unit("caddy.service")
         return True
 
-    def ensure_service(self, name, action, restart=False):
+    def ensure_service(self, name: str, action: str, restart: bool = False) -> None:
         self.converge_unit(
             name, restart=restart, before_change=lambda: self.files.mark(action)
         )
 
-    def remove(self, name):
+    def remove(self, name: str) -> bool:
         path = self.files.path(name)
         if not path.exists():
             return False
@@ -136,16 +155,16 @@ class AI(BaseAdapter):
         self.files.sync_dir(path.parent)
         return True
 
-    def purge(self):
+    def purge(self) -> None:
         """Withdraw the router, its proxy site and the public route.
 
         Prepared binaries, models and receipts stay: they are mutable assets
         that are expensive to rebuild. Caddy itself stays installed.
         """
-        d = self.desired
-        if not d["llama"]:
+        if not self.desired["llama"]:
             print("AI services purged: not managed.")
             return
+        d = self.managed()
         if d["proxy"]:
             # Withdraw public exposure first.
             target = f"http://127.0.0.1:{d['localPort']}"
@@ -184,7 +203,13 @@ class AI(BaseAdapter):
             self.systemd.daemon_reload()
         print("AI services purged; prepared binaries and models were kept.")
 
-    def _curl_ready(self, port, endpoint="/v1/models", retries=10, delay=2):
+    def _curl_ready(
+        self,
+        port: int,
+        endpoint: str = "/v1/models",
+        retries: int = 10,
+        delay: float = 2,
+    ) -> None:
         url = f"http://127.0.0.1:{port}{endpoint}"
         last_err = ""
         for attempt in range(1, retries + 1):
@@ -197,11 +222,11 @@ class AI(BaseAdapter):
                     time.sleep(delay)
         raise Conflict(f"curl failed after {retries} retries; last: {last_err}")
 
-    def plan(self):
+    def plan(self) -> list[Change]:
         """What converge would change, judged the way converge judges it."""
-        d, f = self.desired, self.files
-        if not d["llama"]:
+        if not self.desired["llama"]:
             return [Change("=", "AI services unmanaged")]
+        d, f = self.managed(), self.files
         if not self.preflight(installed=True):
             return [Change("-", "AI preparation never completed; run nacre ai prepare")]
         generated = d["generated"]
@@ -242,11 +267,11 @@ class AI(BaseAdapter):
                 changes.append(Change("=", f"tailscale serve --https={port}"))
         return changes
 
-    def converge(self, preflighted=False):
-        d, f = self.desired, self.files
-        if not d["llama"]:
+    def converge(self, preflighted: bool = False) -> None:
+        if not self.desired["llama"]:
             print("AI services unmanaged.")
             return
+        d, f = self.managed(), self.files
         if not preflighted and not self.preflight(installed=True):
             print("AI services skipped: selected model is not prepared.")
             return

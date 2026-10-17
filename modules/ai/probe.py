@@ -8,14 +8,17 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import Any, cast
 
 
-def request(base_url, payload, timeout):
+def request(base_url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
     started = time.monotonic()
-    first_event = first_reasoning = first_content = None
+    first_event: float | None = None
+    first_reasoning: float | None = None
+    first_content: float | None = None
     content = reasoning = ""
-    timings = {}
-    usage = {}
+    timings: dict[str, Any] = {}
+    usage: dict[str, Any] = {}
     endpoint = "/v1/chat/completions" if "messages" in payload else "/v1/completions"
     req = urllib.request.Request(
         base_url + endpoint,
@@ -23,7 +26,7 @@ def request(base_url, payload, timeout):
         headers={"Content-Type": "application/json"},
     )
     completed = False
-    failure = None
+    failure: str | None = None
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
             for raw in response:
@@ -35,7 +38,7 @@ def request(base_url, payload, timeout):
                 if data == b"[DONE]":
                     completed = True
                     break
-                event = json.loads(data)
+                event = cast("dict[str, Any]", json.loads(data))
                 elapsed = time.monotonic() - started
                 if first_event is None:
                     first_event = elapsed
@@ -76,7 +79,7 @@ def request(base_url, payload, timeout):
     } | ({"error": failure} if failure else {})
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--model", required=True)
@@ -88,7 +91,7 @@ def main():
     parser.add_argument("--timeout", type=float, default=120)
     parser.add_argument("--max-tokens", type=int, default=256)
     args = parser.parse_args()
-    url = urllib.parse.urlsplit(args.base_url)
+    url = urllib.parse.urlsplit(str(args.base_url))
     if (
         url.scheme != "http"
         or url.hostname not in ("127.0.0.1", "localhost", "::1")
@@ -101,10 +104,10 @@ def main():
         parser.error("base-url must be an HTTP loopback origin without credentials")
     if args.timeout <= 0 or args.max_tokens <= 0:
         parser.error("timeout and max-tokens must be positive")
-    rows = []
+    rows: list[dict[str, Any]] = []
     for thinking in [False, True] if args.mode == "chat" else [None]:
         for repeat in range(2):
-            payload = {
+            payload: dict[str, Any] = {
                 "model": args.thinking_model
                 if thinking is True and args.thinking_model
                 else args.model,
@@ -129,7 +132,11 @@ def main():
                     }
                 ]
                 payload["chat_template_kwargs"] = {"enable_thinking": thinking}
-            row = {"thinking": thinking, "repeat": repeat, "request": payload}
+            row: dict[str, Any] = {
+                "thinking": thinking,
+                "repeat": repeat,
+                "request": payload,
+            }
             try:
                 row.update(request(args.base_url.rstrip("/"), payload, args.timeout))
             except (OSError, ValueError, RuntimeError) as error:

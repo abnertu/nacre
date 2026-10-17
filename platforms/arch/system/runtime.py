@@ -6,11 +6,21 @@ native runner directly; production accepts no root/command overrides.
 
 import hashlib
 import os
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any, cast
 
 from firewall import Firewall
 from hotspot import Hotspot
-from nix_adapter import BaseAdapter, Change, Conflict, locale_gen, replace_keys
+from nix_adapter import (
+    BaseAdapter,
+    Change,
+    Conflict,
+    Files,
+    Native,
+    locale_gen,
+    replace_keys,
+)
 from nix_adapter.system import (
     check_discard_support,
     get_hostname,
@@ -19,24 +29,32 @@ from nix_adapter.system import (
     set_hostname,
     set_timezone,
 )
+from schema import Console, SystemManifest
 
 
-class System(BaseAdapter):
-    def __init__(self, desired, files=None, native=None):
-        root = getattr(files, "root", Path("/")) if files else Path("/")
-        super().__init__(desired=desired, root=root, runner=native, files=files)
+class System(BaseAdapter[SystemManifest]):
+    def __init__(
+        self,
+        desired: Mapping[str, Any],
+        files: Files | None = None,
+        native: Native | None = None,
+    ):
+        root = files.root if files else Path("/")
+        super().__init__(
+            desired=cast(SystemManifest, desired), root=root, runner=native, files=files
+        )
 
-    def boot_id(self):
+    def boot_id(self) -> str:
         # A kernel pseudo-file, not a managed path: skip ownership checks.
         path = self.files.root / "proc/sys/kernel/random/boot_id"
         return path.read_text() if path.is_file() else ""
 
-    def service(self, name, action, restart=False):
+    def service(self, name: str, action: str, restart: bool = False) -> None:
         self.converge_unit(
             name, restart=restart, before_change=lambda: self.files.mark(action)
         )
 
-    def remove(self, name):
+    def remove(self, name: str) -> bool:
         path = self.files.path(name)
         if not path.exists():
             return False
@@ -46,7 +64,7 @@ class System(BaseAdapter):
         self.files.sync_dir(path.parent)
         return True
 
-    def purge(self):
+    def purge(self) -> None:
         """Withdraw the drop-ins this adapter owns; keep the system's own values.
 
         Locale, timezone, hostname, console, firewall rules and the hotspot
@@ -56,10 +74,10 @@ class System(BaseAdapter):
         d = self.desired
         removed = [
             name
-            for name in d.get("files", {})
+            for name in d["files"]
             if self.remove(f"/etc/systemd/{name}.conf.d/60-nix-config.conf")
         ]
-        if d.get("trim") is not None and self.remove(
+        if d["trim"] is not None and self.remove(
             "/etc/systemd/system/fstrim.timer.d/60-nix-config.conf"
         ):
             removed.append("trim")
@@ -77,11 +95,10 @@ class System(BaseAdapter):
             "hostname, console, firewall and hotspot values were kept."
         )
 
-    def localtime(self):
+    def localtime(self) -> str | None:
         return get_timezone(runner=self.native, root=self.files.root)
 
-    def console(self):
-        desired = self.desired["console"]
+    def console(self, desired: Console) -> str:
         values = {"KEYMAP": desired["keymap"]}
         if desired["font"] is not None:
             values["FONT"] = desired["font"]
@@ -89,13 +106,12 @@ class System(BaseAdapter):
             self.files.read(self.path_str("vconsole", "/etc/vconsole.conf")), values
         )
 
-    def check_console_assets(self):
-        desired = self.desired["console"]
+    def check_console_assets(self, desired: Console) -> None:
         for directory, key, suffixes in [
             ("keymaps", "keymap", (".map", ".map.gz")),
             ("consolefonts", "font", (".psf", ".psf.gz", ".psfu", ".psfu.gz")),
         ]:
-            value = desired[key]
+            value = desired["keymap"] if key == "keymap" else desired["font"]
             if value is None:
                 continue
             base = self.files.path("/usr/share/kbd/" + directory)
@@ -103,7 +119,7 @@ class System(BaseAdapter):
             if not found or not all(p.is_file() and not p.is_symlink() for p in found):
                 raise Conflict("console keymap or font is unavailable")
 
-    def check_time_provider(self):
+    def check_time_provider(self) -> None:
         for unit in (
             "chronyd.service",
             "chrony.service",
@@ -126,7 +142,7 @@ class System(BaseAdapter):
                 )
         # Custom servers supplement native defaults; per-link sources are not overridden.
 
-    def check_trim(self):
+    def check_trim(self) -> None:
         check_discard_support(runner=self.native)
         # A second custom fstrim timer/cron owner must be resolved by the operator.
         output = self.run(
@@ -147,10 +163,10 @@ class System(BaseAdapter):
             if path.exists() and any("trim" in p.name.lower() for p in path.iterdir()):
                 raise Conflict("a possible additional TRIM schedule exists")
 
-    def preflight(self, installed=False):
+    def preflight(self, installed: bool = False) -> None:
         d, f = self.desired, self.files
         if installed:
-            commands = set()
+            commands: set[str] = set()
             for capability, required in {
                 "locale": ("locale", "locale-gen"),
                 "timeZone": ("timedatectl",),
@@ -183,50 +199,49 @@ class System(BaseAdapter):
         }.items():
             if d.get(capability) is not None:
                 f.pending(action)
-        if d.get("locale") is not None:
+        if (locale := d["locale"]) is not None:
             locale_gen(
                 f.read(self.path_str("localeGen", "/etc/locale.gen")),
-                d["locale"]["generated"],
+                locale["generated"],
             )
             replace_keys(
                 f.read(self.path_str("localeConf", "/etc/locale.conf")),
-                {"LANG": d["locale"]["lang"]},
+                {"LANG": locale["lang"]},
             )
-        if d.get("timeZone") is not None:
-            if installed and not f.zone_exists(d["timeZone"]):
-                raise Conflict(f"declared zoneinfo is unavailable: {d['timeZone']}")
+        if (zone := d["timeZone"]) is not None:
+            if installed and not f.zone_exists(zone):
+                raise Conflict(f"declared zoneinfo is unavailable: {zone}")
             self.localtime()
-        if d.get("hostname") is not None:
+        if d["hostname"] is not None:
             f.read(self.path_str("hostnameFile", "/etc/hostname"))
-        for name, text in d.get("files", {}).items():
+        for name, text in d["files"].items():
             f.dropin(name, text)
-        if d.get("timeSync") is not None:
+        if d["timeSync"] is not None:
             self.check_time_provider()
             if installed:
                 self.ready_unit("systemd-timesyncd.service")
-        if d.get("journal") is not None and installed:
+        if d["journal"] is not None and installed:
             self.ready_unit("systemd-journald.service")
-        if d.get("console") is not None:
-            self.console()
+        if (console := d["console"]) is not None:
+            self.console(console)
             if installed:
-                self.check_console_assets()
-        if d.get("power") is not None and not self.boot_id().strip():
+                self.check_console_assets(console)
+        if d["power"] is not None and not self.boot_id().strip():
             raise Conflict("boot identity is unavailable")
-        if d.get("trim") is not None:
+        if d["trim"] is not None:
             f.timer_dropin(d["trimDropin"])
             self.check_trim()
             if installed:
                 self.ready_unit("fstrim.timer")
-        if d.get("hotspot") is not None:
+        if d["hotspot"] is not None:
             Hotspot(self).preflight()
-        if d.get("firewall") is not None:
+        if d["firewall"] is not None:
             Firewall(self).preflight(installed)
 
-    def converge(self):
+    def converge(self) -> None:
         self.preflight(installed=True)
         d, f = self.desired, self.files
-        if d.get("locale") is not None:
-            value = d["locale"]
+        if (value := d["locale"]) is not None:
             locale_gen_path = self.path_str("localeGen", "/etc/locale.gen")
             self.write(
                 locale_gen_path,
@@ -234,7 +249,7 @@ class System(BaseAdapter):
                 "locale",
             )
 
-            def available():
+            def available() -> set[str]:
                 return {
                     line.lower().replace("-", "")
                     for line in self.run("locale", "-a").stdout.splitlines()
@@ -262,49 +277,48 @@ class System(BaseAdapter):
                 "locale",
             )
             f.clear("locale")
-        if d.get("timeZone") is not None:
+        if (zone := d["timeZone"]) is not None:
             localtime_path = self.path_str("localtime", "/etc/localtime")
             target = f.path(localtime_path, symlink_leaf=True)
-            expected = "/usr/share/zoneinfo/" + d["timeZone"]
+            expected = "/usr/share/zoneinfo/" + zone
             matches = target.is_symlink() and os.readlink(target) in (
                 expected,
                 ".." + expected,
             )
             if (
                 not matches
-                or self.localtime() != d["timeZone"]
+                or self.localtime() != zone
                 or f.pending("timezone")
                 or not f.metadata_matches(localtime_path, symlink=True)
             ):
                 f.mark("timezone")
-                set_timezone(d["timeZone"], runner=self.native)
+                set_timezone(zone, runner=self.native)
                 self.actions += 1
                 if (
-                    self.localtime() != d["timeZone"]
+                    self.localtime() != zone
                     or not target.is_symlink()
                     or os.readlink(target) not in (expected, ".." + expected)
                 ):
                     raise Conflict("timezone did not converge")
                 self.updates += int(f.repair_metadata(localtime_path, symlink=True))
                 f.clear("timezone")
-        if d.get("hostname") is not None:
+        if (hostname := d["hostname"]) is not None:
             hostname_path = self.path_str("hostnameFile", "/etc/hostname")
             for kind in ("--static", "--transient"):
                 actual = get_hostname(runner=self.native, kind=kind)
-                if actual != d["hostname"] or (
-                    kind == "--static"
-                    and f.read(hostname_path).strip() != d["hostname"]
+                if actual != hostname or (
+                    kind == "--static" and f.read(hostname_path).strip() != hostname
                 ):
                     f.mark("hostname")
-                    set_hostname(d["hostname"], runner=self.native, kind=kind)
+                    set_hostname(hostname, runner=self.native, kind=kind)
                     self.actions += 1
-                    if get_hostname(runner=self.native, kind=kind) != d["hostname"]:
+                    if get_hostname(runner=self.native, kind=kind) != hostname:
                         raise Conflict("hostname did not converge")
             if not f.metadata_matches(hostname_path):
                 f.mark("hostname")
                 self.updates += int(f.repair_metadata(hostname_path))
             f.clear("hostname")
-        for name, text in d.get("files", {}).items():
+        for name, text in d["files"].items():
             target = f.dropin(name, text)
             if name == "logind":
                 self.power(target, text)
@@ -327,12 +341,15 @@ class System(BaseAdapter):
                     != "active"
                 ):
                     f.mark(name)
-                    if d["journal"]["storage"] == "persistent":
+                    storage = (
+                        journal["storage"] if (journal := d["journal"]) else "auto"
+                    )
+                    if storage == "persistent":
                         self.run(
                             "systemd-tmpfiles", "--create", "--prefix=/var/log/journal"
                         )
                     self.systemd.restart("systemd-journald.service")
-                    if d["journal"]["storage"] in ("auto", "persistent"):
+                    if storage in ("auto", "persistent"):
                         self.run("journalctl", "--flush")
                     self.actions += 1
                     if (
@@ -341,14 +358,14 @@ class System(BaseAdapter):
                     ):
                         raise Conflict("journald did not become ready")
             f.clear(name)
-        if d.get("console") is not None:
+        if (console := d["console"]) is not None:
             vconsole_path = self.path_str("vconsole", "/etc/vconsole.conf")
-            if self.write(vconsole_path, self.console(), "console") or f.pending(
+            if self.write(vconsole_path, self.console(console), "console") or f.pending(
                 "console"
             ):
                 print("Console configuration is prepared for the next boot.")
             f.clear("console")
-        if d.get("trim") is not None:
+        if d["trim"] is not None:
             path, text = f.timer_dropin(d["trimDropin"])
             self.write(path, text, "trim")
             pending = f.pending("trim")
@@ -358,23 +375,22 @@ class System(BaseAdapter):
                 self.systemd.daemon_reload()
             self.service("fstrim.timer", "trim", restart=pending)
             f.clear("trim")
-        if d.get("firewall") is not None:
+        if d["firewall"] is not None:
             Firewall(self).converge()
-        if d.get("hotspot") is not None:
+        if d["hotspot"] is not None:
             Hotspot(self).converge()
         print(
             f"System settings converged: {self.updates} files updated, {self.actions} runtime actions."
         )
-        if d.get("locale") is not None:
+        if d["locale"] is not None:
             print("System language applies to new login sessions.")
 
-    def plan(self):
+    def plan(self) -> list[Change]:
         """What converge would change, judged the way converge judges it."""
         self.preflight(installed=True)
         d, f = self.desired, self.files
-        changes = []
-        if d.get("locale") is not None:
-            value = d["locale"]
+        changes: list[Change] = []
+        if (value := d["locale"]) is not None:
             locale_gen_path = self.path_str("localeGen", "/etc/locale.gen")
             changes.append(
                 self.plan_file(
@@ -400,25 +416,25 @@ class System(BaseAdapter):
                     replace_keys(f.read(locale_conf_path), {"LANG": value["lang"]}),
                 )
             )
-        if d.get("timeZone") is not None:
+        if (zone := d["timeZone"]) is not None:
             current = self.localtime()
-            if current != d["timeZone"] or f.pending("timezone"):
-                changes.append(Change("~", f"time zone {current} -> {d['timeZone']}"))
+            if current != zone or f.pending("timezone"):
+                changes.append(Change("~", f"time zone {current} -> {zone}"))
             else:
                 changes.append(Change("=", f"time zone {current}"))
-        if d.get("hostname") is not None:
+        if (hostname := d["hostname"]) is not None:
             hostname_path = self.path_str("hostnameFile", "/etc/hostname")
             current = get_hostname(runner=self.native, kind="--static")
             transient = get_hostname(runner=self.native, kind="--transient")
             if (
-                d["hostname"] != current
-                or d["hostname"] != transient
-                or f.read(hostname_path).strip() != d["hostname"]
+                hostname != current
+                or hostname != transient
+                or f.read(hostname_path).strip() != hostname
             ):
-                changes.append(Change("~", f"hostname {current} -> {d['hostname']}"))
+                changes.append(Change("~", f"hostname {current} -> {hostname}"))
             else:
                 changes.append(Change("=", f"hostname {current}"))
-        for name, text in d.get("files", {}).items():
+        for name, text in d["files"].items():
             target = f.dropin(name, text)
             change = self.plan_file(target, text)
             changes.append(change)
@@ -430,20 +446,20 @@ class System(BaseAdapter):
                     changes.append(Change("~", "restart systemd-timesyncd.service"))
             elif name == "journald" and (change.kind != "=" or f.pending(name)):
                 changes.append(Change("~", "restart systemd-journald.service"))
-        if d.get("console") is not None:
+        if (console := d["console"]) is not None:
             vconsole_path = self.path_str("vconsole", "/etc/vconsole.conf")
-            changes.append(self.plan_file(vconsole_path, self.console()))
-        if d.get("trim") is not None:
+            changes.append(self.plan_file(vconsole_path, self.console(console)))
+        if d["trim"] is not None:
             path, text = f.timer_dropin(d["trimDropin"])
             changes.append(self.plan_file(path, text))
             changes += self.plan_unit("fstrim.timer")
-        if d.get("firewall") is not None:
+        if d["firewall"] is not None:
             changes += Firewall(self).plan()
-        if d.get("hotspot") is not None:
+        if d["hotspot"] is not None:
             changes += Hotspot(self).plan()
         return changes
 
-    def power(self, path, text):
+    def power(self, path: str, text: str) -> None:
         f = self.files
         boot = self.boot_id().strip()
         digest = hashlib.sha256(text.encode()).hexdigest()

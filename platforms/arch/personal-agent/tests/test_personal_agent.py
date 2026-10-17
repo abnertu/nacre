@@ -1,3 +1,4 @@
+# pyright: standard
 import importlib.util
 import sys
 import tempfile

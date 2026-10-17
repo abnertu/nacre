@@ -1,3 +1,4 @@
+# pyright: standard
 """Exercise synthetic SSE diagnostics without loading a model."""
 
 import importlib.util

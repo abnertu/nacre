@@ -1,3 +1,4 @@
+# pyright: standard
 """Exercise the pinned llama-swap router against disposable HTTP model servers."""
 
 import concurrent.futures

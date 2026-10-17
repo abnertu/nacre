@@ -6,13 +6,17 @@ dependencies = ["rich"]
 
 [tool.pyright]
 include = ["checks", "lib", "modules", "platforms"]
-venvPath = "."
-venv = ".venv"
 typeCheckingMode = "standard"
 useLibraryCodeForTypes = true
+# Adapters import their sibling modules by name, as they run from the store.
 executionEnvironments = [
+  { root = "platforms/arch/core", extraPaths = ["platforms/arch/core"] },
   { root = "platforms/arch/system", extraPaths = ["platforms/arch/system"] },
+  { root = "platforms/arch/ai", extraPaths = ["platforms/arch/ai"] },
 ]
+# Production code is strict. Tests drive it through fakes and opt down with a
+# "# pyright: standard" first line.
+strict = ["lib", "modules", "platforms"]
 
 [tool.ruff]
 line-length = 88

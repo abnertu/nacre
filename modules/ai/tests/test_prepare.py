@@ -1,3 +1,4 @@
+# pyright: standard
 """Execute the preparation controller against an isolated model directory."""
 
 import fcntl

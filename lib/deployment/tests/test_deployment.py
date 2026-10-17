@@ -1,3 +1,4 @@
+# pyright: standard
 """Execute deployment entry points with isolated fake stages only."""
 
 import os

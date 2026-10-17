@@ -4,18 +4,30 @@ from __future__ import annotations
 
 import os
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from nix_adapter import BaseAdapter, Change, Conflict
+from nix_adapter import BaseAdapter, Change, Conflict, Files, Native
+from schema import Block, CoreManifest
 
 STATE = "/var/lib/nix-config/arch"
 
 
-class Core(BaseAdapter):
-    def __init__(self, desired: dict[str, Any], files=None, native=None):
-        root = getattr(files, "root", Path("/")) if files else Path("/")
-        super().__init__(desired=desired, root=root, runner=native, files=files)
+class Core(BaseAdapter[CoreManifest]):
+    def __init__(
+        self,
+        desired: Mapping[str, Any],
+        files: Files | None = None,
+        native: Native | None = None,
+    ):
+        root = files.root if files else Path("/")
+        super().__init__(
+            desired=cast(CoreManifest, desired),
+            root=root,
+            runner=native,
+            files=files,
+        )
 
     # Pending markers keep their historic names so interrupted runs resume.
     def marker(self, action: str) -> str:
@@ -54,7 +66,7 @@ class Core(BaseAdapter):
     def block_lines(name: str) -> tuple[str, str]:
         return f"# BEGIN nix-config {name}", f"# END nix-config {name}"
 
-    def without_block(self, block: dict[str, Any]) -> str | None:
+    def without_block(self, block: Block) -> str | None:
         """Return the file without its managed block, or None if it is absent."""
         path = self.files.path(block["path"])
         if not path.exists():
@@ -62,7 +74,8 @@ class Core(BaseAdapter):
                 return None
             raise Conflict(f"required configuration is missing: {block['path']}")
         begin, end = self.block_lines(block["name"])
-        kept, inside = [], False
+        kept: list[str] = []
+        inside = False
         for line in self.files.read(block["path"]).splitlines(keepends=True):
             stripped = line.rstrip("\n")
             if stripped == begin:
@@ -79,12 +92,15 @@ class Core(BaseAdapter):
             raise Conflict(f"unterminated managed block in {block['path']}")
         return "".join(kept)
 
-    def with_block(self, block: dict[str, Any]) -> str:
+    def with_block(self, block: Block) -> str:
         begin, end = self.block_lines(block["name"])
         return (self.without_block(block) or "") + f"{begin}\n{block['text']}{end}\n"
 
     def repository_server(self, *config: str) -> str | None:
-        name = self.desired["repository"]["name"]
+        repository = self.desired["repository"]
+        if repository is None:
+            raise Conflict("no repository is declared")
+        name = repository["name"]
         result = self.run("pacman-conf", *config, "--repo", name, "Server", check=False)
         return result.stdout.strip() if result.returncode == 0 else None
 

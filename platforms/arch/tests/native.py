@@ -1,3 +1,4 @@
+# pyright: standard
 #!/usr/bin/env python3
 """Fake Arch commands. Only the test harness installs these executables."""
 

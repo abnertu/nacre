@@ -8,12 +8,15 @@ import sys
 sys.dont_write_bytecode = True
 
 import runtime
-from nix_adapter import run_adapter_cli
+from nix_adapter import run_adapter_cli, validate
+from schema import SystemManifest
 
 
 def main() -> int:
     return run_adapter_cli(
-        lambda desired: runtime.System(desired),
+        lambda desired: runtime.System(
+            validate(SystemManifest, desired, "system settings manifest")
+        ),
         name="System settings",
     )
 

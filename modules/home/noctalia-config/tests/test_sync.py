@@ -1,3 +1,4 @@
+# pyright: standard
 """Public operations against temporary homes and fake native/Nix commands."""
 
 import contextlib

@@ -1,3 +1,4 @@
+# pyright: standard
 """Core adapter contracts on a temporary root with a stateful fake runner."""
 
 import contextlib
@@ -5,6 +6,7 @@ import copy
 import importlib.util
 import io
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +15,7 @@ from unittest.mock import patch
 from nix_adapter import Conflict, FakeNative, FakeProcess, Files
 
 RUNTIME_PATH = Path(__file__).resolve().parents[1] / "runtime.py"
+sys.path.insert(0, str(RUNTIME_PATH.parent))
 spec = importlib.util.spec_from_file_location("core_runtime", RUNTIME_PATH)
 assert spec is not None and spec.loader is not None
 runtime = importlib.util.module_from_spec(spec)

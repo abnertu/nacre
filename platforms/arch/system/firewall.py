@@ -7,9 +7,13 @@ import ipaddress
 import re
 import shlex
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from nix_adapter import Change, Conflict, Native, assignments
+from schema import Hotspot, Rule
+
+if TYPE_CHECKING:
+    from runtime import System
 
 
 def format_port_range(from_port: int | str, to_port: int | str | None = None) -> str:
@@ -236,10 +240,13 @@ def hotspot_firewall_rules(
 class Firewall:
     """Owns declared UFW rules; other owners' rules are preserved."""
 
-    def __init__(self, system: Any):
+    def __init__(self, system: System):
+        desired = system.desired["firewall"]
+        if desired is None:
+            raise Conflict("the firewall is not managed")
         self.system = system
         self.files = system.files
-        self.desired = system.desired.get("firewall") or {}
+        self.desired = desired
 
     def run(self, *args: Any, **kwargs: Any) -> Any:
         return self.system.run(*args, **kwargs)
@@ -292,7 +299,7 @@ class Firewall:
             self.system.ready_unit("ufw.service")
             self.snapshot()
 
-    def kernel_rule(self, rule: dict[str, Any], v6: bool = False) -> bool:
+    def kernel_rule(self, rule: Rule, v6: bool = False) -> bool:
         return check_kernel_rule(
             chain="ufw6-user-input" if v6 else "ufw-user-input",
             protocol=rule["protocol"],
@@ -301,14 +308,14 @@ class Firewall:
             runner=self.system.runner,
         )
 
-    def kernel_drift(self, rules: list[dict[str, Any]]) -> bool:
+    def kernel_drift(self, rules: list[Rule]) -> bool:
         return not check_kernel_policy(runner=self.system.runner) or any(
             not self.kernel_rule(rule, v6) for rule in rules for v6 in (False, True)
         )
 
     def plan(self) -> list[Change]:
-        rules = self.desired.get("rules", [])
-        logging = self.desired.get("logging", "low")
+        rules = self.desired["rules"]
+        logging = self.desired["logging"]
         state = self.snapshot()
         changes: list[Change] = []
         for rule in rules:
@@ -326,7 +333,7 @@ class Firewall:
             changes.append(Change("~", "reload ufw to restore kernel rules"))
         hotspot = self.system.desired.get("hotspot")
         if hotspot is not None:
-            existing = set()
+            existing: set[tuple[tuple[str, Any], ...] | None] = set()
             for line in self.run("ufw", "show", "added").stdout.splitlines():
                 with contextlib.suppress(ValueError):
                     existing.add(canonical_rule(shlex.split(line)))
@@ -346,8 +353,8 @@ class Firewall:
         self.files.clear("firewall")
 
     def converge_service_rules(self) -> None:
-        rules = self.desired.get("rules", [])
-        logging = self.desired.get("logging", "low")
+        rules = self.desired["rules"]
+        logging = self.desired["logging"]
         profiles = "skip"
         state = self.snapshot()
         pending = self.files.pending("firewall")
@@ -391,11 +398,11 @@ class Firewall:
             self.files.mark("firewall")
             raise Conflict("UFW policy or kernel rules did not converge")
 
-    def converge_hotspot_rules(self, hotspot: dict[str, Any]) -> None:
+    def converge_hotspot_rules(self, hotspot: Hotspot) -> None:
         rules = hotspot_firewall_rules(
             hotspot["interface"], hotspot["uplink"], hotspot["address"]
         )
-        existing = set()
+        existing: set[tuple[tuple[str, Any], ...] | None] = set()
         for line in self.run("ufw", "show", "added").stdout.splitlines():
             try:
                 existing.add(canonical_rule(shlex.split(line)))

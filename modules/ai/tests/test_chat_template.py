@@ -1,3 +1,4 @@
+# pyright: standard
 """Preserve Codex instruction messages and Qwen tool/thinking semantics."""
 
 import json

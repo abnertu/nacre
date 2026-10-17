@@ -1,3 +1,4 @@
+# pyright: standard
 """Exercise every development recipe with fake Nix, without workstation access."""
 
 import errno
