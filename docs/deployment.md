@@ -16,7 +16,7 @@ Bootstrap changes the live machine. Inspect the script and local package state f
 
 ## Container smoke test
 
-`just container-test` deploys `checks/container/configuration.nix` (the operator configuration minus hardware and kernel features a rootless container lacks) into a systemd Arch container with podman. It bootstraps with the checked-in script, then expects exit 3 before packages, a successful `update`, a repeat run with no changes, a purge that keeps pacman usable, and unmodified store paths. Pacman and yay caches persist in the `nix-config-container-pacman` and `nix-config-container-yay` volumes; the first run downloads the full package set. `--keep` leaves the container running for inspection.
+`just container-test` deploys `checks/container/configuration.nix` (the operator configuration minus hardware and kernel features a rootless container lacks) into a systemd Arch container with podman. It bootstraps with the checked-in script, then expects exit 3 before packages, a successful `update`, a repeat run with no changes, a purge that keeps pacman usable, and unmodified store paths. Pacman and yay caches persist in the `nix-config-container-pacman` and `nix-config-container-yay` volumes; the first run downloads the full package set. `--keep` leaves the container running for inspection. CI runs the same test when deployment sources change on `main`, weekly and on request (`.github/workflows/container-test.yml`), restoring the package caches between runs.
 
 ## Source checks and activation
 

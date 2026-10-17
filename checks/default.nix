@@ -7,10 +7,19 @@
 }:
 {
   home-source-assets = import ./assets.nix { inherit pkgs; };
-  workflow = pkgs.runCommand "github-workflow-check" { nativeBuildInputs = [ pkgs.actionlint ]; } ''
-    actionlint ${../.github/workflows/check.yml}
-    touch "$out"
-  '';
+  # actionlint also runs shellcheck on each workflow `run` script.
+  workflow =
+    pkgs.runCommand "github-workflow-check"
+      {
+        nativeBuildInputs = [
+          pkgs.actionlint
+          pkgs.shellcheck
+        ];
+      }
+      ''
+            actionlint ${../.github/workflows}/*.yml
+        touch "$out"
+      '';
   deployment-ordering =
     pkgs.runCommand "deployment-ordering"
       {

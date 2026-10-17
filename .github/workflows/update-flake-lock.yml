@@ -1,0 +1,75 @@
+name: Update flake inputs
+
+# Proposes a reviewed lock update; merging the pull request is the intentional
+# adoption step. Pull requests opened with GITHUB_TOKEN do not start other
+# workflows, so this job runs the same checks before opening one.
+on:
+  schedule:
+    - cron: "41 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-flake-lock
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update, check and propose
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@b85815f71a6de0ddee80b8a80a98d43f4bcc66c7 # v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Update every input
+        id: update
+        run: |
+          nix flake update 2> update.log
+          cat update.log
+          if git diff --quiet flake.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate source and build all checks
+        if: steps.update.outputs.changed == 'true'
+        run: nix flake check --print-build-logs
+
+      - name: Build deployment artifacts without activation
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          nix build --no-link .#arch-workstation .#arch-switch
+          if [[ "$(nix eval --json .#lib.runnerctlEnabled)" == "true" ]]; then
+            nix build --no-link .#runnerctl
+          fi
+
+      - name: Open or refresh the pull request
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch=automation/update-flake-lock
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$branch"
+          git commit -m "chore(flake): update inputs" -m "$(sed -n '/Updated input/,$p' update.log)" flake.lock
+          git push --force origin "$branch"
+          body="Weekly \`nix flake update\`. \`nix flake check\` and the deployment build passed in the workflow that opened this pull request. Review the input changes, run the container deployment workflow if deployment inputs moved, then merge to adopt them."
+          if gh pr view "$branch" --json state --jq .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$branch" --body "$body"
+          else
+            gh pr create --head "$branch" --title "chore(flake): update inputs" --body "$body"
+          fi
