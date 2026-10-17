@@ -9,7 +9,7 @@ usage() {
   cat <<'EOF'
 usage: bootstrap.sh [--help]
 
-Prepare a fresh Arch Linux system for nix-config deployment:
+Prepare a fresh Arch Linux system for Nacre:
   1. Enables [multilib] and installs base-devel, git, nix, and just via pacman.
   2. Configures /etc/nix/nix.conf with flakes and trusted-users.
   3. Enables and starts nix-daemon.service.

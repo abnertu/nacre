@@ -61,7 +61,7 @@ An optional module is skipped as `not ready` only if it was never prepared; a sk
 6. pacman still works after purge
 7. store paths are unmodified
 
-Pacman and yay caches live in the `nix-config-container-pacman` and `nix-config-container-yay` volumes, so only the first run downloads everything. `--keep` leaves the container for inspection. CI runs the same test on deployment changes to `main`, weekly and on demand.
+Pacman and yay caches live in the `nacre-container-pacman` and `nacre-container-yay` volumes, so only the first run downloads everything. `--keep` leaves the container for inspection. CI runs the same test on deployment changes to `main`, weekly and on demand.
 
 ## Progress and diagnostics
 

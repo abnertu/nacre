@@ -253,7 +253,7 @@ fi
 # serializes update and routine activation; the lock inode is never removed.
 runtime_dir="$fs_root/run/user/$(native id -u)"
 [[ -d $runtime_dir && ! -L $runtime_dir ]] || fail 'login runtime directory is unavailable'
-exec {lock_fd}>"$runtime_dir/nix-config-arch.lock"
+exec {lock_fd}>"$runtime_dir/nacre-arch.lock"
 "$flock_bin" -n "$lock_fd" || fail 'another arch-switch is running' 75
 
 

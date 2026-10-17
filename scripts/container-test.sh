@@ -15,7 +15,7 @@ for argument in "$@"; do
 done
 
 source_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-readonly name=nix-config-container-test
+readonly name=nacre-container-test
 readonly image=docker.io/archlinux/archlinux:latest
 work=$(mktemp -d)
 cleanup() {
@@ -67,8 +67,8 @@ step 'Start the systemd container'
 podman rm -f "$name" >/dev/null 2>&1 || true
 podman run -d --name "$name" --hostname arch --systemd=always --privileged \
   -v "/usr/lib/modules/$(uname -r):/usr/lib/modules/$(uname -r):ro" \
-  -v nix-config-container-pacman:/var/cache/pacman/pkg \
-  -v nix-config-container-yay:/var/cache/nix-config-yay \
+  -v nacre-container-pacman:/var/cache/pacman/pkg \
+  -v nacre-container-yay:/var/cache/nacre-yay \
   "$image" /usr/lib/systemd/systemd >/dev/null
 for _ in $(seq 60); do
   state=$(podman exec "$name" systemctl is-system-running 2>/dev/null || true)
@@ -89,9 +89,9 @@ pacman -Syu --noconfirm --needed sudo >/dev/null
 pacman -S --noconfirm glibc >/dev/null # reinstall to extract the locale sources
 useradd -m -d "$home" -u 1000 -G wheel "$user"
 printf '%%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n' >/etc/sudoers.d/wheel
-chown "$user:" /var/cache/nix-config-yay
+chown "$user:" /var/cache/nacre-yay
 install -d -o "$user" -g "$user" "$home/.cache"
-ln -s /var/cache/nix-config-yay "$home/.cache/yay"
+ln -s /var/cache/nacre-yay "$home/.cache/yay"
 loginctl enable-linger "$user"
 EOF
 for _ in $(seq 30); do

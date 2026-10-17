@@ -60,7 +60,7 @@ jobs:
       # Volume export/import keeps file ownership inside the user namespace.
       - name: Import package caches into podman volumes
         run: |
-          for volume in nix-config-container-pacman nix-config-container-yay; do
+          for volume in nacre-container-pacman nacre-container-yay; do
             podman volume create "$volume" >/dev/null
             archive="$RUNNER_TEMP/volumes/$volume.tar"
             if [[ -f $archive ]]; then podman volume import "$volume" "$archive"; fi
@@ -73,7 +73,7 @@ jobs:
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/volumes"
-          for volume in nix-config-container-pacman nix-config-container-yay; do
+          for volume in nacre-container-pacman nacre-container-yay; do
             podman volume export "$volume" --output "$RUNNER_TEMP/volumes/$volume.tar"
           done
 

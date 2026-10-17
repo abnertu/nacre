@@ -34,6 +34,6 @@ nacre runner verify frontend
 nacre runner status frontend
 ```
 
-Verify checks the registration, service, manager image and mount isolation, socket, GitLab health and a one-off job network. Status prints a summary without sensitive data. All operations share `/run/lock/nix-config-runner.lock`; managed writes refuse symlinks, hard links and unexpected file types. An interrupted convergence or credential step leaves a private pending marker in the instance config directory; fix the cause and rerun. Removing a file from `configFiles` stops management and dependency installation but deletes no runtime state.
+Verify checks the registration, service, manager image and mount isolation, socket, GitLab health and a one-off job network. Status prints a summary without sensitive data. All operations share `/run/lock/runnerctl.lock`; managed writes refuse symlinks, hard links and unexpected file types. An interrupted convergence or credential step leaves a private pending marker in the instance config directory; fix the cause and rerun. Removing a file from `configFiles` stops management and dependency installation but deletes no runtime state.
 
 `just check` runs `runnerctl validate` on the declared files.

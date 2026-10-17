@@ -10,11 +10,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1792228348,
-        "narHash": "sha256-shsrr27Dk6a1gYuczi8Sfd7JhVI69nqQlefoLUmGKIw=",
+        "lastModified": 1792260698,
+        "narHash": "sha256-6JTx4Sg/VqkcWV8po0YNs/wkxGIQZgYg08JA2VCEIBM=",
         "owner": "gin31259461",
         "repo": "gitlab-runner",
-        "rev": "a590c7cbb15149edf48d98110bd52a7e2fcd244e",
+        "rev": "a22d1beaa32889f22ece0655218eb3359d7c937f",
         "type": "github"
       },
       "original": {

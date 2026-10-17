@@ -31,7 +31,7 @@ run_with_progress() {
 }
 
 ((EUID == 0)) || { report_error "run llama-prepare as root (sudo nix --extra-experimental-features 'nix-command flakes' run .#llama-prepare)"; exit 1; }
-work=$(mktemp -d /var/tmp/nix-config-llama.XXXXXXXX)
+work=$(mktemp -d /var/tmp/nacre-llama.XXXXXXXX)
 chmod 0700 "$work"
 prepare_cleanup() {
   local status=$?
@@ -42,7 +42,7 @@ prepare_cleanup() {
 trap prepare_cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-exec {lock_fd}>/run/lock/nix-config-llama-prepare.lock
+exec {lock_fd}>/run/lock/nacre-llama-prepare.lock
 flock -n "$lock_fd" || { report_error 'another llama-prepare is running'; exit 75; }
 if ((build)); then
   [[ -x /usr/bin/c++ && -x /opt/rocm/bin/hipcc && -f /usr/include/vulkan/vulkan.h ]] || {

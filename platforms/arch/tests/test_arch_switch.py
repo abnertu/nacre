@@ -236,7 +236,7 @@ class ArchSwitchTests(unittest.TestCase):
         )
 
     def test_lock_prevents_concurrent_deployment(self):
-        with (self.root / "run/user/1000/nix-config-arch.lock").open("w") as lock:
+        with (self.root / "run/user/1000/nacre-arch.lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             self.invoke(code=75)
         self.assertEqual(self.adapter_phases(CORE), [])
