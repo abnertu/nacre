@@ -14,7 +14,7 @@ This repository describes one existing Arch Linux workstation with a Nix-evaluat
 
 ## Static policy and live reconciliation
 
-Nix generates fixed content such as Home Manager files, systemd units, drop-ins, AI router/Caddy policy and Runner templates. Native adapters remain responsible for operations that depend on the current machine: safe adoption of existing files, ownership and permission checks, account and service state, locks, pending markers, package operations and failure reporting. Runner token metadata is merged into its Nix-generated public template only at runtime; neither tokens nor mutable registrations enter a derivation.
+Nix generates fixed content such as Home Manager files, systemd units, drop-ins and AI router/Caddy policy. Native adapters remain responsible for operations that depend on the current machine: safe adoption of existing files, ownership and permission checks, account and service state, locks, pending markers, package operations and failure reporting. GitLab Runners are declared as per-environment TOML files that the pinned `runnerctl` validates and renders itself; token metadata is merged only at runtime, and neither tokens nor mutable registrations enter a derivation.
 
 This separation borrows the declarative file-rendering idea from [nix-maid](https://viperml.codeberg.page/nix-maid/api.html) without adding it as a dependency or a second Home Manager layer. The existing feature modules own generated artifacts, and adapters retain Arch-specific reconciliation.
 

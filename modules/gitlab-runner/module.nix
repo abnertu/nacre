@@ -4,7 +4,5 @@ let
 in
 {
   options.services.gitlabRunner = import ./options.nix { inherit lib; };
-  config.arch.pacman = lib.optionals (
-    cfg.enable && lib.any (instance: instance.enable) (builtins.attrValues cfg.instances)
-  ) (import ./packages.nix);
+  config.arch.pacman = lib.optionals (cfg.enable && cfg.configFiles != [ ]) (import ./packages.nix);
 }

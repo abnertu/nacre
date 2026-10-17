@@ -60,11 +60,7 @@ let
         trim = if cfg.services.fstrim.enable then { enable = true; } else null;
       };
     };
-    gitlabRunners = lib.mapAttrs (_: value: builtins.removeAttrs value [ "enable" ]) (
-      lib.filterAttrs (
-        _: value: cfg.services.gitlabRunner.enable && value.enable
-      ) cfg.services.gitlabRunner.instances
-    );
+    runnerConfigFiles = lib.optionals cfg.services.gitlabRunner.enable cfg.services.gitlabRunner.configFiles;
     personalAgent.enable = cfg.services.personalAgent.enable;
     powerpanel = cfg.services.powerpanel;
     arch = cfg.arch;

@@ -62,9 +62,10 @@
     };
   };
   users.users = import ./users.nix { inherit config lib; };
-  services.gitlabRunner.instances = lib.mapAttrs (
-    _: value: lib.mapAttrsRecursive (_: lib.mkDefault) value
-  ) (import ./gitlab-runners.nix);
+  services.gitlabRunner.configFiles = lib.mkDefault [
+    ./runners/frontend.toml
+    ./runners/dotnet.toml
+  ];
   services.personalAgent.enable = lib.mkDefault true;
   services.powerpanel.enable = lib.mkDefault true;
 }

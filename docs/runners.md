@@ -1,8 +1,10 @@
 # GitLab Runner lifecycle
 
-`services.gitlabRunner.instances` declares independent Runner instances. Each enabled instance owns a dedicated service account, subordinate UID/GID range, rootless Podman runtime, manager container, user service and GitLab registration. The Host's current instances and their requirements live in the Runner declarations, not in this runbook.
+Each Runner instance is one TOML file named after the environment it serves: `hosts/arch/runners/frontend.toml` declares the `frontend` instance, which runs as `gitlab-runner-frontend`. Shared GitLab and network settings live in `common.toml`, which instance files name with `extends`. `services.gitlabRunner.configFiles` lists the instance files to manage; add or remove a file there to add or withdraw an instance. The file format is documented in the [runnerctl README](https://github.com/gin31259461/gitlab-runner#configure).
 
-Runner operations are separate from `just arch-workstation`. The workstation may install declared native dependencies during `update`, but it never reconciles or registers instances. Nix generates each instance's public registration template, non-secret config policy and user service unit. `runnerctl` handles account/runtime checks, registration metadata and token merging at runtime; tokens never enter Git or the Nix store.
+Each instance owns a dedicated service account, subordinate UID/GID range, rootless Podman runtime, manager container, user service and GitLab registration. `runnerctl` validates the whole set of files, renders each instance's public registration template, config policy and user unit, and performs account and runtime reconciliation, registration and token merging. It runs without Nix; this repository only pins it and passes the files. Tokens never enter Git or the Nix store.
+
+Runner operations are separate from `just arch-workstation`. The workstation may install declared native dependencies during `update`, but it never reconciles or registers instances.
 
 ## Reconcile an instance
 
@@ -32,7 +34,7 @@ just verify-runner frontend
 just status-runner frontend
 ```
 
-Verification checks registration, service, manager image and mount isolation, socket, GitLab health and a disposable job network. Status summarizes state without sensitive metadata. Operations share `/run/lock/nix-config-runner.lock`; managed writes reject symlinks, hard links and unexpected file types. Interrupted reconcile or trust work retains private pending markers inside the instance config directory. Correct the cause and rerun; do not remove registrations, accounts, subordinate-ID entries or markers as a shortcut. Disabling an instance withdraws management and package requirements without deleting runtime state.
+Verification checks registration, service, manager image and mount isolation, socket, GitLab health and a disposable job network. Status summarizes state without sensitive metadata. Operations share `/run/lock/nix-config-runner.lock`; managed writes reject symlinks, hard links and unexpected file types. Interrupted reconcile or trust work retains private pending markers inside the instance config directory. Correct the cause and rerun; do not remove registrations, accounts, subordinate-ID entries or markers as a shortcut. Removing an instance file from `configFiles` withdraws management and package requirements without deleting runtime state.
 
 Source-only validation:
 
@@ -41,4 +43,4 @@ just check
 nix build --no-link --show-trace --print-build-logs .#runnerctl
 ```
 
-Tests use isolated declarations and fake operations, not a live GitLab Runner.
+`just check` runs `runnerctl validate` on the declared files. runnerctl's own tests use isolated declarations and fake operations, not a live GitLab Runner.

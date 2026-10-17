@@ -104,7 +104,6 @@ let
     && !(lib.getAttrFromPath path result.config)
     && builtins.deepSeq result.host true
   ) allSwitches;
-  oneRunner = evaluate [ { services.gitlabRunner.instances.frontend.enable = false; } ];
   merged = evaluate [
     {
       imports = [
@@ -163,12 +162,11 @@ assert lib.all (text: lib.hasInfix text home.config.programs.zsh.initContent) [
 ];
 assert switchesWork;
 assert builtins.length merged.host.systemSettings.firewall.rules == 2;
-assert builtins.attrNames oneRunner.host.gitlabRunners == [ "dotnet" ];
 assert base.config.programs.ai.enable && base.config.virtualization.kvm.gui.enable;
 assert base.host.systemSettings.trim.enable;
 assert override.host.name == "overridden" && override.host.systemSettings.timeZone == "UTC";
 assert override.host.systemSettings.firewall.rules == [ ];
-assert disabled.host.gitlabRunners == { };
+assert disabled.host.runnerConfigFiles == [ ];
 assert !disabled.host.personalAgent.enable;
 assert !disabled.host.powerpanel.enable;
 assert !(builtins.elem "powerpanel" packages.aur);

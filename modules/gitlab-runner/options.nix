@@ -1,17 +1,15 @@
 { lib }:
-let
-  enable = description: (lib.mkEnableOption description) // { default = true; };
-in
 {
-  enable = enable "declared GitLab Runner instances";
-  instances = lib.mkOption {
-    type = lib.types.attrsOf (
-      lib.types.submodule {
-        freeformType = lib.types.attrsOf lib.types.anything;
-        options.enable = enable "this Runner instance";
-      }
-    );
-    default = { };
-    description = "Runner-owned declarations; enabled instances are validated by the Runner interface.";
+  enable = (lib.mkEnableOption "the declared GitLab Runner instances") // {
+    default = true;
+  };
+  configFiles = lib.mkOption {
+    type = lib.types.listOf lib.types.path;
+    default = [ ];
+    description = ''
+      Runner instance files, each named after the environment it serves
+      (`frontend.toml` declares `frontend`). runnerctl validates the whole set;
+      bases named by `extends` and relative CA certificates are included.
+    '';
   };
 }

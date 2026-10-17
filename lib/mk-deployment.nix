@@ -36,7 +36,7 @@ let
   runners = import ../modules/gitlab-runner {
     inherit lib pkgs adapterPython;
     gitlab-runner = inputs.gitlab-runner;
-    rawInstances = host.gitlabRunners;
+    configFiles = host.runnerConfigFiles;
   };
   ai = import ../modules/ai {
     inherit lib;

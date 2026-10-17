@@ -25,5 +25,8 @@
     admin = true;
     homeModules = [ ./home.nix ];
   };
-  services.gitlabRunner.instances = import ../../modules/gitlab-runner/tests/instances.nix;
+  services.gitlabRunner.configFiles = [
+    ./runners/frontend.toml
+    ./runners/dotnet.toml
+  ];
 }
