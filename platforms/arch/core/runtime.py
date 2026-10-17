@@ -163,14 +163,7 @@ class Core(BaseAdapter):
             self.clear("units")
             self.actions += 1
         for unit in d["units"]:
-            if not self.systemctl_ok("is-enabled", "--quiet", unit):
-                self.systemd.enable(unit)
-                self.actions += 1
-            if not self.systemctl_ok("is-active", "--quiet", unit):
-                self.systemd.start(unit)
-                if not self.systemctl_ok("is-active", "--quiet", unit):
-                    raise Conflict(f"required system unit {unit} did not become active")
-                self.actions += 1
+            self.converge_unit(unit)
         print(
             f"Core converged: {self.updates} files updated, {self.actions} runtime actions."
         )
@@ -286,8 +279,10 @@ class Core(BaseAdapter):
         if d["reloadUnits"] and self.pending("units"):
             actions.append(("~", "reload systemd units"))
         for unit in d["units"]:
-            enabled = self.systemctl_ok("is-enabled", "--quiet", unit)
-            active = self.systemctl_ok("is-active", "--quiet", unit)
+            # Judge as converge_unit does, so the plan matches the deployment.
+            state = self.ready_unit(unit)
+            enabled = state.get("UnitFileState") == "enabled"
+            active = state.get("ActiveState") == "active"
             if not enabled:
                 actions.append(("~", f"enable {unit}"))
             if not active:

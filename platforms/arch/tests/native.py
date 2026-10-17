@@ -50,7 +50,7 @@ if command == "python":
             "purge",
         )
     else:
-        assert phase in ("preflight", "converge"), args
+        assert phase in ("preflight", "converge", "purge"), args
     optional = ADAPTERS[adapter][1]
     if optional and state.get(f"{optional}_not_ready"):
         sys.exit(20)

@@ -14,7 +14,7 @@
 sudo ufw status verbose
 ```
 
-接管 AP 見[熱點](hotspot.md)。停用宣告只是不再管理，不會移除既有的檔案、帳號、套件或服務狀態。
+接管 AP 見[熱點](hotspot.md)。停用宣告只是不再管理，不會移除既有的檔案、帳號、套件或服務狀態。`purge` 只移除這個轉接器擁有的 drop-in，語系、時區、主機名稱、console、防火牆規則與熱點設定保留現值。
 
 ## PowerPanel（CyberPower UPS）
 

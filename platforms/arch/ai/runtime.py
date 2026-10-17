@@ -156,21 +156,67 @@ class AI(BaseAdapter):
         return True
 
     def ensure_service(self, name, action, restart=False):
-        state = self.require_unit(name)
-        if state.get("UnitFileState") != "enabled":
-            self.files.mark(action)
-            self.run("systemctl", "enable", name)
-            self.actions += 1
-        if state.get("ActiveState") != "active" or restart:
-            self.files.mark(action)
-            self.run("systemctl", "restart" if restart else "start", name)
-            self.actions += 1
-        state = self.require_unit(name)
+        self.converge_unit(
+            name, restart=restart, before_change=lambda: self.files.mark(action)
+        )
+
+    def remove(self, name):
+        path = self.files.path(name)
+        if not path.exists():
+            return False
+        if not path.is_file():
+            raise Conflict(f"managed path is not a regular file: {name}")
+        path.unlink()
+        self.files.sync_dir(path.parent)
+        return True
+
+    def purge(self):
+        """Withdraw the router, its proxy site and the public route.
+
+        Prepared binaries, models and receipts stay: they are mutable assets
+        that are expensive to rebuild. Caddy itself stays installed.
+        """
+        d = self.desired
+        if not d["llama"]:
+            print("AI services purged: not managed.")
+            return
+        if d["proxy"]:
+            # Withdraw public exposure first.
+            target = f"http://127.0.0.1:{d['localPort']}"
+            port = str(d["httpsPort"])
+            status = self.run(
+                "tailscale", "serve", "status", "--json", check=False
+            ).stdout
+            if target in status and port in status:
+                self.run("tailscale", "serve", f"--https={port}", "off")
+            site = self.path_str(
+                "caddySite", "/etc/caddy/conf.d/nix-config-llama.caddy"
+            )
+            if (
+                self.remove(site)
+                and self.unit("caddy.service").get("ActiveState") == "active"
+            ):
+                self.run(
+                    "caddy",
+                    "reload",
+                    "--config",
+                    self.path_str("caddyMain", "/etc/caddy/Caddyfile"),
+                    "--address",
+                    "unix//run/caddy/admin.socket",
+                )
+        state = self.unit("llama-swap.service")
         if (
-            state.get("ActiveState") != "active"
-            or state.get("UnitFileState") != "enabled"
+            state.get("UnitFileState") == "enabled"
+            or state.get("ActiveState") == "active"
         ):
-            raise Conflict(f"required AI service {name} did not become ready")
+            self.systemd.disable("llama-swap.service", now=True)
+        unit = self.remove(
+            self.path_str("switcherUnit", "/etc/systemd/system/llama-swap.service")
+        )
+        self.remove(self.path_str("switcherConfig", "/etc/llama-swap/config.yaml"))
+        if unit:
+            self.systemd.daemon_reload()
+        print("AI services purged; prepared binaries and models were kept.")
 
     def _curl_ready(self, port, endpoint="/v1/models", retries=10, delay=2):
         url = f"http://127.0.0.1:{port}{endpoint}"

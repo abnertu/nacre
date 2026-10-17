@@ -73,7 +73,7 @@ class Fake(FakeNative):
                 self.unit(rest[1])[
                     "UnitFileState" if verb == "enable" else "ActiveState"
                 ] = "enabled" if verb == "enable" else "active"
-            elif verb not in ("list-timers", "daemon-reload"):
+            elif verb not in ("list-timers", "daemon-reload", "try-restart"):
                 raise AssertionError(args)
         elif cmd == "timedatectl":
             if rest[0] == "set-timezone":
@@ -181,6 +181,35 @@ class SystemTests(unittest.TestCase):
             self.assertEqual(
                 sorted(os.listdir(directory)), ["adapter.py", "runtime.py"]
             )
+
+    def test_purge_removes_owned_dropins_and_keeps_system_values(self):
+        names = ("timesyncd", "journald", "logind")
+        for name in names:
+            self.write(f"/etc/systemd/{name}.conf.d/60-nix-config.conf", "[X]\n")
+        self.write("/etc/systemd/system/fstrim.timer.d/60-nix-config.conf", "[Timer]\n")
+        self.write("/etc/locale.conf", "LANG=en_US.UTF-8\n")
+        self.d.update(files={name: "[X]\n" for name in names}, trim={})
+        self.system.purge()
+        for name in names:
+            self.assertFalse(
+                (self.root / f"etc/systemd/{name}.conf.d/60-nix-config.conf").exists()
+            )
+        self.assertFalse(
+            (
+                self.root / "etc/systemd/system/fstrim.timer.d/60-nix-config.conf"
+            ).exists()
+        )
+        self.assertEqual(
+            (self.root / "etc/locale.conf").read_text(), "LANG=en_US.UTF-8\n"
+        )
+        restarted = [
+            call[2]
+            for call in self.native.calls
+            if call[:2] == ("systemctl", "try-restart")
+        ]
+        self.assertEqual(
+            restarted, ["systemd-timesyncd.service", "systemd-journald.service"]
+        )
 
     def test_unmanaged_does_nothing(self):
         self.system.converge()

@@ -113,7 +113,12 @@ class Fake(FakeNative):
             rest = [value for value in rest if value not in ("--quiet", "--now")]
             verb, *units = rest
             unit = self.unit(units[0]) if units else {}
-            if verb == "is-enabled":
+            if verb == "show":
+                out = "LoadState=loaded\nActiveState={}\nUnitFileState={}\n".format(
+                    "active" if unit["active"] else "inactive",
+                    "enabled" if unit["enabled"] else "disabled",
+                )
+            elif verb == "is-enabled":
                 code = 0 if unit["enabled"] else 1
             elif verb == "is-active":
                 code = 0 if unit["active"] else 3
@@ -335,7 +340,9 @@ class CoreTests(unittest.TestCase):
 
     def test_unit_that_stays_inactive_after_start_fails_with_its_name(self):
         self.native.stay_inactive.add("libvirtd.socket")
-        with self.assertRaisesRegex(Conflict, "libvirtd.socket did not become active"):
+        with self.assertRaisesRegex(
+            Conflict, "libvirtd.socket did not become enabled and active"
+        ):
             self.deploy()
 
     def test_inactive_powerpanel_is_not_restarted(self):

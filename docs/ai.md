@@ -158,4 +158,4 @@ systemctl status llama-swap.service caddy.service
 
 舊的獨立 `llama-server` preset 與 drop-in 以固定的歷史內容辨識，與目前選取的模型無關。內容完全相符的舊檔在遷移到 llama-swap 期間可以保留，部署會在需要時停用舊服務；被修改過的 preset、drop-in 與手動覆寫仍需明確接管。舊檔與模型資源不會被自動移除。
 
-停用 AI 只是停止收斂，不會移除已準備的執行檔、模型、原生檔案、pending 標記或 Tailscale 路由。進度與復原見[部署](deployment.md)。
+停用 AI 只是停止收斂，不會移除已準備的執行檔、模型、原生檔案、pending 標記或 Tailscale 路由。`purge` 會撤下 Tailscale Serve 路由、Caddy site 與 `llama-swap`，保留已準備的執行檔、模型與收據。進度與復原見[部署](deployment.md)。

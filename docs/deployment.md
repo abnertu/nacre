@@ -51,7 +51,12 @@ just arch-workstation purge     # 移除受管理的 Arch 部署狀態，略過 
 - `plan` 只讀：列出缺少與可升級的套件、core 的每一項檔案與 runtime 變更、system 與可選模組的預檢結果，以及 Home Manager 世代是否更新。每行以 `=`（不變）、`~`（變更）、`+`（新增）、`!`（衝突）開頭，終端機上依此上色；有衝突時以非零代碼結束。system settings 目前只顯示預檢結果，不預覽細項。
 - 日常部署不安裝套件；缺套件時以代碼 3 停止，改用 `update`。
 - `update` 完整升級 pacman 並收斂 AUR；核心更新後可能需要重新開機。
-- `purge` 停用受管理的系統 unit，移除目前宣告的核心檔案、LizardByte 套件庫、Personal Agent unit、pending 狀態與 Nix 設定區塊；保留套件、帳號、Runner 註冊與可變資料。已停用功能的檔案不再受管理，purge 不會動；system-settings、AI 與 initramfs 的變更也不會撤回。purge 不啟用 Home Manager。
+- `purge` 依序撤回：
+  - AI：Tailscale Serve 路由、Caddy site、`llama-swap` 的 unit 與設定。
+  - 系統設定：timesyncd、journald、logind、fstrim timer 的 drop-in。
+  - core：受管理的系統 unit、核心檔案、LizardByte 套件庫、Personal Agent unit、Nix 設定區塊與 pending 狀態。
+
+  保留套件、帳號、Runner 註冊、可變資料、已準備的 AI 執行檔與模型，以及語系、時區、主機名稱、console、防火牆規則、熱點設定這些系統現值；initramfs 的模組區塊也保留，因為撤回需要重建開機映像。已停用功能的檔案不再受管理，purge 不會動。purge 不啟用 Home Manager。
 
 `just arch-workstation` 先建置內含固定 Home Manager 啟用套件的部署產物，執行時依序：預檢核心狀態與可選模組、（`update` 時）更新套件、收斂原生檔案與服務、啟用 home。兩個階段沒有共同的回滾：home 啟用失敗時，Arch 的變更仍保留。Runner 與 [AI 準備](ai.md) 不在這個流程內。
 

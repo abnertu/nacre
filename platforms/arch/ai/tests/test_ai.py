@@ -60,6 +60,12 @@ class Native(FakeNative):
             return FakeProcess("socket\n")
         if args[:3] == ("tailscale", "serve", "--bg"):
             self.serve = json.dumps({"443": "http://127.0.0.1:11435"})
+        if args[:3] == ("tailscale", "serve", "--https=443") and args[-1] == "off":
+            self.serve = "{}"
+        if args[:3] == ("systemctl", "disable", "--now"):
+            self.services[args[3]].update(
+                UnitFileState="disabled", ActiveState="inactive"
+            )
         return FakeProcess()
 
 
@@ -228,6 +234,25 @@ class AITests(unittest.TestCase):
         result.converge()
         self.assertEqual(result.updates, 0)
         self.assertFalse(any(c[:2] == ("caddy", "reload") for c in self.native.calls))
+
+    def test_purge_withdraws_route_site_and_router_but_keeps_assets(self):
+        self.ai().converge()
+        self.native.calls.clear()
+        self.ai().purge()
+        self.assertEqual(self.native.serve, "{}")
+        self.assertFalse(
+            (self.root / "etc/caddy/conf.d/nix-config-llama.caddy").exists()
+        )
+        self.assertTrue(
+            any(call[:2] == ("caddy", "reload") for call in self.native.calls)
+        )
+        self.assertEqual(
+            self.native.services["llama-swap.service"]["UnitFileState"], "disabled"
+        )
+        self.assertFalse((self.root / "etc/systemd/system/llama-swap.service").exists())
+        self.assertFalse((self.root / "etc/llama-swap/config.yaml").exists())
+        self.assertTrue((self.root / "var/lib/llama/models/model.gguf").exists())
+        self.assertTrue((self.root / "opt/llama/current").exists())
 
     def test_disabled_preserves_state(self):
         path = self.root / "etc/llama/server/models.ini"

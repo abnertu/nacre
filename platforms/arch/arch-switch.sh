@@ -260,6 +260,9 @@ exec {lock_fd}>"$runtime_dir/nix-config-arch.lock"
 if ((purge)); then
   progress_start 'Purge managed Arch state' 1
   native sudo -v
+  # Optional services first, then system drop-ins; core removes pending state.
+  adapter "$ai_adapter" "$ai_manifest" purge
+  adapter "$system_adapter" "$system_manifest" purge
   core purge
   progress_update 1 1
   progress_finish 'done'

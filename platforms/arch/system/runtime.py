@@ -36,24 +36,50 @@ class System(BaseAdapter):
         return path.read_text() if path.is_file() else ""
 
     def service(self, name, action, restart=False):
-        state = self.ready_unit(name)
-        if state.get("UnitFileState") != "enabled":
-            self.files.mark(action)
-            self.systemd.enable(name)
-            self.actions += 1
-        if state.get("ActiveState") != "active" or restart:
-            self.files.mark(action)
-            if restart:
-                self.systemd.restart(name)
-            else:
-                self.systemd.start(name)
-            self.actions += 1
-        state = self.ready_unit(name)
-        if (
-            state.get("ActiveState") != "active"
-            or state.get("UnitFileState") != "enabled"
+        self.converge_unit(
+            name, restart=restart, before_change=lambda: self.files.mark(action)
+        )
+
+    def remove(self, name):
+        path = self.files.path(name)
+        if not path.exists():
+            return False
+        if not path.is_file():
+            raise Conflict(f"managed path is not a regular file: {name}")
+        path.unlink()
+        self.files.sync_dir(path.parent)
+        return True
+
+    def purge(self):
+        """Withdraw the drop-ins this adapter owns; keep the system's own values.
+
+        Locale, timezone, hostname, console, firewall rules and the hotspot
+        profile are the machine's settings, so withdrawing management keeps
+        them as they are now.
+        """
+        d = self.desired
+        removed = [
+            name
+            for name in d.get("files", {})
+            if self.remove(f"/etc/systemd/{name}.conf.d/60-nix-config.conf")
+        ]
+        if d.get("trim") is not None and self.remove(
+            "/etc/systemd/system/fstrim.timer.d/60-nix-config.conf"
         ):
-            raise Conflict(f"required system unit {name} did not become ready")
+            removed.append("trim")
+        if removed:
+            self.systemd.daemon_reload()
+        # logind applies at the next boot, as it does on convergence.
+        for name, unit in (
+            ("timesyncd", "systemd-timesyncd.service"),
+            ("journald", "systemd-journald.service"),
+        ):
+            if name in removed:
+                self.run("systemctl", "try-restart", unit)
+        print(
+            f"System settings purged: {len(removed)} drop-ins removed; locale, timezone, "
+            "hostname, console, firewall and hotspot values were kept."
+        )
 
     def localtime(self):
         return get_timezone(runner=self.native, root=self.files.root)

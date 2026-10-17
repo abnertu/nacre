@@ -241,11 +241,15 @@ class ArchSwitchTests(unittest.TestCase):
             self.invoke(code=75)
         self.assertEqual(self.adapter_phases(CORE), [])
 
-    def test_purge_runs_only_core_purge(self):
+    def test_purge_withdraws_ai_then_system_then_core(self):
         self.invoke("--purge")
         self.assertEqual(
             [call for call in self.commands() if call[0] == "python"],
-            [[*CORE, "purge"]],
+            [
+                ["python", "/fixture/ai-adapter", "/fixture/ai-manifest", "purge"],
+                [*SYSTEM, "purge"],
+                [*CORE, "purge"],
+            ],
         )
         self.assertFalse(any(call[0] in ("pacman", "yay") for call in self.commands()))
 
