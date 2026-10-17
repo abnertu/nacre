@@ -3,13 +3,13 @@
 import errno
 import json
 import os
-from pathlib import Path
 import pty
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 SOURCE = Path(sys.argv.pop()).resolve()
 FAKE = r"""

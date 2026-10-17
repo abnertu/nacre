@@ -1,6 +1,7 @@
 """Adopts one prepared NetworkManager AP and keeps its public properties."""
 
 from __future__ import annotations
+
 import ipaddress
 import json
 import re

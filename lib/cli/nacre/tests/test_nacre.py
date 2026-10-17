@@ -1,12 +1,12 @@
 """Run the built nacre command against fake nix, sudo and Home Manager state."""
 
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 NACRE = sys.argv.pop()
 TEMPLATE = Path(sys.argv.pop())

@@ -5,9 +5,9 @@ import copy
 import importlib.util
 import io
 import os
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from nix_adapter import Conflict, FakeNative, FakeProcess, Files

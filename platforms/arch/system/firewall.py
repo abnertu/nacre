@@ -1,10 +1,12 @@
 """UFW convergence for declared service ports and the hotspot."""
 
 from __future__ import annotations
+
 import ipaddress
 import re
 import shlex
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from nix_adapter import Conflict, Native, assignments
 

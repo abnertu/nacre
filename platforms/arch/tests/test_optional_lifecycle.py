@@ -2,12 +2,12 @@
 
 import importlib.util
 import os
-from pathlib import Path
 import pty
 import subprocess
 import sys
-from typing import Any
 import unittest
+from pathlib import Path
+from typing import Any
 
 SOURCE = Path(sys.argv.pop()).resolve()
 BASE_TEST = Path(__file__).with_name("test_arch_switch.py")

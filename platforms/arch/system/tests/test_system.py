@@ -5,12 +5,12 @@ import importlib.util
 import io
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from nix_adapter import (
@@ -192,7 +192,7 @@ class Fake(FakeNative):
             return "".join(uuid + "\n" for uuid in self.up)
         if rest[:2] == ["connection", "modify"]:
             pairs = rest[4:]
-            self.connection.update(zip(pairs[::2], pairs[1::2]))
+            self.connection.update(zip(pairs[::2], pairs[1::2], strict=True))
             return ""
         if rest[:2] == ["connection", "up"]:
             self.up.add(self.uuid)
@@ -496,7 +496,7 @@ class SystemTests(unittest.TestCase):
         self.system.converge()
         modify, up = self.nmcli_writes()
         self.assertEqual(modify[:4], ("nmcli", "connection", "modify", "uuid"))
-        changed = dict(zip(modify[5::2], modify[6::2]))
+        changed = dict(zip(modify[5::2], modify[6::2], strict=True))
         self.assertEqual(changed["802-11-wireless.ssid"], "nix")
         self.assertNotIn("ipv4.method", changed)
         self.assertEqual(up[-2:], ("ifname", "wlan0"))
@@ -629,9 +629,11 @@ class SystemTests(unittest.TestCase):
                 raise OSError("fixture failure")
             return original(source, target)
 
-        with patch("nix_adapter.files.os.replace", side_effect=replace):
-            with self.assertRaises(OSError):
-                self.system.converge()
+        with (
+            patch("nix_adapter.files.os.replace", side_effect=replace),
+            self.assertRaises(OSError),
+        ):
+            self.system.converge()
         self.assertTrue(self.files.pending("locale"))
         self.assertEqual(list((self.root / "etc").glob(".nix-config.*")), [])
         self.assertEqual(

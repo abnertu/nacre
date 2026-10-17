@@ -1,11 +1,11 @@
 """Exercise real Query QML against fake Quickshell signals, never native IPC."""
 
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 source = Path(sys.argv[1])
 runner = sys.argv[2]

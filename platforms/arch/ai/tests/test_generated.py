@@ -1,9 +1,9 @@
 """Check the Nix-built AI manifest consumed by the privileged adapter."""
 
 import json
-from pathlib import Path
 import sys
 import unittest
+from pathlib import Path
 
 MANIFEST = Path(sys.argv.pop(1))
 PACKAGE_CADDY = Path(sys.argv.pop(1))

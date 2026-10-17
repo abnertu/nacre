@@ -6,18 +6,15 @@ import hashlib
 import itertools
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import time
 from collections.abc import Callable
-from typing import TypeVar
-
-Value = TypeVar("Value")
+from pathlib import Path
 
 
-def comma_values(value: str, cast: Callable[[str], Value] = str) -> list[Value]:
+def comma_values[Value](value: str, cast: Callable[[str], Value] = str) -> list[Value]:
     try:
         values = [cast(part.strip()) for part in value.split(",") if part.strip()]
     except ValueError as error:

@@ -26,7 +26,7 @@ pkgs.runCommand "source-format-check"
   }
   ''
     find ${source} -name '*.nix' -print0 | xargs -0 nixfmt --check
-    ruff check --no-cache --select F ${source}
+    ruff check --no-cache ${source}
     ruff format --no-cache --check ${source}
     touch "$out"
   ''

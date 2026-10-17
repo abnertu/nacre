@@ -1,14 +1,14 @@
 """Assert systemd relationships on generated units, including repeated keys."""
 
-from pathlib import Path
-import shutil
 import json
-import time
-import sys
+import shutil
 import subprocess
+import sys
 import tempfile
+import time
 import tomllib
 import unittest
+from pathlib import Path
 
 EXPECTED = json.loads(Path(sys.argv.pop()).read_text())
 UNITS = Path(sys.argv.pop())

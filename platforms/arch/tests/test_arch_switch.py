@@ -3,14 +3,14 @@
 import fcntl
 import json
 import os
-from pathlib import Path
 import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Any
 import unittest
+from pathlib import Path
+from typing import Any
 
 SOURCE = Path(sys.argv.pop()).resolve()
 FAKE = Path(__file__).with_name("native.py")
@@ -43,7 +43,16 @@ class ArchSwitchTests(unittest.TestCase):
         (self.root / "etc/arch-release").touch()
         self.state = {"groups": ["wheel"]}
         self.save()
-        for command in "id sudo pacman pacman-conf yay systemctl curl bsdtar".split():
+        for command in [
+            "id",
+            "sudo",
+            "pacman",
+            "pacman-conf",
+            "yay",
+            "systemctl",
+            "curl",
+            "bsdtar",
+        ]:
             executable = self.root / "bin" / command
             executable.write_text(
                 f"#!{sys.executable}\n" + FAKE.read_text().split("\n", 1)[1]

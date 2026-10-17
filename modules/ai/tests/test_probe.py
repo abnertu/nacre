@@ -2,14 +2,14 @@
 
 import importlib.util
 import io
-from email.message import Message
 import json
-from pathlib import Path
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import unittest
-from unittest.mock import patch
 import urllib.error
+from email.message import Message
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location(
     "probe", Path(__file__).parents[1] / "probe.py"

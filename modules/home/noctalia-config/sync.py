@@ -1,21 +1,21 @@
 """Explicit, reviewed preference exchange with Noctalia v5 (not secret sync)."""
 
 import argparse
-from contextlib import contextmanager
+import contextlib
 import fcntl
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import signal
 import stat
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager
+from pathlib import Path
 
 from nix_adapter import dump_toml, parse_toml
-
 
 # Whole sections are owned together. Unknown/new sections require code review.
 SECTIONS = frozenset(
@@ -158,10 +158,8 @@ def execute(argv, env=None, cwd=None):
     except BaseException as error:
         # Kill the entire ordinary child process group before releasing our lock.
         # Do not recover overrides after an activation timeout: keep the receipt.
-        try:
+        with contextlib.suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
         try:
             process.communicate(timeout=5)
         except subprocess.TimeoutExpired:

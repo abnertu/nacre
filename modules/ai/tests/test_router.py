@@ -1,10 +1,10 @@
 """Exercise the pinned llama-swap router against disposable HTTP model servers."""
 
-import http.server
 import concurrent.futures
+import contextlib
+import http.server
 import json
 import os
-from pathlib import Path
 import shlex
 import signal
 import socket
@@ -13,9 +13,10 @@ import sys
 import tempfile
 import time
 import unittest
-from typing import cast
 import urllib.error
 import urllib.request
+from pathlib import Path
+from typing import cast
 
 LLAMA_SWAP = (
     Path(sys.argv.pop()).resolve(strict=True) if "--child" not in sys.argv else None
@@ -315,10 +316,8 @@ class RouterIntegrationTests(unittest.TestCase):
 
     def stop_router(self):
         if self.router is not None and self.router.poll() is None:
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 os.killpg(self.router.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
             try:
                 self.router.wait(timeout=5)
             except subprocess.TimeoutExpired:
@@ -329,10 +328,8 @@ class RouterIntegrationTests(unittest.TestCase):
                 os.kill(pid, 0)
             except ProcessLookupError:
                 continue
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 os.kill(pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
         deadline = time.monotonic() + 2
         alive = []
         while time.monotonic() < deadline:
@@ -347,10 +344,8 @@ class RouterIntegrationTests(unittest.TestCase):
                 break
             time.sleep(0.05)
         for pid in alive if "alive" in locals() else ():
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 os.kill(pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
         if self.router_log:
             self.router_log.close()
 

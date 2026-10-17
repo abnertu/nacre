@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
 import stat
 import subprocess
+from pathlib import Path
 
 from nix_adapter import BaseServiceAdapter, Conflict, Native, NotReady, run_adapter_cli
 

@@ -3,9 +3,9 @@
 
 import json
 import os
-from pathlib import Path
 import shutil
 import sys
+from pathlib import Path
 
 root = Path(os.environ["ARCH_TEST_ROOT"])
 state_path = root / "state.json"

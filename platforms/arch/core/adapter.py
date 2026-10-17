@@ -9,11 +9,11 @@ sys.dont_write_bytecode = True
 
 import json
 import os
-from pathlib import Path
 import traceback
+from pathlib import Path
 
-from nix_adapter import Conflict
 import runtime
+from nix_adapter import Conflict
 
 PHASES = ("preflight", "plan", "repositories", "converge", "finish", "purge")
 FLAGS = {"--verbose", "--color"}

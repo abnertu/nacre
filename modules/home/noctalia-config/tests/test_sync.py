@@ -1,15 +1,15 @@
 """Public operations against temporary homes and fake native/Nix commands."""
 
-import importlib.util
-import json
 import contextlib
+import importlib.util
 import io
-import time
-from unittest import mock
-from pathlib import Path
+import json
 import sys
 import tempfile
+import time
 import unittest
+from pathlib import Path
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("sync", sys.argv.pop())
 assert spec is not None and spec.loader is not None
@@ -337,9 +337,11 @@ class SyncTests(unittest.TestCase):
         marker = self.control.parent / "late-write"
         script = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',sys.argv[1]]); print('private',flush=True); time.sleep(10)"
         child = f"import time; from pathlib import Path; time.sleep(.3); Path({str(marker)!r}).touch()"
-        with mock.patch.dict(sync.COMMAND_TIMEOUTS, {"query": 0.1}):
-            with self.assertRaises(sync.CommandTimeout) as raised:
-                sync.execute([sys.executable, "-c", script, child])
+        with (
+            mock.patch.dict(sync.COMMAND_TIMEOUTS, {"query": 0.1}),
+            self.assertRaises(sync.CommandTimeout) as raised,
+        ):
+            sync.execute([sys.executable, "-c", script, child])
         self.assertNotIn("private", str(raised.exception))
         time.sleep(0.4)
         self.assertFalse(marker.exists())

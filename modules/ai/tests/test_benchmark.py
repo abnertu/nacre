@@ -2,10 +2,10 @@
 
 import importlib.util
 import json
-from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parents[1] / "benchmark.py"
 SPEC = importlib.util.spec_from_file_location("ai_benchmark", SOURCE)

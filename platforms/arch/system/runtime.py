@@ -7,6 +7,9 @@ native runner directly; production accepts no root/command overrides.
 import hashlib
 import os
 from pathlib import Path
+
+from firewall import Firewall
+from hotspot import Hotspot
 from nix_adapter import BaseAdapter, Conflict, locale_gen, replace_keys
 from nix_adapter.system import (
     check_discard_support,
@@ -16,9 +19,6 @@ from nix_adapter.system import (
     set_hostname,
     set_timezone,
 )
-
-from firewall import Firewall
-from hotspot import Hotspot
 
 
 class System(BaseAdapter):
@@ -210,9 +210,8 @@ class System(BaseAdapter):
             self.console()
             if installed:
                 self.check_console_assets()
-        if d.get("power") is not None:
-            if not self.boot_id().strip():
-                raise Conflict("boot identity is unavailable")
+        if d.get("power") is not None and not self.boot_id().strip():
+            raise Conflict("boot identity is unavailable")
         if d.get("trim") is not None:
             f.timer_dropin(d["trimDropin"])
             self.check_trim()

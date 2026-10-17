@@ -1,8 +1,8 @@
 """Preserve Codex instruction messages and Qwen tool/thinking semantics."""
 
 import json
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 from jinja2 import Environment, StrictUndefined
 

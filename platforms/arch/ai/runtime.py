@@ -95,7 +95,7 @@ class AI(BaseAdapter):
             raise Conflict(
                 "prepared llama-server receipt does not match the declaration"
             )
-        for model, declaration in zip(models, d["models"].values()):
+        for model, declaration in zip(models, d["models"].values(), strict=True):
             receipt_path = declaration["path"] + ".nix-config-receipt"
             if not f.metadata_matches(receipt_path) or f.read(
                 receipt_path

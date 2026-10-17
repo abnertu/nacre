@@ -1,14 +1,14 @@
 """Isolated contract tests for the native llama.cpp adapter."""
 
+import hashlib
 import importlib.util
 import json
-import hashlib
 import os
-from pathlib import Path
 import sys
 import tempfile
-from typing import Any, cast
 import unittest
+from pathlib import Path
+from typing import Any, cast
 
 from nix_adapter import FakeNative, FakeProcess, Files
 

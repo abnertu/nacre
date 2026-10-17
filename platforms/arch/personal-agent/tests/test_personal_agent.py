@@ -1,8 +1,8 @@
 import importlib.util
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 from nix_adapter import FakeProcess
 

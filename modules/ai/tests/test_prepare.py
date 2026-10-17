@@ -1,15 +1,15 @@
 """Execute the preparation controller against an isolated model directory."""
 
-import hashlib
 import fcntl
+import hashlib
 import os
-from pathlib import Path
 import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 SOURCE = Path(sys.argv.pop()).resolve()
 
@@ -177,8 +177,7 @@ model_sha256s=({digest} {digest})
         (revisions / ("0" * 40 + "-20000")).symlink_to(self.root)
         self.assertNotEqual(self.invoke("--build-only").returncode, 0)
         (revisions / ("0" * 40 + "-20000")).unlink()
-        lock = open(self.root / "prepare.lock", "w")
-        self.addCleanup(lock.close)
+        lock = self.enterContext(open(self.root / "prepare.lock", "w"))
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         self.assertEqual(self.invoke().returncode, 75)
 

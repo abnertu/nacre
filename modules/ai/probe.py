@@ -3,11 +3,11 @@
 
 import argparse
 import json
-from pathlib import Path
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 
 def request(base_url, payload, timeout):

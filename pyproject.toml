@@ -18,4 +18,11 @@ executionEnvironments = [
 line-length = 88
 
 [tool.ruff.lint]
-select = ["F"]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
+# The formatter owns line length.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Entry points disable bytecode writes before importing their modules: as root
+# they would otherwise write __pycache__ into the read-only store path.
+"**/adapter.py" = ["E402"]

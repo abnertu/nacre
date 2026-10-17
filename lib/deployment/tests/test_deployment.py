@@ -1,6 +1,5 @@
 """Execute deployment entry points with isolated fake stages only."""
 
-from pathlib import Path
 import os
 import shlex
 import shutil
@@ -8,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 HOME = Path(sys.argv.pop()).read_text()
 DEPLOY = Path(sys.argv.pop()).read_text()
