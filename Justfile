@@ -9,16 +9,14 @@ check:
     #!/usr/bin/env bash
     set -euo pipefail
     source {{ quote(justfile_directory() + "/lib/cli/nix.sh") }}
-    nix_progress_init
-    exec nix "${nix_progress_args[@]}" flake check --show-trace --print-build-logs
+    nix_exec flake check
 
 # Check formatting and stable interfaces without building the full home.
 check-fast:
     #!/usr/bin/env bash
     set -euo pipefail
     source {{ quote(justfile_directory() + "/lib/cli/nix.sh") }}
-    nix_progress_init
-    exec nix "${nix_progress_args[@]}" build --no-link --show-trace --print-build-logs \
+    nix_exec build --no-link \
       .#checks.x86_64-linux.source-format \
       .#checks.x86_64-linux.python-types \
       .#checks.x86_64-linux.gitlab-runner-interface \
@@ -29,16 +27,14 @@ check-arch:
     #!/usr/bin/env bash
     set -euo pipefail
     source {{ quote(justfile_directory() + "/lib/cli/nix.sh") }}
-    nix_progress_init
-    exec nix "${nix_progress_args[@]}" run --show-trace --print-build-logs .#arch-switch -- --check
+    nix_exec run .#arch-switch -- --check
 
 # Build a deployment without activation.
 build deployment="arch-workstation":
     #!/usr/bin/env bash
     set -euo pipefail
     source {{ quote(justfile_directory() + "/lib/cli/nix.sh") }}
-    nix_progress_init
-    exec nix "${nix_progress_args[@]}" build --no-link --show-trace --print-build-logs {{ quote(".#" + deployment) }}
+    nix_exec build --no-link {{ quote(".#" + deployment) }}
 
 # Deploy the container-test configuration into a rootless podman Arch container.
 container-test *options:
@@ -49,55 +45,45 @@ prepare-ai mode="":
     #!/usr/bin/env bash
     set -euo pipefail
     source {{ quote(justfile_directory() + "/lib/cli/nix.sh") }}
-    nix_progress_init
     case {{ quote(mode) }} in
       '') args=() ;;
       build) args=(-- --build-only) ;;
       model) args=(-- --model-only) ;;
       *) printf '%s\n' 'usage: just prepare-ai [build|model]' >&2; exit 2 ;;
     esac
-    exec sudo --preserve-env=NO_COLOR nix "${nix_progress_args[@]}" \
-      --extra-experimental-features 'nix-command flakes' run --show-trace --print-build-logs .#llama-prepare "${args[@]}"
+    nix_exec_root NO_COLOR run .#llama-prepare "${args[@]}"
 
 # Reconcile one configured GitLab Runner instance before registration.
 prepare-runner instance:
     #!/usr/bin/env bash
     set -euo pipefail
     source {{ quote(justfile_directory() + "/lib/cli/nix.sh") }}
-    nix_progress_init
-    exec sudo --preserve-env=NO_COLOR nix "${nix_progress_args[@]}" \
-      --extra-experimental-features 'nix-command flakes' run --show-trace --print-build-logs .#runnerctl -- reconcile {{ quote(instance) }}
+    nix_exec_root NO_COLOR run .#runnerctl -- reconcile {{ quote(instance) }}
 
 # Register and verify one prepared GitLab Runner. Requires GITLAB_RUNNER_TOKEN.
 initialize-runner instance:
     #!/usr/bin/env bash
     set -euo pipefail
     source {{ quote(justfile_directory() + "/lib/cli/nix.sh") }}
-    nix_progress_init
     [[ -n ${GITLAB_RUNNER_TOKEN:-} ]] || {
       printf '%s\n' 'GITLAB_RUNNER_TOKEN is required' >&2
       exit 2
     }
-    exec sudo --preserve-env=GITLAB_RUNNER_TOKEN,NO_COLOR \
-      nix "${nix_progress_args[@]}" --extra-experimental-features 'nix-command flakes' run --show-trace --print-build-logs .#runnerctl -- register {{ quote(instance) }}
+    nix_exec_root GITLAB_RUNNER_TOKEN,NO_COLOR run .#runnerctl -- register {{ quote(instance) }}
 
 # Verify a configured GitLab Runner instance.
 verify-runner instance:
     #!/usr/bin/env bash
     set -euo pipefail
     source {{ quote(justfile_directory() + "/lib/cli/nix.sh") }}
-    nix_progress_init
-    exec sudo --preserve-env=NO_COLOR nix "${nix_progress_args[@]}" \
-      --extra-experimental-features 'nix-command flakes' run --show-trace --print-build-logs .#runnerctl -- verify {{ quote(instance) }}
+    nix_exec_root NO_COLOR run .#runnerctl -- verify {{ quote(instance) }}
 
 # Show the current state of a configured GitLab Runner instance.
 status-runner instance:
     #!/usr/bin/env bash
     set -euo pipefail
     source {{ quote(justfile_directory() + "/lib/cli/nix.sh") }}
-    nix_progress_init
-    exec sudo --preserve-env=NO_COLOR nix "${nix_progress_args[@]}" \
-      --extra-experimental-features 'nix-command flakes' run --show-trace --print-build-logs .#runnerctl -- status {{ quote(instance) }}
+    nix_exec_root NO_COLOR run .#runnerctl -- status {{ quote(instance) }}
 
 # Build and activate the Arch workstation; combine update, purge and verbose as needed.
 arch-workstation option1="" option2="":
