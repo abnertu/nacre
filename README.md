@@ -16,6 +16,8 @@ Nix evaluates a typed configuration into one fixed deployment artifact. Arch ada
 
 ## Features
 
+- **One command**: `nacre` installs a machine, previews and applies changes, reports status and rolls back home generations.
+- **Roles**: a `minimal` or `workstation` baseline that hosts and your configuration refine.
 - **Hyprland desktop** started by UWSM, with the Noctalia shell and one startup owner per application.
 - **Typed configuration**: unknown options, wrong types and invalid combinations fail at evaluation.
 - **Safe deployment**: preflight before any change; routine runs install nothing, only `update` syncs pacman and AUR.
@@ -24,19 +26,21 @@ Nix evaluates a typed configuration into one fixed deployment artifact. Arch ada
 
 ## Requirements
 
-- Arch Linux `x86_64` with the deployment user already created
-- [Nix](https://nixos.org/download/) with flakes ([just](https://just.systems/) for development)
-
-On a fresh Arch install, follow the [install guide](docs/install.md): bootstrap, then `nacre install` writes the configuration for your machine.
+- Arch Linux `x86_64`, with your account in `wheel`
+- network access; the bootstrap installs Nix ([just](https://just.systems/) is only for development)
 
 ## Quick start
+
+On a new machine ([install guide](docs/install.md)):
 
 ```bash
 git clone https://github.com/gin31259461/nacre ~/.config/nacre
 cd ~/.config/nacre
+./scripts/bootstrap.sh
+nix run .#nacre -- install
 ```
 
-Edit [configuration.nix](configuration.nix) (defaults live in [hosts/arch](hosts/arch/default.nix)), then read the [deployment guide](docs/deployment.md) before the first activation. Until a home generation installs `nacre`, run it as `nix run .#nacre -- <command>`.
+Afterwards, day to day ([deployment guide](docs/deployment.md)):
 
 ```bash
 nacre check               # every flake check; touches nothing
@@ -52,11 +56,12 @@ nacre purge               # remove managed Arch state, skip Home Manager
 
 ## Configuration
 
-[configuration.nix](configuration.nix) is the single entry point. `hosts/` sets defaults with `lib.mkDefault`; plain definitions here override them.
+[configuration.nix](configuration.nix) is the single entry point. A role sets the baseline, a host can refine it with `lib.mkDefault`, and plain definitions in `configuration.nix` win. This repository's own machine is [hosts/arch](hosts/arch/default.nix), a full example of a host.
 
 ```nix
-networking.hotspot.enable = false;
-users.users.abnertu.home.programs.git.settings.init.defaultBranch = "main";
+role = "workstation";
+networking.firewall.enable = false;
+users.users.alice.home.programs.git.settings.init.defaultBranch = "main";
 ```
 
 Inspect a resolved value without activating:
@@ -83,7 +88,7 @@ See the [configuration guide](docs/configuration.md).
 | [Personal Agent](docs/personal-agent.md) | External runtime config and the native service |
 | [Backup](docs/backup.md) | State outside the repository and restore order |
 
-[CONTEXT.md](CONTEXT.md) explains the composition model.
+[CONTEXT.md](CONTEXT.md) explains the composition model; [CHANGELOG.md](CHANGELOG.md) lists releases.
 
 ## Development
 

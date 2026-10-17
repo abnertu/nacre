@@ -1,6 +1,6 @@
 # AGENTS Instructions
 
-Operator-controlled Nix configuration for an existing Arch Linux + Hyprland workstation. Nix evaluates typed policy into a fixed deployment artifact, Arch adapters reconcile live state, then the prebuilt Home Manager generation activates. Read [CONTEXT.md](CONTEXT.md) before changing composition, and the feature's guide in [`docs/`](docs/) before editing that feature.
+Nacre: an operator-controlled Nix layer over existing Arch Linux + Hyprland machines; `hosts/arch` is the maintainer's own machine. Nix evaluates typed policy into a fixed deployment artifact, Arch adapters reconcile live state, then the prebuilt Home Manager generation activates. Read [CONTEXT.md](CONTEXT.md) before changing composition, and the feature's guide in [`docs/`](docs/) before editing that feature.
 
 **Never read or print credentials, private keys, password stores, Runner tokens, Noctalia keys or mutable application data.** Keep them out of Git, derivations, command arguments and unredacted logs; tests use synthetic fixtures.
 

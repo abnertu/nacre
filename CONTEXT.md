@@ -1,6 +1,6 @@
 # Composition model
 
-This repository describes one existing Arch Linux workstation. Nix builds an immutable deployment artifact that embeds the selected Home Manager activation package. Arch adapters converge native files, packages and services, then that fixed generation activates.
+Nacre layers a typed configuration onto an existing Arch Linux install. Nix builds an immutable deployment artifact that embeds the selected Home Manager activation package. Arch adapters converge native files, packages and services, then that fixed generation activates.
 
 | Boundary | Owner | Responsibility |
 | --- | --- | --- |
