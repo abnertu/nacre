@@ -1,4 +1,0 @@
-interface:
-  display_name: "Create AGENTS.md"
-  short_description: "Write scoped, actionable repository agent contracts"
-  default_prompt: "Use $create-agentsmd to write or improve this repository's AGENTS.md with verified ownership, scoped rules, and appropriate validation commands."

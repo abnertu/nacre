@@ -38,11 +38,6 @@ let
     "writing-for-agents" = "skills/productivity/writing-for-agents";
   };
   custom = [
-    "create-agentsmd"
-    "create-readme"
-    "lead-development"
-    "notion-add-task"
-    "notion-financer"
     "obsidian-vault"
   ];
   sourceFor = name: path: if name == "find-skills" then vercel + "/${path}" else matt + "/${path}";

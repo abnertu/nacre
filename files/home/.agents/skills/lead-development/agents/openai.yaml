@@ -1,4 +1,0 @@
-interface:
-  display_name: "Lead Development"
-  short_description: "Plan, discuss, build and finalize approved development"
-  default_prompt: "Use $lead-development to plan this task, discuss the implementation with me, wait for my execution approval, then complete development, verification, documentation and clean commits."

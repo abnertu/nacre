@@ -1,4 +1,0 @@
-interface:
-  display_name: "Notion Add Task"
-  short_description: "Create Notion task entries quickly"
-  default_prompt: "Use $notion-add-task to add these action items to my Notion Tasks database."

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Notion Financer"
-  short_description: "Manage Financer records in Notion"
-  default_prompt: "Use $notion-financer to log this expense in my Financer Notion workspace."

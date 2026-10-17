@@ -1,4 +1,0 @@
-interface:
-  display_name: "Create README"
-  short_description: "Write verified READMEs with clear first-use workflows"
-  default_prompt: "Use $create-readme to write or improve this repository's README with a verified quick start, suitable structure, and relevant badges."
