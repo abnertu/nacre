@@ -14,12 +14,24 @@ Read [configuration](configuration.md), [system settings](system-settings.md) an
 On a fresh Arch install without Nix or just, run the bootstrap after cloning. It enables `[multilib]`, installs prerequisites, configures Nix and starts `nix-daemon.service`:
 
 ```bash
-git clone https://github.com/gin31259461/nacre.git ~/.config/nix
-cd ~/.config/nix
+git clone https://github.com/gin31259461/nacre.git ~/.config/nacre
+cd ~/.config/nacre
 ./scripts/bootstrap.sh
 ```
 
 The bootstrap changes the host; read the script first.
+
+## Moving an existing checkout
+
+Checkouts older than 0.1.0 live at `~/.config/nix`, the directory Nix reads for user settings, and a transitional `nix.conf` there enables flakes. Move to `~/.config/nacre` only after a deployment has written the `nix.settings` block to `/etc/nix/nix.conf`:
+
+```bash
+nacre switch
+grep -A6 'BEGIN nix-config settings' /etc/nix/nix.conf   # experimental-features is there
+mv ~/.config/nix ~/.config/nacre
+```
+
+`nacre` finds either location, so it keeps working throughout. Outside `~/.config/nix` the repository's `nix.conf` is inert.
 
 ## Commands
 

@@ -1,6 +1,6 @@
 # AGENTS Instructions
 
-Manage workstation changes in `~/.config/nix`. Read its `AGENTS.md` before
+Manage workstation changes in Nacre, `~/.config/nacre`. Read its `AGENTS.md` before
 editing Arch policy, Home Manager configuration, desktop startup or Runners.
 Other projects under this home directory own their own worktrees and rules.
 

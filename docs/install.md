@@ -11,8 +11,8 @@ Nacre layers onto an existing Arch Linux install; it does not partition disks or
 ## Steps
 
 ```bash
-git clone https://github.com/gin31259461/nacre ~/.config/nix
-cd ~/.config/nix
+git clone https://github.com/gin31259461/nacre ~/.config/nacre
+cd ~/.config/nacre
 ./scripts/bootstrap.sh              # multilib, base packages, Nix and its daemon
 nix run .#nacre -- install
 ```

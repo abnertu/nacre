@@ -32,8 +32,8 @@ On a fresh Arch install, follow the [install guide](docs/install.md): bootstrap,
 ## Quick start
 
 ```bash
-git clone https://github.com/gin31259461/nacre ~/.config/nix
-cd ~/.config/nix
+git clone https://github.com/gin31259461/nacre ~/.config/nacre
+cd ~/.config/nacre
 ```
 
 Edit [configuration.nix](configuration.nix) (defaults live in [hosts/arch](hosts/arch/default.nix)), then read the [deployment guide](docs/deployment.md) before the first activation. Until a home generation installs `nacre`, run it as `nix run .#nacre -- <command>`.
