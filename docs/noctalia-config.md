@@ -15,8 +15,8 @@ noctalia config validate homes/abnertu/noctalia/config.toml
 ## Capture
 
 ```bash
-nix run .#noctalia-config -- capture --dry-run
-nix run .#noctalia-config -- capture
+nacre noctalia capture --dry-run
+nacre noctalia capture
 ```
 
 Capture exports the effective settings, keeps only the UI sections it owns, validates a staged candidate and atomically updates the snapshot when it differs. It never stages, commits or pushes. Review the diff before committing: labels and paths may contain personal data. Capture stops on validation warnings.
@@ -24,15 +24,15 @@ Capture exports the effective settings, keeps only the UI sections it owns, vali
 ## Deploy
 
 ```bash
-nix run .#noctalia-config -- deploy --dry-run
-nix run .#noctalia-config -- deploy
+nacre noctalia deploy --dry-run
+nacre noctalia deploy
 ```
 
 Deploy builds and activates the selected Home Manager configuration, then verifies the managed Noctalia sections; it does not run Arch convergence. It stops when a GUI override conflicts. To replace the overrides it owns, stop Noctalia first:
 
 ```bash
 systemctl --user stop noctalia.service
-nix run .#noctalia-config -- deploy --replace-overrides
+nacre noctalia deploy --replace-overrides
 systemctl --user start noctalia.service
 ```
 
@@ -43,7 +43,7 @@ Sections it does not own are never modified. It writes private recovery state be
 Recovery state lives in `~/.local/state/nix-config/noctalia-config/`. If a replacement was interrupted, keep the receipt and backup, stop Noctalia and run:
 
 ```bash
-nix run .#noctalia-config -- deploy --recover
+nacre noctalia deploy --recover
 ```
 
 It restores saved content only if the current state still matches the recorded transition; concurrent edits need manual handling.

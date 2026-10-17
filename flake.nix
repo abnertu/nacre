@@ -115,7 +115,12 @@
       // d.runners.checks;
 
       packages.${system} = {
-        inherit (d) arch-switch home-switch llama-prepare;
+        inherit (d)
+          arch-switch
+          home-switch
+          llama-prepare
+          nacre
+          ;
         ${d.deploymentName} = d.deployment;
         container-deployment = container.deployment;
         default = d.arch-switch;
@@ -124,6 +129,11 @@
       // d.runners.packages;
 
       apps.${system} = {
+        nacre = {
+          type = "app";
+          program = "${d.nacre}/bin/nacre";
+          meta.description = "Plan, switch and inspect the Nacre deployment";
+        };
         llama-prepare = {
           type = "app";
           program = "${d.llama-prepare}/bin/llama-prepare";

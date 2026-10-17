@@ -24,7 +24,7 @@ See [hotspot](hotspot.md) for adopting an AP. Disabling a declaration withdraws 
 
 Adapters compare content, ownership and mode, and replace a file atomically only when it differs. A pending marker in `/var/lib/nix-config/arch/` is recorded before a change and cleared after it succeeds. Healthy reruns rewrite nothing and restart nothing. logind changes take effect at the next boot instead of restarting the logged-in session. The TRIM timer keeps the native schedule with catch-up disabled; a conflicting schedule needs a manual decision.
 
-On failure, fix the reported cause and rerun with the marker in place. `just arch-workstation verbose` shows native commands and diagnostics.
+On failure, fix the reported cause and rerun with the marker in place. `nacre --verbose switch` shows native commands and diagnostics.
 
 Validate source only:
 

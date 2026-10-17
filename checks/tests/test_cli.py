@@ -1,4 +1,4 @@
-"""Exercise every recipe with fake Nix and sudo, without workstation access."""
+"""Exercise every development recipe with fake Nix, without workstation access."""
 
 import errno
 import json
@@ -21,16 +21,7 @@ import sys
 name = Path(sys.argv[0]).name
 args = sys.argv[1:]
 with open(os.environ["CLI_TEST_LOG"], "a") as log:
-    log.write(json.dumps({"command": name, "args": args,
-                          "token": bool(os.environ.get("GITLAB_RUNNER_TOKEN")),
-                          "no_color": "NO_COLOR" in os.environ}) + "\n")
-if name == "sudo":
-    keep = args.pop(0).removeprefix("--preserve-env=").split(",")
-    environment = {key: os.environ[key] for key in
-                   ("PATH", "CLI_TEST_LOG", "CLI_TEST_EXIT", "TERM")
-                   if key in os.environ}
-    environment.update({key: os.environ[key] for key in keep if key in os.environ})
-    os.execvpe(args[0], args, environment)
+    log.write(json.dumps({"command": name, "args": args}) + "\n")
 print("fixture stdout")
 print("fixture stderr", file=sys.stderr)
 raise SystemExit(int(os.environ.get("CLI_TEST_EXIT", "0")))
@@ -54,10 +45,9 @@ class RecipeTests(unittest.TestCase):
         shutil.copyfile(SOURCE / "lib/cli/nix.sh", self.project / "lib/cli/nix.sh")
         self.bin = self.root / "bin"
         self.bin.mkdir()
-        for name in ("nix", "sudo"):
-            path = self.bin / name
-            path.write_text(f"#!{sys.executable}\n" + FAKE)
-            path.chmod(0o755)
+        path = self.bin / "nix"
+        path.write_text(f"#!{sys.executable}\n" + FAKE)
+        path.chmod(0o755)
         self.log = self.root / "commands.jsonl"
 
     def invoke(self, *args, terminal=False, environment=None):
@@ -110,27 +100,12 @@ class RecipeTests(unittest.TestCase):
             ("check-fast", [], ".#checks.x86_64-linux.source-format", None),
             ("build", [], ".#arch-workstation", None),
             ("check-arch", [], ".#arch-switch", "--check"),
-            ("arch-workstation", [], ".#arch-workstation", None),
-            ("arch-workstation", ["update"], ".#arch-workstation", "--update"),
-            ("arch-workstation", ["purge"], ".#arch-workstation", "--purge"),
-            ("arch-workstation", ["plan"], ".#arch-workstation", "--plan"),
-            ("prepare-ai", [], ".#llama-prepare", None),
-            ("prepare-ai", ["build"], ".#llama-prepare", "--build-only"),
-            ("prepare-ai", ["model"], ".#llama-prepare", "--model-only"),
-            ("prepare-runner", ["fixture"], ".#runnerctl", "reconcile"),
-            ("initialize-runner", ["fixture"], ".#runnerctl", "register"),
-            ("verify-runner", ["fixture"], ".#runnerctl", "verify"),
-            ("status-runner", ["fixture"], ".#runnerctl", "status"),
         ):
             with self.subTest(recipe=recipe, args=args):
-                result = self.invoke(
-                    recipe,
-                    *args,
-                    environment={"GITLAB_RUNNER_TOKEN": "synthetic-test-only"},
-                )
+                result = self.invoke(recipe, *args)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 calls = self.calls()
-                self.assertEqual(len(calls), 2 if recipe == "arch-workstation" else 1)
+                self.assertEqual(len(calls), 1)
                 for call in calls:
                     argv = call["args"]
                     self.assertEqual(argv[argv.index("--log-format") + 1], "raw")
@@ -142,70 +117,19 @@ class RecipeTests(unittest.TestCase):
                     self.assertIn(mode, calls[-1]["args"])
                 self.assertIn("fixture stdout", result.stdout)
                 self.assertIn("fixture stderr", result.stderr)
-                self.assertNotIn("synthetic-test-only", result.stdout + result.stderr)
 
     def test_terminal_log_format_and_plain_modes(self):
-        for environment, options, expected in (
-            ({}, [], "bar-with-logs"),
-            ({"NO_COLOR": ""}, [], "raw"),
-            ({"CI": "true"}, [], "raw"),
-            ({"TERM": "dumb"}, [], "raw"),
-            ({}, ["verbose"], "raw"),
-            ({}, ["verbose", "update"], "raw"),
-            ({}, ["update", "verbose"], "raw"),
+        for environment, expected in (
+            ({}, "bar-with-logs"),
+            ({"NO_COLOR": ""}, "raw"),
+            ({"CI": "true"}, "raw"),
+            ({"TERM": "dumb"}, "raw"),
         ):
-            with self.subTest(environment=environment, options=options):
-                result = self.invoke(
-                    "arch-workstation", *options, terminal=True, environment=environment
-                )
+            with self.subTest(environment=environment):
+                result = self.invoke("build", terminal=True, environment=environment)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                for call in self.calls():
-                    argv = call["args"]
-                    self.assertEqual(argv[argv.index("--log-format") + 1], expected)
-                    if "verbose" in options:
-                        self.assertIn("--verbose", argv)
-
-    def test_sudo_preserves_only_requested_display_and_registration_values(self):
-        for recipe in ("prepare-runner", "initialize-runner", "verify-runner"):
-            with self.subTest(recipe=recipe):
-                result = self.invoke(
-                    recipe,
-                    "fixture",
-                    environment={
-                        "NO_COLOR": "1",
-                        "GITLAB_RUNNER_TOKEN": "synthetic-test-only",
-                    },
-                )
-                self.assertEqual(result.returncode, 0, result.stderr)
-                call = self.calls()[0]
-                self.assertTrue(call["no_color"])
-                self.assertEqual(call["token"], recipe == "initialize-runner")
-                preserve = self.calls("sudo")[0]["args"][0]
-                self.assertEqual(
-                    preserve,
-                    "--preserve-env=GITLAB_RUNNER_TOKEN,NO_COLOR"
-                    if recipe == "initialize-runner"
-                    else "--preserve-env=NO_COLOR",
-                )
-
-    def test_failed_build_does_not_launch_deployment(self):
-        result = self.invoke("arch-workstation", environment={"CLI_TEST_EXIT": "75"})
-        self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(len(self.calls()), 1)
-        self.assertIn("fixture stderr", result.stderr)
-
-    def test_invalid_options_do_not_launch_nix(self):
-        for args in (
-            ("arch-workstation", "update", "update"),
-            ("arch-workstation", "plan", "update"),
-            ("arch-workstation", "unknown"),
-            ("prepare-ai", "unknown"),
-            ("initialize-runner", "fixture"),
-        ):
-            with self.subTest(args=args):
-                result = self.invoke(*args)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertEqual(self.calls(), [])
+                argv = self.calls()[0]["args"]
+                self.assertEqual(argv[argv.index("--log-format") + 1], expected)
 
 
 if __name__ == "__main__":

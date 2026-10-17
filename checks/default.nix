@@ -20,6 +20,24 @@
             actionlint ${../.github/workflows}/*.yml
         touch "$out"
       '';
+  nacre-cli =
+    let
+      nacre = import ../lib/cli/nacre {
+        inherit lib pkgs;
+        deploymentName = "fixture-deployment";
+      };
+    in
+    pkgs.runCommand "nacre-cli"
+      {
+        nativeBuildInputs = [
+          pkgs.python3
+          pkgs.bash
+        ];
+      }
+      ''
+        python ${../lib/cli/nacre/tests/test_nacre.py} ${nacre}/bin/nacre
+        touch "$out"
+      '';
   deployment-ordering =
     pkgs.runCommand "deployment-ordering"
       {

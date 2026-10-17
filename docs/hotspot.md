@@ -15,7 +15,7 @@ For different hardware, override `networking.hotspot.interface` and `networking.
 ## Deploying and verifying
 
 ```bash
-just arch-workstation
+nacre switch
 nmcli -f DEVICE,TYPE,STATE device status
 sudo ufw status verbose
 ```

@@ -20,9 +20,9 @@ Lost state here cannot be recovered or invalidates existing data.
 
 | State | Location | Without a backup |
 | --- | --- | --- |
-| Runner registrations | `/home/gitlab-runner-<env>/gitlab-runner/config/config.toml` | Create a new Runner in GitLab and rerun `initialize-runner` |
+| Runner registrations | `/home/gitlab-runner-<env>/gitlab-runner/config/config.toml` | Create a new Runner in GitLab and rerun `nacre runner register` |
 | Tailscale node identity | `/var/lib/tailscale/` | Log in again; the node joins as a new identity |
-| AI binaries and models | llama.cpp install and model paths (see the AI module) | `just prepare-ai` rebuilds and redownloads several GB |
+| AI binaries and models | llama.cpp install and model paths (see the AI module) | `nacre ai prepare` rebuilds and redownloads several GB |
 | Tool logins | e.g. `~/.codex/`, OneDrive refresh tokens | Log in again |
 
 The repository's own configuration, the Nix store, Home Manager generations and pending markers in `/var/lib/nix-config/arch/` need no backup.
@@ -32,5 +32,5 @@ The repository's own configuration, the Nix store, Home Manager generations and 
 1. Install Arch and create the same user account (in `wheel`).
 2. Clone this repository and run the [bootstrap](deployment.md#bootstrap).
 3. Restore the required files with their original owner and mode (see [Personal Agent](personal-agent.md)).
-4. Preview with `just arch-workstation plan`, then deploy with `just arch-workstation update`.
-5. Run `just prepare-ai` and re-register Runners as needed.
+4. Preview with `nacre plan`, then deploy with `nacre update`.
+5. Run `nacre ai prepare` and re-register Runners as needed.

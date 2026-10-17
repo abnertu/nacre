@@ -17,6 +17,7 @@ let
     username: user:
     lib.nameValuePair "${username}@${host.name}" (mkHomeConfiguration {
       inherit username user capabilities;
+      packages = [ nacre ];
       inherit (host)
         ai
         platform
@@ -31,6 +32,7 @@ let
     host.users.${deployment.username} or (throw "unknown deployment user: ${deployment.username}");
   deploymentName = "${host.name}-${deployment.profile}";
   homeConfigurationName = "${deployment.username}@${host.name}";
+  nacre = import ./cli/nacre { inherit lib pkgs deploymentName; };
   nixAdapter = inputs.nix-adapter.packages.${system}.nix-adapter;
   adapterPython = inputs.nix-adapter.packages.${system}.adapterPython;
   runners = import ../modules/gitlab-runner {
@@ -107,6 +109,7 @@ in
     arch-switch
     llama-prepare
     home-switch
+    nacre
     ;
   noctaliaEnabled = builtins.elem "noctalia-config" deploymentUser.modules;
   noctalia-config = import ../modules/home/noctalia-config/package.nix {

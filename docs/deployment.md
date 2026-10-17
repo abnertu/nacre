@@ -23,14 +23,18 @@ The bootstrap changes the host; read the script first.
 
 ## Commands
 
+`nacre` is installed by the home generation. Before the first activation, run it from the checkout as `nix run .#nacre -- <command>`.
+
 ```bash
-just arch-workstation plan      # read-only preview
-just arch-workstation           # converge Arch, then activate the built home
-just arch-workstation update    # also upgrade and converge declared pacman / AUR packages
-just arch-workstation verbose   # full diagnostics
-just arch-workstation purge     # remove managed Arch state, skip home
+nacre plan                # read-only preview
+nacre switch              # converge Arch, then activate the built home
+nacre update              # also upgrade and converge declared pacman / AUR packages
+nacre --verbose switch    # full diagnostics
+nacre purge               # remove managed Arch state, skip home
 ```
 
+- **status** shows the checkout revision, the last switch made through `nacre`, the active home generation and any pending markers.
+- **generations** and **rollback [N]** list and reactivate earlier home generations. Rollback never touches Arch state: packages and `/etc` files stay as the last switch left them, and the next switch activates the current configuration again.
 - **plan** lists missing and upgradable packages, every core file and runtime change, system and optional module preflight, and whether the Home Manager generation changes. Lines start with `=` (unchanged), `~` (changed), `+` (added) or `!` (conflict); conflicts exit non-zero. System settings show preflight only, not per-item detail.
 - **Routine runs** install nothing. Missing packages exit with code 3; use `update`.
 - **update** fully upgrades pacman and converges AUR. A kernel update may need a reboot.
@@ -63,11 +67,6 @@ Pacman and yay caches live in the `nix-config-container-pacman` and `nix-config-
 
 Nix shows native build progress. During deployment a shared progress display tracks running, finished, skipped and failed tasks, and yields the terminal to native tool output. It falls back to plain logs with `verbose`, redirected stderr, `TERM=dumb`, any `NO_COLOR` or a non-empty `CI`. `verbose` reaches Nix, Home Manager and the privileged adapters. Adapter failures include the command, exit code, stdout, stderr and partial output before a timeout, with secrets redacted.
 
-When calling the app directly, Nix flags go before the target and adapter flags after `--`:
-
-```bash
-nix run --show-trace --print-build-logs --verbose .#arch-workstation -- --verbose
-```
 
 ## Recovery
 

@@ -4,12 +4,12 @@ Each Runner instance is a TOML file named after its environment: `hosts/arch/run
 
 Each instance has its own service account, sub-UID/GID range, rootless Podman, manager container, user service and GitLab registration. `runnerctl` validates the file set, renders templates, configuration and user units, and owns account and runtime convergence, registration and token merging. It does not need Nix; this repository pins its version and passes the files. Tokens never enter Git or the store.
 
-Runner operations are separate from `just arch-workstation`, which installs the declared native dependencies on `update` but never converges or registers instances.
+Runner operations are separate from `nacre switch`, which installs the declared native dependencies on `update` but never converges or registers instances.
 
 ## Converge
 
 ```bash
-just prepare-runner frontend
+nacre runner prepare frontend
 ```
 
 Checks the required network interfaces, the dedicated account, sub-ID ranges and the rootless Podman socket, then prepares directories, configuration, the manager image and the user service. It refuses conflicts instead of replacing another owner's resources, and creates no registration. The manager reaches only its own rootless socket; jobs run unprivileged in their own network without access to it.
@@ -21,7 +21,7 @@ Create a Runner in GitLab and pass its authentication token only through this co
 ```bash
 read -rsp 'GitLab Runner token: ' GITLAB_RUNNER_TOKEN
 export GITLAB_RUNNER_TOKEN
-just initialize-runner frontend
+nacre runner register frontend
 unset GITLAB_RUNNER_TOKEN
 ```
 
@@ -30,8 +30,8 @@ Convergence must succeed first; a different existing registration is refused. Th
 ## Verify and recover
 
 ```bash
-just verify-runner frontend
-just status-runner frontend
+nacre runner verify frontend
+nacre runner status frontend
 ```
 
 Verify checks the registration, service, manager image and mount isolation, socket, GitLab health and a one-off job network. Status prints a summary without sensitive data. All operations share `/run/lock/nix-config-runner.lock`; managed writes refuse symlinks, hard links and unexpected file types. An interrupted convergence or credential step leaves a private pending marker in the instance config directory; fix the cause and rerun. Removing a file from `configFiles` stops management and dependency installation but deletes no runtime state.

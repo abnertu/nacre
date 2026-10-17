@@ -10,6 +10,8 @@
   ai ? {
     enable = false;
   },
+  # Packages every home on this host receives, such as the operator command.
+  packages ? [ ],
 }:
 let
   pkgs = import inputs.nixpkgs {
@@ -52,6 +54,7 @@ inputs.home-manager.lib.homeManagerConfiguration {
       };
 
       programs.home-manager.enable = true;
+      home.packages = packages;
     }
   ]
   ++ [

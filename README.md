@@ -25,7 +25,7 @@ Nix evaluates a typed configuration into one fixed deployment artifact. Arch ada
 ## Requirements
 
 - Arch Linux `x86_64` with the deployment user already created
-- [Nix](https://nixos.org/download/) with flakes, and [just](https://just.systems/)
+- [Nix](https://nixos.org/download/) with flakes ([just](https://just.systems/) for development)
 
 On a fresh Arch install without Nix, run the [bootstrap](docs/deployment.md#bootstrap) first.
 
@@ -36,25 +36,19 @@ git clone https://github.com/gin31259461/nacre ~/.config/nix
 cd ~/.config/nix
 ```
 
-Edit [configuration.nix](configuration.nix) (defaults live in [hosts/arch](hosts/arch/default.nix)), then validate and build. None of these touch the system:
+Edit [configuration.nix](configuration.nix) (defaults live in [hosts/arch](hosts/arch/default.nix)), then read the [deployment guide](docs/deployment.md) before the first activation. Until a home generation installs `nacre`, run it as `nix run .#nacre -- <command>`.
 
 ```bash
-just check-fast   # format, types, lint, interfaces
-just check        # all flake checks
-just build        # build the deployment artifact
+nacre check               # every flake check; touches nothing
+nacre build               # build the deployment artifact; touches nothing
+nacre plan                # show what would change
+nacre switch              # converge Arch, then activate Home Manager
+nacre update              # also upgrade declared pacman / AUR packages
+nacre --verbose switch    # full Nix, Home Manager and adapter diagnostics
+nacre purge               # remove managed Arch state, skip Home Manager
 ```
 
-Read the [deployment guide](docs/deployment.md) before the first activation.
-
-```bash
-just arch-workstation plan      # show what would change
-just arch-workstation           # converge Arch, then activate Home Manager
-just arch-workstation update    # also upgrade declared pacman / AUR packages
-just arch-workstation verbose   # full Nix, Home Manager and adapter diagnostics
-just arch-workstation purge     # remove managed Arch state, skip Home Manager
-```
-
-`just --list` shows every recipe.
+`nacre --help` lists every command, including `status`, `generations`, `rollback` and the AI, Runner and Noctalia operations.
 
 ## Configuration
 

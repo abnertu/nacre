@@ -63,7 +63,7 @@ just check
 just build
 ```
 
-Then deploy and commit the lock change; revert the lock to roll back. `just arch-workstation update` handles native packages only and never advances skills. A selected upstream path that disappears or lacks `SKILL.md` fails evaluation, so updates never drop a skill silently. Fork an upstream skill into a custom one before modifying it; `npx skills update` would fight the managed links.
+Then deploy and commit the lock change; revert the lock to roll back. `nacre update` handles native packages only and never advances skills. A selected upstream path that disappears or lacks `SKILL.md` fails evaluation, so updates never drop a skill silently. Fork an upstream skill into a custom one before modifying it; `npx skills update` would fight the managed links.
 
 ## Codex local profile
 
@@ -126,20 +126,20 @@ The probe uses synthetic prompts, compares thinking on and off, and repeats pref
 ## Preparation
 
 ```bash
-just prepare-ai          # build and verify every declared artifact
-just prepare-ai build    # only the pinned llama.cpp
-just prepare-ai model    # only download and fully verify the declared models
+nacre ai prepare          # build and verify every declared artifact
+nacre ai prepare build    # only the pinned llama.cpp
+nacre ai prepare model    # only download and fully verify the declared models
 ```
 
 - The build uses the declared llama.cpp version and reviewed patches, installs into a versioned directory, then atomically moves the `current` selector. It needs native C++, ROCm and Vulkan toolchains.
 - Models are staged by declared identity, published atomically only after a full SHA-256 check, and recorded in a root-owned receipt. Routine deployment compares receipt identity and file metadata instead of rehashing the GGUF.
 - Unknown staging state, a mismatched selector or checksum needs a manual decision.
-- Downloads use `hf download --local-dir`. After a failed download, rerun `just prepare-ai model`: staging for the same identity is reused and still verified.
+- Downloads use `hf download --local-dir`. After a failed download, rerun `nacre ai prepare model`: staging for the same identity is reused and still verified.
 
 ## Deploying and checking
 
 ```bash
-just arch-workstation
+nacre switch
 curl --fail http://127.0.0.1:11434/v1/models
 curl --fail http://127.0.0.1:11435/v1/models
 sudo tailscale serve status --json
