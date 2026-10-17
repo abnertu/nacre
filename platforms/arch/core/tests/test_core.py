@@ -236,10 +236,7 @@ class CoreTests(unittest.TestCase):
         )
 
     def plan(self):
-        self.output.truncate(0)
-        self.output.seek(0)
-        self.core().plan()
-        return self.output.getvalue().splitlines()
+        return [f"{change.kind} {change.text}" for change in self.core().plan()]
 
     def test_plan_lists_every_change_without_making_it(self):
         before = sorted(str(path) for path in self.root.rglob("*"))
@@ -270,16 +267,12 @@ class CoreTests(unittest.TestCase):
     def test_plan_after_deploy_reports_no_change(self):
         self.deploy()
         lines = self.plan()
-        self.assertTrue(all(line.startswith("=") for line in lines[:-1]), lines)
-        self.assertEqual(lines[-1], "Core plan: 0 files to update, 0 runtime actions.")
+        self.assertTrue(all(line.startswith("=") for line in lines), lines)
 
     def test_plan_reports_a_conflict_and_fails(self):
         (self.root / "etc/mkinitcpio.conf").write_text("# BEGIN nix-config modules\n")
-        with self.assertRaises(Conflict):
+        with self.assertRaisesRegex(Conflict, "unterminated managed block"):
             self.plan()
-        self.assertTrue(
-            self.output.getvalue().startswith("! unterminated managed block")
-        )
 
     def test_withdrawn_sections_leave_files_and_pending_actions(self):
         main = self.root / "etc/NetworkManager/conf.d/main.conf"

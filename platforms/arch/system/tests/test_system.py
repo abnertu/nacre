@@ -28,6 +28,7 @@ runtime = importlib.util.module_from_spec(spec)
 sys.modules["runtime"] = runtime
 spec.loader.exec_module(runtime)
 System = runtime.System
+firewall = sys.modules["firewall"]
 
 
 class Fake(FakeNative):
@@ -67,6 +68,10 @@ class Fake(FakeNative):
             "ipv6.method": "shared",
         }
         self.device_uuid = ""
+        # Hotspot rules: ufw command -> the kernel rule it loads.
+        self.hotspot_rules = {}
+        self.added = []
+        self.hotspot_kernel = set()
         self.up = set()
         self.radio_follows = True
         self.radio = None
@@ -141,6 +146,12 @@ class Fake(FakeNative):
                     for port, protocol, v6 in sorted(self.rules):
                         suffix = " (v6)" if v6 else ""
                         out += f"{port}/{protocol}{suffix}    ALLOW IN    Anywhere{suffix}\n"
+            elif rest[:2] == ["show", "added"]:
+                out = "Added user rules (see 'ufw status' for running firewall):\n"
+                out += "".join("ufw " + " ".join(rule) + "\n" for rule in self.added)
+            elif "on" in rest:
+                self.added.append(list(rest))
+                self.hotspot_kernel.add(self.hotspot_rules[tuple(rest)])
             elif rest[0] == "allow":
                 port, protocol = rest[-1].split("/")
                 for v6 in (False, True):
@@ -154,8 +165,11 @@ class Fake(FakeNative):
                 self.active = True
                 self.policy_ok = True
                 self.kernel = set(self.rules)
+                self.hotspot_kernel = {self.hotspot_rules[tuple(r)] for r in self.added}
             else:
                 raise AssertionError(args)
+        elif cmd in ("iptables", "ip6tables") and "-i" in rest:
+            code = 0 if tuple(rest[3:]) in self.hotspot_kernel else 1
         elif cmd in ("iptables", "ip6tables"):
             if "-S" in rest:
                 chain = rest[-1]
@@ -483,6 +497,12 @@ class SystemTests(unittest.TestCase):
             "autoconnect": True,
         }
         self.native.unit("NetworkManager.service")
+        self.native.hotspot_rules = {
+            tuple(command): tuple(kernel)
+            for command, kernel in firewall.hotspot_firewall_rules(
+                "wlan0", "eth0", "192.0.2.1/24"
+            )
+        }
 
     def nmcli_writes(self):
         return [
@@ -593,6 +613,41 @@ class SystemTests(unittest.TestCase):
         self.write("/etc/default/ufw", "IPV6=yes\nMANAGE_BUILTINS=yes\n")
         with self.assertRaises(Conflict):
             self.system.converge()
+
+    def plan(self):
+        return [f"{change.kind} {change.text}" for change in self.system.plan()]
+
+    def test_plan_reports_pending_work_without_doing_it_then_agrees(self):
+        self.locale()
+        self.timesync()
+        self.firewall()
+        self.hotspot()
+        self.native.rules.remove(("7777", "tcp", True))
+        before = sorted(
+            (str(p), p.read_bytes()) for p in self.root.rglob("*") if p.is_file()
+        )
+        lines = self.plan()
+        for expected in (
+            "~ /etc/locale.gen (content differs)",
+            "~ /etc/locale.conf (content differs)",
+            "+ /etc/systemd/timesyncd.conf.d/60-nix-config.conf",
+            "~ restart systemd-timesyncd.service",
+            "+ ufw allow in 7777/tcp",
+            "~ hotspot 802-11-wireless.ssid: old -> nix",
+            "~ activate hotspot hotspot",
+        ):
+            self.assertIn(expected, lines)
+        after = sorted(
+            (str(p), p.read_bytes()) for p in self.root.rglob("*") if p.is_file()
+        )
+        self.assertEqual(after, before)
+        mutating = ("allow", "modify", "up", "restart", "enable", "start", "locale-gen")
+        self.assertFalse(
+            [call for call in self.native.calls if set(call) & set(mutating)]
+        )
+        self.system.converge()
+        lines = self.plan()
+        self.assertTrue(all(line.startswith("=") for line in lines), lines)
 
     def test_missing_or_masked_unit_does_not_succeed(self):
         self.timesync()

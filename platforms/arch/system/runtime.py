@@ -10,7 +10,7 @@ from pathlib import Path
 
 from firewall import Firewall
 from hotspot import Hotspot
-from nix_adapter import BaseAdapter, Conflict, locale_gen, replace_keys
+from nix_adapter import BaseAdapter, Change, Conflict, locale_gen, replace_keys
 from nix_adapter.system import (
     check_discard_support,
     get_hostname,
@@ -367,6 +367,81 @@ class System(BaseAdapter):
         )
         if d.get("locale") is not None:
             print("System language applies to new login sessions.")
+
+    def plan(self):
+        """What converge would change, judged the way converge judges it."""
+        self.preflight(installed=True)
+        d, f = self.desired, self.files
+        changes = []
+        if d.get("locale") is not None:
+            value = d["locale"]
+            locale_gen_path = self.path_str("localeGen", "/etc/locale.gen")
+            changes.append(
+                self.plan_file(
+                    locale_gen_path,
+                    locale_gen(f.read(locale_gen_path), value["generated"]),
+                )
+            )
+            available = {
+                line.lower().replace("-", "")
+                for line in self.run("locale", "-a").stdout.splitlines()
+            }
+            absent = [
+                name
+                for name in value["generated"]
+                if name.lower().replace("-", "") not in available
+            ]
+            if absent or f.pending("locale"):
+                changes.append(Change("~", "generate locales " + " ".join(absent)))
+            locale_conf_path = self.path_str("localeConf", "/etc/locale.conf")
+            changes.append(
+                self.plan_file(
+                    locale_conf_path,
+                    replace_keys(f.read(locale_conf_path), {"LANG": value["lang"]}),
+                )
+            )
+        if d.get("timeZone") is not None:
+            current = self.localtime()
+            if current != d["timeZone"] or f.pending("timezone"):
+                changes.append(Change("~", f"time zone {current} -> {d['timeZone']}"))
+            else:
+                changes.append(Change("=", f"time zone {current}"))
+        if d.get("hostname") is not None:
+            hostname_path = self.path_str("hostnameFile", "/etc/hostname")
+            current = get_hostname(runner=self.native, kind="--static")
+            transient = get_hostname(runner=self.native, kind="--transient")
+            if (
+                d["hostname"] != current
+                or d["hostname"] != transient
+                or f.read(hostname_path).strip() != d["hostname"]
+            ):
+                changes.append(Change("~", f"hostname {current} -> {d['hostname']}"))
+            else:
+                changes.append(Change("=", f"hostname {current}"))
+        for name, text in d.get("files", {}).items():
+            target = f.dropin(name, text)
+            change = self.plan_file(target, text)
+            changes.append(change)
+            if name == "logind" and change.kind != "=":
+                changes.append(Change("~", "logind settings apply after the next boot"))
+            elif name == "timesyncd":
+                changes += self.plan_unit("systemd-timesyncd.service")
+                if change.kind != "=" or f.pending(name):
+                    changes.append(Change("~", "restart systemd-timesyncd.service"))
+            elif name == "journald" and (change.kind != "=" or f.pending(name)):
+                changes.append(Change("~", "restart systemd-journald.service"))
+        if d.get("console") is not None:
+            vconsole_path = self.path_str("vconsole", "/etc/vconsole.conf")
+            changes.append(self.plan_file(vconsole_path, self.console()))
+        if d.get("trim") is not None:
+            path, text = f.timer_dropin(d["trimDropin"])
+            changes.append(self.plan_file(path, text))
+            changes += self.plan_unit("fstrim.timer")
+        if d.get("firewall") is not None:
+            changes += Firewall(self).plan()
+        if d.get("hotspot") is not None:
+            changes += Hotspot(self).plan()
+        return changes
 
     def power(self, path, text):
         f = self.files

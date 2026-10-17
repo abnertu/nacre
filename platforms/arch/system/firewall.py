@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import ipaddress
 import re
 import shlex
 from collections.abc import Sequence
 from typing import Any
 
-from nix_adapter import Conflict, Native, assignments
+from nix_adapter import Change, Conflict, Native, assignments
 
 
 def format_port_range(from_port: int | str, to_port: int | str | None = None) -> str:
@@ -304,6 +305,38 @@ class Firewall:
         return not check_kernel_policy(runner=self.system.runner) or any(
             not self.kernel_rule(rule, v6) for rule in rules for v6 in (False, True)
         )
+
+    def plan(self) -> list[Change]:
+        rules = self.desired.get("rules", [])
+        logging = self.desired.get("logging", "low")
+        state = self.snapshot()
+        changes: list[Change] = []
+        for rule in rules:
+            port = format_port_range(rule["fromPort"], rule.get("toPort"))
+            wanted = {(port, rule["protocol"], v6) for v6 in (False, True)}
+            if not wanted <= state["rules"]:
+                changes.append(Change("+", f"ufw allow in {port}/{rule['protocol']}"))
+        if state["active"] and state["logging"] != logging:
+            changes.append(Change("~", f"ufw logging {state['logging']} -> {logging}"))
+        if state["active"] and state["profiles"] != "skip":
+            changes.append(Change("~", f"ufw new profiles {state['profiles']} -> skip"))
+        if not state["active"]:
+            changes.append(Change("~", "enable ufw"))
+        elif self.files.pending("firewall") or self.kernel_drift(rules):
+            changes.append(Change("~", "reload ufw to restore kernel rules"))
+        hotspot = self.system.desired.get("hotspot")
+        if hotspot is not None:
+            existing = set()
+            for line in self.run("ufw", "show", "added").stdout.splitlines():
+                with contextlib.suppress(ValueError):
+                    existing.add(canonical_rule(shlex.split(line)))
+            for command, _ in hotspot_firewall_rules(
+                hotspot["interface"], hotspot["uplink"], hotspot["address"]
+            ):
+                if canonical_rule(command) not in existing:
+                    changes.append(Change("+", "ufw " + " ".join(command)))
+        changes += self.system.plan_unit("ufw.service")
+        return changes
 
     def converge(self) -> None:
         self.converge_service_rules()

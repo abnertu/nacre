@@ -291,7 +291,7 @@ class ArchSwitchTests(unittest.TestCase):
         self.assertIn("+ package extra (missing; installed by update)", result.stdout)
         self.assertIn("~ enable user service openrazer-daemon.service", result.stdout)
         self.assertEqual(self.adapter_phases(CORE), ["plan"])
-        self.assertEqual(self.adapter_phases(SYSTEM), ["preflight"])
+        self.assertEqual(self.adapter_phases(SYSTEM), ["plan"])
         self.assertFalse(any(call[0] in ("yay", "curl") for call in self.commands()))
         self.assertFalse(
             any(call[0] == "pacman" and "--sync" in call for call in self.commands())

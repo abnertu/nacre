@@ -39,7 +39,7 @@ ADAPTERS = {
 if command == "python":
     adapter, manifest, phase, *rest = args
     assert ADAPTERS[adapter][0] == manifest, args
-    assert rest in ([], ["--verbose"]), args
+    assert rest in ([], ["--verbose"], ["--color"], ["--verbose", "--color"]), args
     if adapter == "/fixture/core-adapter":
         assert phase in (
             "preflight",
@@ -50,7 +50,7 @@ if command == "python":
             "purge",
         )
     else:
-        assert phase in ("preflight", "converge", "purge"), args
+        assert phase in ("preflight", "plan", "converge", "purge"), args
     optional = ADAPTERS[adapter][1]
     if optional and state.get(f"{optional}_not_ready"):
         sys.exit(20)

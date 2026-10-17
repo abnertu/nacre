@@ -7,7 +7,7 @@ import json
 import re
 from typing import Any
 
-from nix_adapter import Conflict
+from nix_adapter import Change, Conflict
 
 
 def validate_hotspot_address(address_str: str) -> ipaddress.IPv4Interface:
@@ -144,9 +144,9 @@ class Hotspot:
             for a in link.get("addr_info", [])
         )
 
-    def converge(self) -> None:
-        self.preflight()
-        changes: list[str] = []
+    def differences(self) -> dict[str, tuple[str, str]]:
+        """Declared properties that differ, as field: (actual, expected)."""
+        result: dict[str, tuple[str, str]] = {}
         for field, expected in hotspot_properties(self.desired).items():
             actual = self.read(field)
             if field == "ipv4.shared-dhcp-lease-time":
@@ -154,16 +154,42 @@ class Hotspot:
             if actual == "--":
                 actual = ""
             if actual != expected:
-                changes.extend((field, expected))
+                result[field] = (actual, expected)
+        return result
 
-        pending = self.files.pending("hotspot")
+    def should_activate(self, pending: bool) -> bool:
         marker = self.files.marker("hotspot")
         resume = (
             pending
             and self.files.path(marker).exists()
             and self.files.read(marker) == "activate\n"
         )
-        activate = self.selected() or self.desired.get("autoconnect", False) or resume
+        return self.selected() or bool(self.desired.get("autoconnect", False)) or resume
+
+    def plan(self) -> list[Change]:
+        self.preflight()
+        differences = self.differences()
+        changes = [
+            Change("~", f"hotspot {field}: {actual or '(unset)'} -> {expected}")
+            for field, (actual, expected) in differences.items()
+        ]
+        pending = self.files.pending("hotspot")
+        if self.should_activate(pending) and (
+            differences or pending or not self.active()
+        ):
+            changes.append(
+                Change("~", f"activate hotspot {self.desired['connection']}")
+            )
+        return changes or [Change("=", f"hotspot {self.desired['connection']}")]
+
+    def converge(self) -> None:
+        self.preflight()
+        changes: list[str] = []
+        for field, (_, expected) in self.differences().items():
+            changes.extend((field, expected))
+
+        pending = self.files.pending("hotspot")
+        activate = self.should_activate(pending)
 
         if changes:
             self.files.mark("hotspot", "activate\n" if activate else "pending\n")

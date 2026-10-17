@@ -7,7 +7,14 @@ import stat
 import subprocess
 from pathlib import Path
 
-from nix_adapter import BaseServiceAdapter, Conflict, Native, NotReady, run_adapter_cli
+from nix_adapter import (
+    BaseServiceAdapter,
+    Change,
+    Conflict,
+    Native,
+    NotReady,
+    run_adapter_cli,
+)
 
 
 def execute(
@@ -100,7 +107,7 @@ class PersonalAgent(BaseServiceAdapter):
     def write_unit(
         self,
         path: Path | None = None,
-        unit: str | None = None,
+        unit: object = None,
         receipt: Path | None = None,
         pending: Path | None = None,
         mode: int = 0o644,
@@ -112,6 +119,33 @@ class PersonalAgent(BaseServiceAdapter):
         r = receipt or self.path("receipt")
         pend = pending or self.path("pending")
         return super().write_unit(p, u, r, pend, mode=mode)
+
+    def plan(self) -> list[Change]:
+        """What converge would change; preparation and secrets are only checked."""
+        if not self.desired.get("enabled"):
+            return [Change("=", "Personal Agent unmanaged")]
+        try:
+            self.preflight()
+        except NotReady as error:
+            return [Change("-", f"Personal Agent not ready: {error}")]
+        unit_path = self.path("unitPath")
+        if not unit_path.exists():
+            unit = Change("+", str(unit_path))
+        elif unit_path.read_text() != self.desired.get("unit"):
+            unit = Change("~", f"{unit_path} (content differs)")
+        else:
+            unit = Change("=", str(unit_path))
+        changes = [unit]
+        name = "personal-agent.service"
+        if not self.systemd.is_enabled(name):
+            changes.append(Change("~", f"enable {name}"))
+        if not self.systemd.is_active(name):
+            changes.append(Change("~", f"start {name}"))
+        elif unit.kind != "=" or self.path("pending").exists():
+            changes.append(Change("~", f"restart {name}"))
+        if len(changes) == 1 and unit.kind == "=":
+            changes.append(Change("=", name))
+        return changes
 
     def converge(self) -> None:
         if not self.desired.get("enabled"):

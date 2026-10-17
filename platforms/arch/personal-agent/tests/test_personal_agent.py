@@ -139,6 +139,18 @@ class PersonalAgentTests(unittest.TestCase):
             )
         )
 
+    def test_plan_reports_readiness_unit_and_service_then_agrees(self):
+        self.assertEqual(self.subject().plan()[0].kind, "-")
+        self.write_configuration()
+        lines = [f"{c.kind} {c.text}" for c in self.subject().plan()]
+        unit = self.root / "etc/systemd/system/personal-agent.service"
+        self.assertIn(f"+ {unit}", lines)
+        self.assertIn("~ start personal-agent.service", lines)
+        self.assertFalse(unit.exists())
+        self.subject().converge()
+        lines = [f"{c.kind} {c.text}" for c in self.subject().plan()]
+        self.assertTrue(all(line.startswith("=") for line in lines), lines)
+
     def test_foreign_unit_is_rejected_before_replacement(self):
         self.write_configuration()
         (self.root / "etc/systemd/system/personal-agent.service").write_text(

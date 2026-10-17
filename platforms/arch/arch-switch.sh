@@ -225,14 +225,13 @@ if ((plan_only)); then
     plan_line '!' "kernel modules do not match running kernel $running_kernel; reboot first"
   fi
   core plan
-  adapter "$system_adapter" "$system_manifest" preflight
-  plan_line '=' 'system settings preflight passed (their changes are not previewed)'
-  if optional_preflight ai "llama.cpp build/model is not prepared; run 'just prepare-ai'" \
+  adapter "$system_adapter" "$system_manifest" plan
+  if optional_preflight ai "llama.cpp build/model is not prepared; run 'nacre ai prepare'" \
     "$ai_adapter" "$ai_manifest"; then
-    plan_line '=' 'ai ready'
+    adapter "$ai_adapter" "$ai_manifest" plan
     if optional_preflight personal-agent 'runtime configuration is not prepared' \
       "$personal_agent_adapter" "$personal_agent_manifest"; then
-      plan_line '=' 'personal-agent ready'
+      adapter "$personal_agent_adapter" "$personal_agent_manifest" plan
     fi
   else
     optional_skip personal-agent 'local inference is not ready'
@@ -303,7 +302,7 @@ next_step 'Preflight core and optional modules'
 core preflight
 adapter "$system_adapter" "$system_manifest" preflight
 ai_ready=0 personal_agent_ready=0
-if optional_preflight ai "llama.cpp build/model is not prepared; run 'just prepare-ai'" \
+if optional_preflight ai "llama.cpp build/model is not prepared; run 'nacre ai prepare'" \
   "$ai_adapter" "$ai_manifest"; then
   ai_ready=1
 fi

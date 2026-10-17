@@ -220,6 +220,29 @@ class AITests(unittest.TestCase):
         self.assertTrue(any(c[:2] == ("caddy", "reload") for c in self.native.calls))
         self.assertFalse(any((self.root / "var/lib/nix-config/arch").iterdir()))
 
+    def test_plan_reports_router_and_proxy_work_then_agrees_after_converge(self):
+        before = sorted(str(p) for p in self.root.rglob("*"))
+        lines = [f"{c.kind} {c.text}" for c in self.ai().plan()]
+        for expected in (
+            "+ /etc/llama-swap/config.yaml",
+            "+ /etc/systemd/system/llama-swap.service",
+            "~ restart llama-swap.service",
+            "+ /etc/caddy/conf.d/nix-config-llama.caddy",
+            "~ reload caddy.service",
+        ):
+            self.assertIn(expected, lines)
+        self.assertEqual(sorted(str(p) for p in self.root.rglob("*")), before)
+        self.assertFalse(
+            [
+                c
+                for c in self.native.calls
+                if c[:2] in (("caddy", "reload"),) or "--bg" in c
+            ]
+        )
+        self.ai().converge()
+        lines = [f"{c.kind} {c.text}" for c in self.ai().plan()]
+        self.assertTrue(all(line.startswith("=") for line in lines), lines)
+
     def test_repeat_repairs_no_files_and_performs_no_reload(self):
         self.ai().converge()
         self.native.calls.clear()

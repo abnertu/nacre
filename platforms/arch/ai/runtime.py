@@ -4,7 +4,7 @@ import os
 import time
 from pathlib import Path
 
-from nix_adapter import BaseAdapter, Conflict
+from nix_adapter import BaseAdapter, Change, Conflict
 
 
 class AI(BaseAdapter):
@@ -196,6 +196,51 @@ class AI(BaseAdapter):
                 if attempt < retries:
                     time.sleep(delay)
         raise Conflict(f"curl failed after {retries} retries; last: {last_err}")
+
+    def plan(self):
+        """What converge would change, judged the way converge judges it."""
+        d, f = self.desired, self.files
+        if not d["llama"]:
+            return [Change("=", "AI services unmanaged")]
+        if not self.preflight(installed=True):
+            return [Change("-", "AI preparation never completed; run nacre ai prepare")]
+        generated = d["generated"]
+        config = self.plan_file(
+            self.path_str("switcherConfig", "/etc/llama-swap/config.yaml"),
+            generated["switcherConfig"],
+        )
+        unit = self.plan_file(
+            self.path_str("switcherUnit", "/etc/systemd/system/llama-swap.service"),
+            generated["switcherUnit"],
+        )
+        changes = [config, unit, *self.plan_unit("llama-swap.service")]
+        pending = f.pending("ai-llama")
+        if config.kind != "=" or pending:
+            changes.append(Change("~", "restart llama-swap.service"))
+        if d["proxy"]:
+            caddy = [
+                self.plan_file(
+                    self.path_str("caddyMain", "/etc/caddy/Caddyfile"),
+                    self.caddy_main(),
+                ),
+                self.plan_file(
+                    self.path_str(
+                        "caddySite", "/etc/caddy/conf.d/nix-config-llama.caddy"
+                    ),
+                    generated["caddySite"],
+                ),
+            ]
+            changes += [*caddy, *self.plan_unit("caddy.service")]
+            if any(change.kind != "=" for change in caddy) or f.pending("ai-caddy"):
+                changes.append(Change("~", "reload caddy.service"))
+            status = self.run("tailscale", "serve", "status", "--json").stdout
+            target = f"http://127.0.0.1:{d['localPort']}"
+            port = str(d["httpsPort"])
+            if target not in status or port not in status:
+                changes.append(Change("+", f"tailscale serve --https={port} {target}"))
+            else:
+                changes.append(Change("=", f"tailscale serve --https={port}"))
+        return changes
 
     def converge(self, preflighted=False):
         d, f = self.desired, self.files
