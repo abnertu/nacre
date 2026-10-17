@@ -1,0 +1,475 @@
+"""nacre: install, plan, switch and inspect a Nacre deployment.
+
+Packaging substitutes the deployment name and version. The command knows the
+deployment's name but not its contents, so the home generation that installs
+it does not depend on the deployment.
+"""
+
+from __future__ import annotations
+
+import datetime
+import os
+import pwd
+import re
+import subprocess
+import sys
+from collections.abc import Sequence
+from pathlib import Path
+from typing import NoReturn
+
+DEPLOYMENT = "@deployment@"
+VERSION = "@version@"
+
+USAGE = """\
+usage: nacre [--flake PATH] [--verbose] <command> [arguments]
+
+Setup
+  install [OPTIONS]        write configuration.nix for this machine, then plan and update
+                           --user NAME --hostname NAME --role minimal|workstation
+                           --timezone ZONE --locale LOCALE --yes --force
+
+Deployment
+  plan                     show what switch would change; changes nothing
+  switch                   converge Arch, then activate the home generation
+  update                   switch, also upgrading declared pacman and AUR packages
+  purge                    remove managed Arch state; skips Home Manager
+
+Inspection
+  status                   checkout, last switch, home generation, pending work
+  generations              list home generations
+  rollback [GENERATION]    activate an earlier home generation (Arch is not rolled back)
+
+Source
+  check                    run every flake check
+  build                    build the deployment without activating
+
+Features
+  ai prepare [build|model] prepare the pinned llama.cpp build and models
+  runner ACTION NAME       ACTION: prepare, register, verify, status
+  noctalia ACTION [ARGS]   ACTION: capture, deploy
+
+The checkout is --flake, else $NACRE_FLAKE, else ~/.config/nacre or ~/.config/nix.
+"""
+
+PENDING_DIR = Path("/var/lib/nix-config/arch")
+NAME = re.compile(r"[a-z][a-z0-9_-]*")
+
+
+class Usage(Exception):
+    """Invalid arguments: print usage and exit 2."""
+
+
+class Refusal(Exception):
+    """A precondition failed: print the message and exit 2."""
+
+
+def state_home() -> Path:
+    return Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+
+
+def revision(flake: Path) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(flake), "describe", "--always", "--dirty"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else "unknown"
+
+
+def find_flake(explicit: str | None) -> Path | None:
+    if explicit:
+        return Path(explicit)
+    config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    for candidate in (config / "nacre", config / "nix"):
+        if (candidate / "flake.nix").is_file():
+            return candidate
+    return None
+
+
+class Nacre:
+    def __init__(self, flake: Path, verbose: bool):
+        self.flake = flake
+        self.verbose = verbose
+        plain = (
+            verbose
+            or not sys.stderr.isatty()
+            or os.environ.get("TERM", "dumb") == "dumb"
+            or "NO_COLOR" in os.environ
+            or bool(os.environ.get("CI"))
+        )
+        # Nix's own progress bar on a terminal, complete raw logs otherwise.
+        self.log_format = ["--log-format", "raw" if plain else "bar-with-logs"]
+        self.nix_args = [
+            "--show-trace",
+            "--print-build-logs",
+            *(["--verbose"] if verbose else []),
+        ]
+        self.profile = state_home() / "nix/profiles/home-manager"
+
+    def target(self, attribute: str) -> str:
+        return f"{self.flake}#{attribute}"
+
+    def nix(self, command: str, *args: str) -> NoReturn:
+        argv = ["nix", *self.log_format, command, *self.nix_args, *args]
+        os.execvp(argv[0], argv)
+
+    def nix_root(self, preserve: str, command: str, *args: str) -> NoReturn:
+        argv = [
+            "sudo",
+            f"--preserve-env={preserve}",
+            "nix",
+            *self.log_format,
+            "--extra-experimental-features",
+            "nix-command flakes",
+            command,
+            *self.nix_args,
+            *args,
+        ]
+        os.execvp(argv[0], argv)
+
+    def deploy(self, mode: str) -> int:
+        flags = {"plan": ["--plan"], "update": ["--update"], "purge": ["--purge"]}
+        deployment_args = flags.get(mode, []) + (["--verbose"] if self.verbose else [])
+        built = subprocess.run(
+            [
+                "nix",
+                "build",
+                "--no-link",
+                "--print-out-paths",
+                *self.log_format,
+                *self.nix_args,
+                self.target(DEPLOYMENT),
+            ],
+            stdout=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        if built.returncode != 0:
+            return built.returncode
+        artifact = built.stdout.strip()
+        status = subprocess.run(
+            [f"{artifact}/bin/{DEPLOYMENT}", *deployment_args], check=False
+        ).returncode
+        if status == 0 and mode in ("switch", "update"):
+            record = state_home() / "nacre/last-switch"
+            record.parent.mkdir(parents=True, exist_ok=True)
+            when = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+            record.write_text(f"{when} {revision(self.flake)} {artifact}\n")
+        return status
+
+    def generations(self) -> list[int]:
+        numbers: list[int] = []
+        for link in self.profile.parent.glob(self.profile.name + "-*-link"):
+            match = re.fullmatch(r"home-manager-(\d+)-link", link.name)
+            if match and link.is_symlink():
+                numbers.append(int(match[1]))
+        return sorted(numbers)
+
+    def current_generation(self) -> int | None:
+        try:
+            target = os.readlink(self.profile)
+        except OSError:
+            return None
+        match = re.search(r"home-manager-(\d+)-link$", target)
+        return int(match[1]) if match else None
+
+    def link(self, number: int) -> Path:
+        return self.profile.parent / f"home-manager-{number}-link"
+
+    def status(self) -> int:
+        print(f"Checkout     {self.flake} ({revision(self.flake)})")
+        record = state_home() / "nacre/last-switch"
+        if record.is_file():
+            when, switched, *_ = record.read_text().split()
+            print(f"Last switch  {when} from {switched}")
+        else:
+            print("Last switch  not recorded by nacre")
+        current = self.current_generation()
+        print(f"Home         generation {current if current is not None else ''}")
+        pending = sorted(marker.stem for marker in PENDING_DIR.glob("*.pending"))
+        if pending:
+            print(f"Pending      {' '.join(pending)} (rerun the interrupted command)")
+        else:
+            print("Pending      none")
+        return 0
+
+    def list_generations(self) -> int:
+        current = self.current_generation()
+        for number in self.generations():
+            when = datetime.datetime.fromtimestamp(
+                self.link(number).lstat().st_mtime
+            ).strftime("%F %T")
+            marker = "*" if number == current else " "
+            print(f"{marker} {number:4}  {when}")
+        return 0
+
+    def rollback(self, requested: str | None) -> int:
+        current = self.current_generation()
+        if requested is not None:
+            if not requested.isdigit():
+                raise Usage
+            target: int | None = int(requested)
+        else:
+            earlier = [n for n in self.generations() if current is None or n < current]
+            target = earlier[-1] if earlier else None
+        if target is None or not self.link(target).is_symlink():
+            wanted = target if target is not None else f"before {current}"
+            print(
+                f"nacre: no home generation {wanted} to roll back to", file=sys.stderr
+            )
+            return 1
+        print(
+            f"Activating home generation {target}; Arch state is unchanged.",
+            file=sys.stderr,
+        )
+        activate = self.link(target).resolve() / "activate"
+        os.environ.setdefault("USER", pwd.getpwuid(os.getuid()).pw_name)
+        argv = [str(activate)]
+        if "--driver-version" in activate.read_text(errors="replace"):
+            argv += ["--driver-version", "0"]
+        os.execv(argv[0], argv)
+
+    def install(self, args: Sequence[str]) -> int:
+        return Installer(self, args).run()
+
+
+class Installer:
+    """Write configuration.nix for this machine, then plan and update."""
+
+    def __init__(self, nacre: Nacre, args: Sequence[str]):
+        self.nacre = nacre
+        self.root = Path(os.environ.get("NACRE_INSTALL_ROOT") or "/")
+        hostname_file = self.root / "etc/hostname"
+        timezone = subprocess.run(
+            ["timedatectl", "show", "--property=Timezone", "--value"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.values = {
+            "user": os.environ.get("USER", ""),
+            "hostname": (
+                hostname_file.read_text().strip()
+                if hostname_file.is_file()
+                else os.uname().nodename
+            ),
+            "role": "workstation",
+            "timezone": timezone.stdout.strip() if timezone.returncode == 0 else "UTC",
+            "locale": os.environ.get("LANG", "en_US.UTF-8").replace(".utf8", ".UTF-8"),
+        }
+        self.yes = self.force = False
+        rest = list(args)
+        while rest:
+            option = rest.pop(0)
+            if option in ("--user", "--hostname", "--role", "--timezone", "--locale"):
+                if not rest:
+                    raise Usage
+                self.values[option[2:]] = rest.pop(0)
+            elif option == "--yes":
+                self.yes = True
+            elif option == "--force":
+                self.force = True
+            else:
+                raise Usage
+
+    def run(self) -> int:
+        interactive = sys.stdin.isatty()
+        if not self.yes and interactive:
+            for key in ("user", "hostname", "role", "timezone", "locale"):
+                answer = input(f"{key} [{self.values[key]}]: ").strip()
+                if answer:
+                    self.values[key] = answer
+        content = self.render()
+        target = self.nacre.flake / "configuration.nix"
+        if target.exists() and not self.force and self.uncommitted():
+            raise Refusal(
+                "configuration.nix has uncommitted changes; commit them or pass --force"
+            )
+        target.write_text(content + "\n")
+        print(f"Wrote {target}:\n\n{content}\n", file=sys.stderr)
+        status = self.nacre.deploy("plan")
+        if status != 0:
+            return status
+        if not self.yes:
+            answer = (
+                input("Apply this plan with nacre update? [y/N] ")
+                if interactive
+                else "n"
+            )
+            if not answer.lower().startswith("y"):
+                print("Not applied. Run nacre update when ready.", file=sys.stderr)
+                return 0
+        return self.nacre.deploy("update")
+
+    def uncommitted(self) -> bool:
+        return (
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(self.nacre.flake),
+                    "diff",
+                    "--quiet",
+                    "HEAD",
+                    "--",
+                    "configuration.nix",
+                ],
+                capture_output=True,
+                check=False,
+            ).returncode
+            != 0
+        )
+
+    def render(self) -> str:
+        v = self.values
+        checks = (
+            (NAME.fullmatch(v["user"]), f"invalid user name: {v['user']}"),
+            (NAME.fullmatch(v["hostname"]), f"invalid hostname: {v['hostname']}"),
+            (v["role"] in ("minimal", "workstation"), f"unknown role: {v['role']}"),
+            (re.fullmatch(r"[A-Za-z0-9_+/-]+", v["timezone"]), "invalid time zone"),
+            (re.fullmatch(r"[A-Za-z0-9_@.-]+", v["locale"]), "invalid locale"),
+        )
+        for ok, message in checks:
+            if not ok:
+                raise Refusal(message)
+        entry = self.getent("passwd", v["user"])
+        if entry is None:
+            raise Refusal(f"create the account {v['user']} before installing")
+        fields = entry.split(":")
+        if fields[5] != f"/home/{v['user']}":
+            raise Refusal(f"{v['user']} must live in /home/{v['user']}")
+        wheel = self.getent("group", "wheel")
+        if wheel is None or v["user"] not in wheel.split(":")[3].split(","):
+            raise Refusal(f"{v['user']} must be in the wheel group")
+        description = re.sub(r'[\\"$]', "", fields[4].split(",")[0]) or v["user"]
+        images = sorted(
+            f'"/boot/{image.name}"'
+            for image in (self.root / "boot").glob("initramfs-*.img")
+            if "fallback" not in image.name
+        )
+        if not images:
+            raise Refusal("no initramfs image under /boot")
+        template = (self.nacre.flake / "templates/configuration.nix").read_text()
+        replacements = {
+            "@role@": v["role"],
+            "@hostname@": v["hostname"],
+            "@timezone@": v["timezone"],
+            "@locale@": v["locale"],
+            "@description@": description,
+            "@graphics@": "amd" if self.amd_graphics() else "generic",
+            "@username@": v["user"],
+            "@images@": " ".join(images),
+        }
+        for placeholder, value in replacements.items():
+            template = template.replace(placeholder, value)
+        return template.rstrip("\n")
+
+    @staticmethod
+    def getent(database: str, key: str) -> str | None:
+        result = subprocess.run(
+            ["getent", database, key], capture_output=True, text=True, check=False
+        )
+        return result.stdout.strip() if result.returncode == 0 else None
+
+    @staticmethod
+    def amd_graphics() -> bool:
+        try:
+            listing = subprocess.run(
+                ["lspci"], capture_output=True, text=True, check=False
+            ).stdout
+        except OSError:
+            return False
+        return any(
+            re.search(r"VGA|3D|Display", line) and re.search(r"AMD|ATI", line, re.I)
+            for line in listing.splitlines()
+        )
+
+
+def run(argv: list[str]) -> int:
+    explicit = os.environ.get("NACRE_FLAKE")
+    verbose = version = False
+    while argv and argv[0].startswith("-"):
+        option = argv.pop(0)
+        if option == "--flake":
+            if not argv:
+                raise Usage
+            explicit = argv.pop(0)
+        elif option == "--verbose":
+            verbose = True
+        elif option in ("--help", "-h"):
+            print(USAGE, end="")
+            return 0
+        elif option == "--version":
+            version = True
+        else:
+            raise Usage
+    flake = find_flake(explicit)
+    if version:
+        print(f"nacre {VERSION} ({revision(flake or Path('.'))})")
+        return 0
+    if not argv:
+        raise Usage
+    command, args = argv[0], argv[1:]
+    if flake is None or not (flake / "flake.nix").is_file():
+        raise Refusal("no checkout found; pass --flake PATH or set NACRE_FLAKE")
+    nacre = Nacre(flake, verbose)
+    if command in ("plan", "switch", "update", "purge"):
+        if args:
+            raise Usage
+        return nacre.deploy(command)
+    if command == "check" and not args:
+        nacre.nix("flake", "check", str(flake))
+    if command == "build" and not args:
+        nacre.nix("build", "--no-link", nacre.target(DEPLOYMENT))
+    if command == "status" and not args:
+        return nacre.status()
+    if command == "generations" and not args:
+        return nacre.list_generations()
+    if command == "rollback" and len(args) <= 1:
+        return nacre.rollback(args[0] if args else None)
+    if command == "install":
+        return nacre.install(args)
+    if command == "ai" and args[:1] == ["prepare"] and len(args) <= 2:
+        modes = {
+            "": [],
+            "build": ["--", "--build-only"],
+            "model": ["--", "--model-only"],
+        }
+        mode = args[1] if len(args) == 2 else ""
+        if mode not in modes:
+            raise Usage
+        nacre.nix_root("NO_COLOR", "run", nacre.target("llama-prepare"), *modes[mode])
+    if command == "runner" and len(args) == 2:
+        actions = {"prepare": "reconcile", "register": "register"}
+        actions |= {"verify": "verify", "status": "status"}
+        if args[0] not in actions:
+            raise Usage
+        preserve = "NO_COLOR"
+        if args[0] == "register":
+            if not os.environ.get("GITLAB_RUNNER_TOKEN"):
+                raise Refusal("GITLAB_RUNNER_TOKEN is required to register")
+            preserve = "GITLAB_RUNNER_TOKEN,NO_COLOR"
+        nacre.nix_root(
+            preserve, "run", nacre.target("runnerctl"), "--", actions[args[0]], args[1]
+        )
+    if command == "noctalia" and args[:1] in (["capture"], ["deploy"]):
+        nacre.nix("run", nacre.target("noctalia-config"), "--", *args)
+    raise Usage
+
+
+def main() -> int:
+    try:
+        return run(sys.argv[1:])
+    except Usage:
+        print(USAGE, end="", file=sys.stderr)
+        return 2
+    except Refusal as error:
+        print(f"nacre: {error}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        return 130
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -5,18 +5,17 @@
   pkgs,
   deploymentName,
 }:
-pkgs.writeShellApplication {
-  name = "nacre";
-  runtimeInputs = with pkgs; [
-    coreutils
-    gawk
-    git
-    gnugrep
-  ];
-  text = ''
-    readonly deployment=${lib.escapeShellArg deploymentName}
-    readonly nacre_version=${lib.escapeShellArg (lib.trim (builtins.readFile ../../../VERSION))}
+pkgs.runCommand "nacre"
+  {
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    meta.mainProgram = "nacre";
+  }
   ''
-  + builtins.readFile ../nix.sh
-  + builtins.readFile ./nacre.sh;
-}
+    mkdir -p "$out/bin" "$out/libexec"
+    substitute ${./nacre.py} "$out/libexec/nacre.py" \
+      --subst-var-by deployment ${lib.escapeShellArg deploymentName} \
+      --subst-var-by version ${lib.escapeShellArg (lib.trim (builtins.readFile ../../../VERSION))}
+    makeWrapper ${pkgs.python3.interpreter} "$out/bin/nacre" \
+      --add-flags "-I $out/libexec/nacre.py" \
+      --prefix PATH : ${lib.makeBinPath [ pkgs.git ]}
+  ''
