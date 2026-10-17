@@ -6,6 +6,8 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -162,6 +164,23 @@ class SystemTests(unittest.TestCase):
 
     def write(self, path, text):
         self.files.write(path, text)
+
+    def test_entrypoint_never_writes_bytecode_beside_its_source(self):
+        # Root ignores store permissions; bytecode there corrupts the store path.
+        with tempfile.TemporaryDirectory() as directory:
+            for name in ("adapter.py", "runtime.py"):
+                shutil.copy(RUNTIME_PATH.with_name(name), directory)
+            env = {
+                k: v for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE"
+            }
+            subprocess.run(
+                [sys.executable, str(Path(directory) / "adapter.py")],
+                env=env,
+                capture_output=True,
+            )
+            self.assertEqual(
+                sorted(os.listdir(directory)), ["adapter.py", "runtime.py"]
+            )
 
     def test_unmanaged_does_nothing(self):
         self.system.converge()

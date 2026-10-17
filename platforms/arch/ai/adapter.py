@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import sys
+
+# Runs as root from the read-only store: writing bytecode would modify it.
+sys.dont_write_bytecode = True
+
 from nix_adapter import run_adapter_cli
 import runtime
 
