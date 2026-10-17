@@ -7,14 +7,7 @@ native runner directly; production accepts no root/command overrides.
 import hashlib
 import os
 from pathlib import Path
-from nix_adapter import (
-    BaseAdapter,
-    Conflict,
-    Firewall,
-    Hotspot,
-    locale_gen,
-    replace_keys,
-)
+from nix_adapter import BaseAdapter, Conflict, locale_gen, replace_keys
 from nix_adapter.system import (
     check_discard_support,
     get_hostname,
@@ -23,6 +16,9 @@ from nix_adapter.system import (
     set_hostname,
     set_timezone,
 )
+
+from firewall import Firewall
+from hotspot import Hotspot
 
 
 class System(BaseAdapter):

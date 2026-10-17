@@ -152,7 +152,7 @@ class AI(BaseAdapter):
                     "required native AI commands are missing: " + " ".join(missing)
                 )
             if d["proxy"]:
-                self.require_unit("caddy.service")
+                self.ready_unit("caddy.service")
         return True
 
     def ensure_service(self, name, action, restart=False):
@@ -299,7 +299,7 @@ class AI(BaseAdapter):
                 "--adapter",
                 "caddyfile",
             )
-            state = self.require_unit("caddy.service")
+            state = self.ready_unit("caddy.service")
             repair = state.get("ActiveState") != "active"
             self.ensure_service("caddy.service", "ai-caddy", restart=repair)
             kind = self.run(

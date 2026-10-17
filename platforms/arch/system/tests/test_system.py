@@ -21,6 +21,7 @@ from nix_adapter import (
 )
 
 RUNTIME_PATH = Path(__file__).resolve().parents[1] / "runtime.py"
+sys.path.insert(0, str(RUNTIME_PATH.parent))
 spec = importlib.util.spec_from_file_location("runtime", RUNTIME_PATH)
 assert spec is not None and spec.loader is not None
 runtime = importlib.util.module_from_spec(spec)
@@ -48,6 +49,27 @@ class Fake(FakeNative):
         self.disks = [
             {"name": "vda", "type": "disk", "disc-max": 4096, "mountpoints": ["/"]}
         ]
+        self.links = ["wlan0", "eth0"]
+        self.uuid = "0f6a3c1e-0000-4000-8000-000000000001"
+        self.connection = {
+            "connection.type": "802-11-wireless",
+            "802-11-wireless.mode": "ap",
+            "802-11-wireless-security.key-mgmt": "wpa-psk",
+            "connection.interface-name": "",
+            "connection.autoconnect": "yes",
+            "802-11-wireless.ssid": "old",
+            "802-11-wireless.band": "bg",
+            "802-11-wireless.channel": "1",
+            "ipv4.method": "shared",
+            "ipv4.addresses": "--",
+            "ipv4.shared-dhcp-range": "--",
+            "ipv4.shared-dhcp-lease-time": "0 (default)",
+            "ipv6.method": "shared",
+        }
+        self.device_uuid = ""
+        self.up = set()
+        self.radio_follows = True
+        self.radio = None
 
     def unit(self, name):
         return self.units.setdefault(
@@ -98,6 +120,16 @@ class Fake(FakeNative):
             self.locales = ["en_US.utf8", "zh_TW.utf8", "C"]
         elif cmd in ("systemd-tmpfiles", "journalctl"):
             pass
+        elif cmd == "nmcli":
+            out = self.nmcli(rest)
+        elif cmd == "iw":
+            if self.radio:
+                out = f"\tssid {self.radio[0]}\n\tchannel {self.radio[1]} (2412 MHz)\n"
+        elif cmd == "ip" and rest[:3] == ["-j", "link", "show"]:
+            out = json.dumps([{"ifname": name} for name in self.links])
+        elif cmd == "ip":
+            info = [{"local": self.radio[2], "prefixlen": 24}] if self.radio else []
+            out = json.dumps([{"addr_info": info}])
         elif cmd == "lsblk":
             out = json.dumps({"blockdevices": self.disks})
         elif cmd == "ufw":
@@ -149,6 +181,31 @@ class Fake(FakeNative):
             raise Conflict("fake native failed")
         return FakeProcess(stdout=out, returncode=code)
 
+    def nmcli(self, rest):
+        if "UUID,NAME" in rest:
+            return f"{self.uuid}:hotspot\n"
+        if rest[:3] == ["-g", "GENERAL.CON-UUID", "device"]:
+            return self.device_uuid
+        if rest[:3] == ["--escape", "no", "-g"]:
+            return self.connection[rest[3]] + "\n"
+        if rest[-1] == "--active":
+            return "".join(uuid + "\n" for uuid in self.up)
+        if rest[:2] == ["connection", "modify"]:
+            pairs = rest[4:]
+            self.connection.update(zip(pairs[::2], pairs[1::2]))
+            return ""
+        if rest[:2] == ["connection", "up"]:
+            self.up.add(self.uuid)
+            if self.radio_follows:
+                c = self.connection
+                self.radio = (
+                    c["802-11-wireless.ssid"],
+                    c["802-11-wireless.channel"],
+                    c["ipv4.addresses"].split("/")[0],
+                )
+            return ""
+        raise AssertionError(rest)
+
 
 class SystemTests(unittest.TestCase):
     def setUp(self):
@@ -168,7 +225,8 @@ class SystemTests(unittest.TestCase):
     def test_entrypoint_never_writes_bytecode_beside_its_source(self):
         # Root ignores store permissions; bytecode there corrupts the store path.
         with tempfile.TemporaryDirectory() as directory:
-            for name in ("adapter.py", "runtime.py"):
+            modules = sorted(path.name for path in RUNTIME_PATH.parent.glob("*.py"))
+            for name in modules:
                 shutil.copy(RUNTIME_PATH.with_name(name), directory)
             env = {
                 k: v for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE"
@@ -178,9 +236,7 @@ class SystemTests(unittest.TestCase):
                 env=env,
                 capture_output=True,
             )
-            self.assertEqual(
-                sorted(os.listdir(directory)), ["adapter.py", "runtime.py"]
-            )
+            self.assertEqual(sorted(os.listdir(directory)), modules)
 
     def test_purge_removes_owned_dropins_and_keeps_system_values(self):
         names = ("timesyncd", "journald", "logind")
@@ -414,6 +470,71 @@ class SystemTests(unittest.TestCase):
         self.system.converge()
         self.assertIn(("systemctl", "restart", "fstrim.timer"), self.native.calls)
         self.assertFalse(any(call[0] == "fstrim" for call in self.native.calls))
+
+    def hotspot(self):
+        self.d["hotspot"] = {
+            "connection": "hotspot",
+            "interface": "wlan0",
+            "uplink": "eth0",
+            "ssid": "nix",
+            "band": "bg",
+            "channel": 6,
+            "address": "192.0.2.1/24",
+            "autoconnect": True,
+        }
+        self.native.unit("NetworkManager.service")
+
+    def nmcli_writes(self):
+        return [
+            call
+            for call in self.native.calls
+            if call[:1] == ("nmcli",) and call[1] == "connection" and call[2] != "show"
+        ]
+
+    def test_hotspot_adopts_changed_properties_and_repeat_is_quiet(self):
+        self.hotspot()
+        self.system.converge()
+        modify, up = self.nmcli_writes()
+        self.assertEqual(modify[:4], ("nmcli", "connection", "modify", "uuid"))
+        changed = dict(zip(modify[5::2], modify[6::2]))
+        self.assertEqual(changed["802-11-wireless.ssid"], "nix")
+        self.assertNotIn("ipv4.method", changed)
+        self.assertEqual(up[-2:], ("ifname", "wlan0"))
+        self.assertFalse(self.files.pending("hotspot"))
+        self.native.calls.clear()
+        self.system.converge()
+        self.assertEqual(self.nmcli_writes(), [])
+
+    def test_hotspot_preflight_refuses_before_any_change(self):
+        self.hotspot()
+        cases = [
+            ("links", ["wlan0"]),
+            ("device_uuid", "another-connection"),
+        ]
+        for field, value in cases:
+            with self.subTest(field):
+                saved = getattr(self.native, field)
+                setattr(self.native, field, value)
+                with self.assertRaises(Conflict):
+                    self.system.converge()
+                self.assertEqual(self.nmcli_writes(), [])
+                setattr(self.native, field, saved)
+        self.native.connection["802-11-wireless.mode"] = "infrastructure"
+        with self.assertRaises(Conflict):
+            self.system.converge()
+        self.assertEqual(self.nmcli_writes(), [])
+
+    def test_hotspot_activation_failure_keeps_marker_and_retries(self):
+        self.hotspot()
+        self.native.radio_follows = False
+        with self.assertRaises(Conflict):
+            self.system.converge()
+        self.assertTrue(self.files.pending("hotspot"))
+        self.native.radio_follows = True
+        self.native.calls.clear()
+        self.system.converge()
+        self.assertEqual([call[2] for call in self.nmcli_writes()], ["up"])
+        self.assertFalse(self.files.pending("hotspot"))
 
     def firewall(self):
         self.d["firewall"] = {

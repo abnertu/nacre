@@ -25,10 +25,10 @@ let
     name:
     lib.fileset.toSource {
       root = ./. + "/${name}";
-      fileset = lib.fileset.unions [
-        (./. + "/${name}/adapter.py")
-        (./. + "/${name}/runtime.py")
-      ];
+      # Every module beside the adapter, without its tests.
+      fileset = lib.fileset.difference (lib.fileset.fileFilter (file: file.hasExt "py") (
+        ./. + "/${name}"
+      )) (lib.fileset.maybeMissing (./. + "/${name}/tests"));
     };
   core = import ./core {
     inherit
