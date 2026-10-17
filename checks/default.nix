@@ -32,10 +32,11 @@
         nativeBuildInputs = [
           pkgs.python3
           pkgs.bash
+          pkgs.git
         ];
       }
       ''
-        python ${../lib/cli/nacre/tests/test_nacre.py} ${nacre}/bin/nacre
+        python ${../lib/cli/nacre/tests/test_nacre.py} ${../templates/configuration.nix} ${nacre}/bin/nacre
         touch "$out"
       '';
   deployment-ordering =

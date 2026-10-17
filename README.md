@@ -10,7 +10,7 @@ Declarative Arch Linux + Hyprland, layered with Nix.
 
 Nacre, mother-of-pearl, builds up in layers on the shell beneath it. Likewise this project layers a typed, reproducible configuration onto an existing Arch Linux install instead of replacing it.
 
-Nix evaluates a typed configuration into one fixed deployment artifact. Arch adapters converge native files, packages and services, then the embedded Home Manager generation activates. Platform code lives under `platforms/`; Arch Linux (`x86_64-linux`) is the only platform today. This is not NixOS and not an installer.
+Nix evaluates a typed configuration into one fixed deployment artifact. Arch adapters converge native files, packages and services, then the embedded Home Manager generation activates. Platform code lives under `platforms/`; Arch Linux (`x86_64-linux`) is the only platform today. It is not NixOS: the base system stays Arch.
 
 ![Desktop preview](docs/assets/preview.png)
 
@@ -27,7 +27,7 @@ Nix evaluates a typed configuration into one fixed deployment artifact. Arch ada
 - Arch Linux `x86_64` with the deployment user already created
 - [Nix](https://nixos.org/download/) with flakes ([just](https://just.systems/) for development)
 
-On a fresh Arch install without Nix, run the [bootstrap](docs/deployment.md#bootstrap) first.
+On a fresh Arch install, follow the [install guide](docs/install.md): bootstrap, then `nacre install` writes the configuration for your machine.
 
 ## Quick start
 
@@ -71,6 +71,7 @@ See the [configuration guide](docs/configuration.md).
 
 | Guide | Covers |
 | --- | --- |
+| [Install](docs/install.md) | From a fresh Arch install to the first deployment |
 | [Deployment](docs/deployment.md) | Bootstrap, activation, updates, purge, recovery |
 | [Configuration](docs/configuration.md) | Options, precedence, resolved values |
 | [System settings](docs/system-settings.md) | Native file ownership, preflight, pending markers |

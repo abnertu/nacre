@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 NACRE = sys.argv.pop()
+TEMPLATE = Path(sys.argv.pop())
 
 
 class NacreTests(unittest.TestCase):
@@ -122,6 +123,110 @@ class NacreTests(unittest.TestCase):
         self.assertTrue(call.endswith("-- register frontend"))
         self.run_nacre("runner", "prepare", "frontend")
         self.assertTrue(self.recorded()[-1].endswith("-- reconcile frontend"))
+
+    def prepare_install(self, wheel="alice"):
+        (self.flake / "templates").mkdir()
+        (self.flake / "templates/configuration.nix").write_text(TEMPLATE.read_text())
+        (self.flake / "configuration.nix").write_text("# shipped example\n")
+        git = [
+            "git",
+            "-C",
+            str(self.flake),
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+        ]
+        subprocess.run([*git, "init", "-q"], check=True)
+        subprocess.run([*git, "add", "."], check=True)
+        subprocess.run([*git, "commit", "-qm", "fixture"], check=True)
+        root = self.root / "machine"
+        (root / "boot").mkdir(parents=True)
+        (root / "etc").mkdir()
+        (root / "etc/hostname").write_text("box\n")
+        for image in ("initramfs-linux.img", "initramfs-linux-fallback.img"):
+            (root / "boot" / image).write_text("")
+        bin_dir = self.root / "bin"
+        self.script(
+            bin_dir / "getent",
+            'case "$1 $2" in\n'
+            '  "passwd alice") echo "alice:x:1000:1000:Alice A,,,:/home/alice:/bin/bash" ;;\n'
+            f'  "group wheel") echo "wheel:x:998:{wheel}" ;;\n'
+            "  *) exit 2 ;;\n"
+            "esac",
+        )
+        self.script(
+            bin_dir / "lspci",
+            'echo "03:00.0 VGA compatible controller: Advanced Micro Devices, Inc. [AMD/ATI]"',
+        )
+        self.script(bin_dir / "timedatectl", "echo Asia/Taipei")
+        return {"NACRE_INSTALL_ROOT": str(root), "USER": "alice"}
+
+    def test_install_writes_the_machine_then_plans_and_updates(self):
+        env = self.prepare_install()
+        result = self.run_nacre("install", "--role", "minimal", "--yes", **env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        written = (self.flake / "configuration.nix").read_text()
+        for expected in (
+            'role = "minimal";',
+            'networking.hostname.name = "box";',
+            'time.timeZone = "Asia/Taipei";',
+            "users.users.alice = {",
+            'description = "Alice A";',
+            'graphics = "amd";',
+            'initramfs.images = [ "/boot/initramfs-linux.img" ];',
+        ):
+            self.assertIn(expected, written)
+        self.assertNotIn("@", written.replace("`nacre install`", ""))
+        self.assertEqual(
+            [call for call in self.recorded() if call.startswith("deploy")],
+            ["deploy --plan", "deploy --update"],
+        )
+
+    def test_install_without_yes_only_plans_when_not_interactive(self):
+        env = self.prepare_install()
+        self.assertEqual(self.run_nacre("install", **env).returncode, 0)
+        self.assertEqual(
+            [call for call in self.recorded() if call.startswith("deploy")],
+            ["deploy --plan"],
+        )
+
+    def test_install_refuses_before_writing(self):
+        cases = (
+            ({}, ("--user", "bob")),
+            ({}, ("--hostname", "Bad.Name")),
+            ({"wheel": "someone"}, ()),
+        )
+        for setup, args in cases:
+            with self.subTest(args=args, setup=setup):
+                self.tearDown_install()
+                env = self.prepare_install(**setup)
+                result = self.run_nacre("install", "--yes", *args, **env)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(
+                    (self.flake / "configuration.nix").read_text(),
+                    "# shipped example\n",
+                )
+                self.assertEqual(self.recorded(), [])
+
+    def test_install_keeps_uncommitted_configuration(self):
+        env = self.prepare_install()
+        (self.flake / "configuration.nix").write_text("# local edits\n")
+        result = self.run_nacre("install", "--yes", **env)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("uncommitted", result.stderr)
+        self.assertEqual(
+            (self.flake / "configuration.nix").read_text(), "# local edits\n"
+        )
+        self.assertEqual(
+            self.run_nacre("install", "--yes", "--force", **env).returncode, 0
+        )
+
+    def tearDown_install(self):
+        shutil.rmtree(self.flake / ".git", ignore_errors=True)
+        shutil.rmtree(self.flake / "templates", ignore_errors=True)
+        shutil.rmtree(self.root / "machine", ignore_errors=True)
+        self.calls.unlink(missing_ok=True)
 
     def test_usage_errors_run_nothing(self):
         for args in (

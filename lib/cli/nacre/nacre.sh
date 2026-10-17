@@ -2,6 +2,11 @@ usage() {
   cat <<USAGE
 usage: nacre [--flake PATH] [--verbose] <command> [arguments]
 
+Setup
+  install [OPTIONS]        write configuration.nix for this machine, then plan and update
+                           --user NAME --hostname NAME --role minimal|workstation
+                           --timezone ZONE --locale LOCALE --yes --force
+
 Deployment
   plan                     show what switch would change; changes nothing
   switch                   converge Arch, then activate the home generation
@@ -87,6 +92,8 @@ nix_progress_init "$verbose"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/nacre"
 profile="${XDG_STATE_HOME:-$HOME/.local/state}/nix/profiles/home-manager"
 pending_dir=/var/lib/nix-config/arch
+# Tests point installation at a fake root.
+install_root=${NACRE_INSTALL_ROOT:-}
 
 deploy() {
   local mode=$1 deployment_args=()
@@ -125,7 +132,91 @@ current_generation() {
   printf '%s\n' "${target%-link}"
 }
 
+install_machine() {
+  local user=${USER:-} hostname timezone locale role=workstation yes=0 force=0
+  hostname=$(cat "$install_root/etc/hostname" 2>/dev/null || uname -n)
+  timezone=$(timedatectl show --property=Timezone --value 2>/dev/null || echo UTC)
+  locale=${LANG:-en_US.UTF-8}
+  locale=${locale/.utf8/.UTF-8}
+  while (($#)); do
+    case "$1" in
+      --user | --hostname | --role | --timezone | --locale)
+        (($# >= 2)) || usage_error
+        local key=${1#--}
+        printf -v "$key" '%s' "$2"
+        shift 2
+        ;;
+      --yes) yes=1; shift ;;
+      --force) force=1; shift ;;
+      *) usage_error ;;
+    esac
+  done
+
+  if ((yes == 0)) && [[ -t 0 ]]; then
+    local answer
+    for key in user hostname role timezone locale; do
+      read -r -p "$key [${!key}]: " answer
+      [[ -z $answer ]] || printf -v "$key" '%s' "$answer"
+    done
+  fi
+
+  local entry description
+  [[ $user =~ ^[a-z][a-z0-9_-]*$ ]] || install_error "invalid user name: $user"
+  [[ $hostname =~ ^[a-z][a-z0-9_-]*$ ]] || install_error "invalid hostname: $hostname"
+  [[ $role == minimal || $role == workstation ]] || install_error "unknown role: $role"
+  [[ $timezone =~ ^[A-Za-z0-9_+/-]+$ ]] || install_error "invalid time zone: $timezone"
+  [[ $locale =~ ^[A-Za-z0-9_@.-]+$ ]] || install_error "invalid locale: $locale"
+  entry=$(getent passwd "$user") || install_error "create the account $user before installing"
+  [[ $(cut -d: -f6 <<<"$entry") == "/home/$user" ]] || install_error "$user must live in /home/$user"
+  getent group wheel | cut -d: -f4 | tr ',' '\n' | grep -qx "$user" ||
+    install_error "$user must be in the wheel group"
+  description=$(cut -d: -f5 <<<"$entry" | cut -d, -f1)
+  description=${description:-$user}
+  description=${description//[\\\"\$]/}
+
+  local graphics=generic images=() image
+  if lspci 2>/dev/null | grep -E 'VGA|3D|Display' | grep -qiE 'AMD|ATI'; then graphics=amd; fi
+  for image in "$install_root"/boot/initramfs-*.img; do
+    [[ -e $image && $image != *fallback* ]] && images+=("\"${image#"$install_root"}\"")
+  done
+  ((${#images[@]})) || install_error "no initramfs image under /boot"
+
+  local target=$flake/configuration.nix
+  if [[ -e $target ]] && ((force == 0)) &&
+    ! git -C "$flake" diff --quiet HEAD -- configuration.nix 2>/dev/null; then
+    install_error "configuration.nix has uncommitted changes; commit them or pass --force"
+  fi
+  local content
+  content=$(<"$flake/templates/configuration.nix")
+  content=${content//@role@/$role}
+  content=${content//@hostname@/$hostname}
+  content=${content//@timezone@/$timezone}
+  content=${content//@locale@/$locale}
+  content=${content//@description@/$description}
+  content=${content//@graphics@/$graphics}
+  content=${content//@username@/$user}
+  content=${content//@images@/${images[*]}}
+  printf '%s\n' "$content" >"$target"
+  printf 'Wrote %s:\n\n%s\n\n' "$target" "$content" >&2
+
+  "$0" --flake "$flake" plan
+  if ((yes == 0)); then
+    local confirm=n
+    [[ ! -t 0 ]] || read -r -p 'Apply this plan with nacre update? [y/N] ' confirm
+    [[ $confirm == [yY]* ]] || { printf 'Not applied. Run nacre update when ready.\n' >&2; exit 0; }
+  fi
+  exec "$0" --flake "$flake" update
+}
+
+install_error() {
+  printf 'nacre install: %s\n' "$1" >&2
+  exit 2
+}
+
 case "$command" in
+  install)
+    install_machine "$@"
+    ;;
   plan | switch | update | purge)
     (($# == 0)) || usage_error
     deploy "$command"

@@ -49,6 +49,36 @@ let
     )
   ];
   home = fixtures.home [ disabledModule ] "abnertu";
+  # What `nacre install` writes for a new machine, without this host's defaults.
+  freshInstall = import ../lib/mk-deployment.nix {
+    inherit inputs;
+    modules = [
+      (builtins.toFile "configuration.nix" (
+        builtins.replaceStrings
+          [
+            "@role@"
+            "@hostname@"
+            "@timezone@"
+            "@locale@"
+            "@username@"
+            "@description@"
+            "@graphics@"
+            "@images@"
+          ]
+          [
+            "workstation"
+            "box"
+            "UTC"
+            "en_US.UTF-8"
+            "alice"
+            "Alice"
+            "generic"
+            ''"/boot/initramfs-linux.img"''
+          ]
+          (builtins.readFile ../templates/configuration.nix)
+      ))
+    ];
+  };
   # The minimal role alone drops the graphical session; host defaults beat roles.
   minimalRole = fixtures.deploy [ { role = "minimal"; } ];
   roleBelowHost = evaluate [ { desktop.enable = lib.mkDefault false; } ];
@@ -283,6 +313,8 @@ assert lib.all (module: !(valid module)) [
 pkgs.runCommand "configuration-interface" { } ''
   test -x ${minimal.arch-switch}/bin/arch-switch
   test -x ${minimalRole.homes."abnertu@fixture".activationPackage}/activate
+  test -x ${freshInstall.deployment}/bin/box-workstation
+  test -x ${freshInstall.homes."alice@box".activationPackage}/activate
   test -x ${minimal.homes."abnertu@fixture".activationPackage}/activate
   test -x ${headlessHome.activationPackage}/activate
   test -x ${overriddenHome.activationPackage}/activate

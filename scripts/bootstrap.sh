@@ -88,6 +88,5 @@ fi
 
 printf '\n==> Bootstrap completed successfully!\n'
 printf 'Next steps:\n'
-printf '  1. Review your configuration in configuration.nix\n'
-printf '  2. Validate: just check-fast\n'
-printf '  3. Deploy:   nix run .#nacre -- --verbose update\n'
+printf '  New machine:      nix run .#nacre -- install\n'
+printf '  Existing config:  nix run .#nacre -- plan, then update\n'

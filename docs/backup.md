@@ -30,7 +30,7 @@ The repository's own configuration, the Nix store, Home Manager generations and 
 ## Restore order
 
 1. Install Arch and create the same user account (in `wheel`).
-2. Clone this repository and run the [bootstrap](deployment.md#bootstrap).
+2. Clone your repository and run the [bootstrap](deployment.md#bootstrap); a new machine follows the [install guide](install.md) instead.
 3. Restore the required files with their original owner and mode (see [Personal Agent](personal-agent.md)).
 4. Preview with `nacre plan`, then deploy with `nacre update`.
 5. Run `nacre ai prepare` and re-register Runners as needed.
