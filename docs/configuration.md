@@ -39,6 +39,7 @@ Roles sit below host defaults, which sit below `configuration.nix`, so any value
 | Native services, AI, Runners, Personal Agent | `services`, `programs.ai` |
 | Hardware and virtualization | `hardware`, `virtualization` |
 | Kernel modules and parameters | `boot.kernelModules`, `boot.kernel.sysctl` |
+| Nix daemon settings (`/etc/nix/nix.conf` managed block) | `nix.settings` |
 | Graphical session and user programs | `desktop`, `programs`, `users.users.<name>.home` |
 
 A top-level switch controls the resources it owns. Disabling an Arch feature withdraws management only: packages, services, registrations and application data stay. Home Manager switches to the new generation as usual.

@@ -16,6 +16,7 @@
   },
   sysctl ? { },
   kernelModules ? [ ],
+  nixSettings ? { },
   powerpanel ? null,
   adapterPython ? pkgs.python3,
   progress ? import ../../lib/cli/progress { inherit pkgs adapterPython; },
@@ -41,6 +42,7 @@ let
       arch
       sysctl
       kernelModules
+      nixSettings
       powerpanel
       ;
   };

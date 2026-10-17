@@ -47,6 +47,7 @@ let
     };
     sysctl = lib.filterAttrs (_: value: value != null) cfg.boot.kernel.sysctl;
     kernelModules = cfg.boot.kernelModules;
+    nixSettings = cfg.nix.settings;
     # Feature interfaces add cross-field validation and derived values.
     ai = import ../modules/ai/interface.nix {
       inherit lib;

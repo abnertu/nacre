@@ -10,6 +10,7 @@
   arch,
   sysctl ? { },
   kernelModules ? [ ],
+  nixSettings ? { },
   powerpanel ? null,
 }:
 let
@@ -55,7 +56,32 @@ let
   nixBlock = {
     path = "/etc/nix/nix.conf";
     name = "settings";
-    text = "trusted-users = root @wheel ${username}\n";
+    text = lib.concatStrings (
+      lib.mapAttrsToList
+        (
+          key: value:
+          let
+            rendered =
+              if builtins.isList value then
+                lib.concatStringsSep " " value
+              else if builtins.isBool value then
+                lib.boolToString value
+              else
+                toString value;
+          in
+          "${key} = ${rendered}\n"
+        )
+        (
+          nixSettings
+          // {
+            trusted-users = [
+              "root"
+              "@wheel"
+              username
+            ];
+          }
+        )
+    );
     action = "nix-daemon";
     create = true;
   };

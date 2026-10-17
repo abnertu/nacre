@@ -96,6 +96,27 @@ in
   boot.kernel.sysctl = option (types.attrsOf (
     types.nullOr (types.either types.str types.int)
   )) { } "Kernel parameters applied at boot and at runtime; null withdraws a default.";
+  nix.settings = mkOption {
+    type = types.attrsOf (
+      types.oneOf [
+        types.bool
+        types.int
+        types.str
+        (types.listOf types.str)
+      ]
+    );
+    default = {
+      experimental-features = [
+        "nix-command"
+        "flakes"
+      ];
+      max-jobs = "auto";
+      cores = 0;
+      max-substitution-jobs = 64;
+      http-connections = 50;
+    };
+    description = "Settings for the managed block in /etc/nix/nix.conf; trusted-users is added for the deployment user.";
+  };
   nixpkgs.hostPlatform = option (types.enum [ "x86_64-linux" ]) "x86_64-linux" "Nix build platform.";
   deployment = {
     platform = option (types.enum [ "arch" ]) "arch" "Native realization platform.";
