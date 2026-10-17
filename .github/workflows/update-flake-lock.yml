@@ -61,6 +61,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Report the failing command and its stderr as an annotation, which
+          # is readable without downloading the job log.
+          exec 2> >(tee "$RUNNER_TEMP/propose.err" >&2)
+          report() {
+            local message="propose failed at line $1: $2"$'\n'
+            message+=$(tail -n 20 "$RUNNER_TEMP/propose.err")
+            echo "::error title=update-flake-lock::${message//$'\n'/%0A}"
+          }
+          trap 'report "$LINENO" "$BASH_COMMAND"' ERR
           branch=automation/update-flake-lock
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
