@@ -1,20 +1,18 @@
-# Wi-Fi 熱點
+# Wi-Fi hotspot
 
-系統轉接器以唯一的連線名稱選定一個既有的 NetworkManager AP 連線，只管理它的公開屬性。UUID、WPA 憑證與其他欄位仍由 NetworkManager 保管，轉接器不會讀取或印出密碼。
+The system adapter selects one existing NetworkManager AP connection by its unique name and manages only its public properties. The UUID, WPA credentials and other fields stay with NetworkManager; the adapter never reads or prints the password.
 
-## 準備連線
+## Preparing the connection
 
-啟用 `networking.hotspot` 前：
+Before enabling `networking.hotspot`:
 
-1. 確認 NetworkManager 已安裝並在執行。
-2. 用 `nmcli` 建立該名稱的 AP 連線，在 NetworkManager 的受保護儲存中設定 WPA personal 與密碼。
-3. 確認宣告的無線與上行介面都存在，且無線介面沒有被其他連線占用。
+1. Make sure NetworkManager is installed and running.
+2. Create the AP connection with that name using `nmcli`, with WPA personal and its password in NetworkManager's protected storage.
+3. Check that the declared wireless and uplink interfaces exist and the wireless interface is not held by another connection.
 
-憑證不要放進 Nix、Git、指令參數或 log。
+For different hardware, override `networking.hotspot.interface` and `networking.hotspot.uplink`, or disable the feature. A missing interface, a duplicate or non-AP connection, unsafe or conflicting ownership and failed native queries all stop core preflight before any change.
 
-選項寫在 `configuration.nix`，可用[設定](configuration.md)裡的方式查詢解析結果。硬體不同的機器，覆寫 `networking.hotspot.interface` 與 `networking.hotspot.uplink`，或停用這項功能。任一宣告的介面不存在時，核心預檢會在任何變更前失敗；名稱重複、不是 AP 連線、所有權不安全或衝突、原生查詢失敗也一樣。
-
-## 部署與驗證
+## Deploying and verifying
 
 ```bash
 just arch-workstation
@@ -22,10 +20,10 @@ nmcli -f DEVICE,TYPE,STATE device status
 sudo ufw status verbose
 ```
 
-缺少宣告的原生套件時，確認後改用 `just arch-workstation update`。修改 AP 屬性可能重新啟用連線，讓用戶端短暫斷線；沒有變更的健康連線會持續運作。啟用防火牆管理時，轉接器會為選定的子網段與上行介面產生 IPv4 DHCP、閘道 DNS 與轉送規則；NAT 由 NetworkManager 負責，其餘流量維持預設拒絕。
+Changing AP properties may reactivate the connection and briefly drop clients; a healthy, unchanged connection keeps running. With firewall management enabled, the adapter generates IPv4 DHCP, gateway DNS and forwarding rules for the selected subnet and uplink. NetworkManager handles NAT; everything else stays default-deny.
 
-用一台用戶端確認位址分配、DNS 與上網路由。檢查無線電狀態用 `iw dev <宣告的無線介面> info`。
+Confirm address assignment, DNS and the internet route from a client. Check radio state with `iw dev <interface> info`.
 
-## 復原
+## Recovery
 
-中斷的原生動作會在 `/var/lib/nix-config/arch/` 保留 pending 標記。修正回報的衝突或缺少的前提後重跑部署，不要為了讓重跑通過而刪除標記。停用熱點管理時，既有的 NetworkManager 連線、憑證與執行狀態都會保留。若宣告改了介面、子網段或上行介面，過時的手動規則要自行確認，部署不會推斷你要移除它們。
+Interrupted native actions leave a pending marker in `/var/lib/nix-config/arch/`; fix the reported cause and rerun. Disabling hotspot management keeps the NetworkManager connection, credentials and runtime state. If you change the interface, subnet or uplink, review stale manual rules yourself; deployment does not guess which ones to remove.

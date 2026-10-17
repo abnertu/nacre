@@ -73,4 +73,4 @@ These build without activating. For deployment or adapter changes, also run `jus
 
 ## Documentation
 
-[README.md](README.md) is the entry point, [CONTEXT.md](CONTEXT.md) the composition model and `docs/` the operator procedures; all three are user-facing and written in concise Chinese. Update the relevant guide when public behavior changes. Agent constraints live only in this file, in English.
+[README.md](README.md) is the entry point, [CONTEXT.md](CONTEXT.md) the composition model and `docs/` the operator procedures. All documentation is English. Write for an operator: state behavior, commands and limits; cut background, repetition and anything the code or `--help` already says. Update the relevant guide when public behavior changes. Agent constraints live only in this file.

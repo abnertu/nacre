@@ -1,16 +1,16 @@
-# 本機 AI 服務
+# Local AI
 
-AI 功能以鎖定版本的原生 llama.cpp 執行宣告的 GGUF 模型，前面由 llama-swap 路由。Nix 產生路由、Caddy 與 systemd 設定；Arch 轉接器在套用前檢查已準備的資源、所有權與服務狀態。編譯出的執行檔與模型放在宣告的原生路徑，不在 Nix store。
+The AI feature runs declared GGUF models with a pinned native llama.cpp, routed by llama-swap. Nix generates the routing, Caddy and systemd configuration; the Arch adapter checks prepared artifacts, ownership and service state before applying it. Built binaries and models live at declared native paths, outside the store.
 
 ```text
 Tailnet HTTPS → Tailscale Serve → loopback Caddy → loopback llama-swap → loopback llama-server
 ```
 
-Caddy 只轉送 `/health` 與 `/v1/*`，不公開管理端點。模型、profile、版本與 checksum 清單在 AI 模組的 Nix 宣告裡。
+Caddy forwards only `/health` and `/v1/*`. Models, profiles, versions and checksums are declared in the AI module.
 
-## 選擇常駐模型
+## Selecting models
 
-`programs.ai.llama.model.name` 是預設模型。`llama.models` 為空時維持舊的單一模型行為；有明確項目時，每個要用的模型（包含 `model.name`）都要啟用：
+`programs.ai.llama.model.name` is the default model. With an empty `llama.models`, the single-model behavior applies; with explicit entries, every model you use (including `model.name`) must be enabled:
 
 ```nix
 programs.ai.llama = {
@@ -35,27 +35,27 @@ programs.ai.llama = {
 };
 ```
 
-- 每個模型各自設定裝置、context、cache、batch、平行 slot 與 offload；預設模型先套用舊的 `llama.model` 覆寫，再套用個別設定。
-- profile 共用模型行程，只控制取樣與 thinking，不能改變後端配置。
-- 未知欄位、指向未選模型的 profile、無效的 batch 與衝突的 thinking 設定，在評估時就會失敗。
-- 啟用並行時，選取的數量不能超過 `maxLoadedModels`。後端在第一次請求時載入，之後常駐不回收，請求可同時執行；只調高上限不會啟動模型。停用並行時上限必須是 1，模型依需求切換。
-- 準備只涵蓋選取的模型；取消選取不會刪除資源。
+- Each model sets its own device, context, cache, batch, parallel slots and offload. The default model applies `llama.model` overrides first, then its per-model settings.
+- Profiles share the model process and control only sampling and thinking.
+- Unknown fields, profiles pointing at unselected models, invalid batches and conflicting thinking settings fail at evaluation.
+- With concurrency, the selection may not exceed `maxLoadedModels`; backends load on first request and stay resident. Without it, the limit must be 1 and models swap on demand.
+- Preparation covers selected models only; deselecting deletes nothing.
 
-`vramEstimateMiB` 與 `memoryBudgetMiB` 描述實測的運作預算：設定預算時每個選取的模型都要有估計值，總和不能超過預算。它們不限制實際配置。`--fit-target` 是保留的可用記憶體，不是配置上限。用固定的 offload、context 與 batch 搭配 `fit = false`，可避免結果依載入順序而變。量測 prompt 處理的峰值，為桌面與 Sunshine 保留餘裕，換模型或執行環境後重新量測。
+`vramEstimateMiB` and `memoryBudgetMiB` describe a measured budget: with a budget set, every selected model needs an estimate and the sum must fit. They do not limit real allocation. Fixed offload, context and batch with `fit = false` make results independent of load order. Measure peak prompt processing, leave headroom for the desktop and Sunshine, and remeasure after changing models or runtime.
 
-`qwen3.6-35b-a3b-ud-q5-k-m` 這個選項名稱為了相容而保留，實際檔案是 MXFP4_MOE。thinking profile 的後綴仍可用於預設模型；確切的 API ID 查 `/v1/models`。
+The option name `qwen3.6-35b-a3b-ud-q5-k-m` is kept for compatibility; the file is MXFP4_MOE. Query `/v1/models` for exact API IDs.
 
 ## Agent skills
 
-Home Manager 把明確選取的 skill 以完整目錄連結安裝到 `~/.agents/skills` 與 `~/.gemini/config/skills`：
+Home Manager installs explicitly selected skills as whole directory links in `~/.agents/skills` and `~/.gemini/config/skills`:
 
-- 共用的 agent 目錄由 `programs.ai.enable` 與 `programs.ai.skillsPresets.enable` 控制。
-- Antigravity 目錄由 `programs.ai.agy.enable` 與 `programs.ai.agy.skills.enable` 控制。
-- 這些開關與 llama.cpp 資源的準備無關。
+- the shared agent directory follows `programs.ai.enable` and `programs.ai.skillsPresets.enable`;
+- the Antigravity directory follows `programs.ai.agy.enable` and `programs.ai.agy.skills.enable`;
+- neither depends on llama.cpp preparation.
 
-來源與選取清單在 [`modules/ai/skills.nix`](../modules/ai/skills.nix)。`matt-pocock-skills` input 提供 Matt 的 skill（含參考資料、腳本與 metadata），`vercel-skills` input 提供 `find-skills`，兩者的版本都鎖在 `flake.lock`；自訂 skill 留在這個 repo。部署使用 Home Manager 啟用套件裡已建置好的來源，不會執行 `npx`、不在啟用時下載，也不維護 Skills CLI 的 lock 檔。
+Sources and the selection live in [`modules/ai/skills.nix`](../modules/ai/skills.nix). The `matt-pocock-skills` and `vercel-skills` inputs are pinned in `flake.lock`; custom skills stay in this repository. Deployment uses the prebuilt sources from the activation package: no `npx`, no download at activation, no Skills CLI lock file.
 
-只更新 skill 來源、審閱上游變更後驗證：
+Update skill sources after reviewing upstream changes:
 
 ```bash
 nix flake update matt-pocock-skills vercel-skills
@@ -63,27 +63,23 @@ just check
 just build
 ```
 
-兩個 input 可以分開更新。確認無誤後執行 `just arch-workstation` 啟用並 commit lock 變更；要還原就把 lock 改回先前的版本再重新部署。`just arch-workstation update` 只負責原生套件，不會推進 skill 版本。
+Then deploy and commit the lock change; revert the lock to roll back. `just arch-workstation update` handles native packages only and never advances skills. A selected upstream path that disappears or lacks `SKILL.md` fails evaluation, so updates never drop a skill silently. Fork an upstream skill into a custom one before modifying it; `npx skills update` would fight the managed links.
 
-新增 skill 需要修改選取清單。選取的上游路徑消失或缺少 `SKILL.md` 時評估會失敗，所以更新不會悄悄漏掉 skill。不要用 `npx skills update` 覆寫這些由 Home Manager 管理的連結；要修改上游 skill，先另外 fork 成自訂 skill。需要專案層級的設定時，在各專案另外執行 `setup-matt-pocock-skills`。Antigravity 的全域 skill 路徑見其[官方說明](https://antigravity.google/docs/skills)。
+## Codex local profile
 
-## Codex 本機 profile
+With AI, Codex and llama.cpp enabled, Home Manager generates `~/.codex/llama-cpp.config.toml` from the default model's API ID and context:
 
-AI、Codex 與 llama.cpp 都啟用時，Home Manager 依預設模型的 API ID 與 context 產生 `~/.codex/llama-cpp.config.toml`：
+- provider `llama_cpp` (Responses API at `http://127.0.0.1:11434/v1`), web search off;
+- auto-compaction at 75% of context (12K tokens at the default 16K);
+- Codex multi-agent tools off, because the pinned llama.cpp Responses bridge supports only function tools.
 
-- provider 為 `llama_cpp`（Responses API，`http://127.0.0.1:11434/v1`），這個 profile 關閉網頁搜尋。
-- 在 context 的 75% 自動壓縮；預設 16K 時於 12K token 壓縮，留約 4K 給當前回合。這是壓縮門檻，不是輸出上限。
-- 關閉 Codex 的 multi-agent 工具，因為鎖定版本的 llama.cpp Responses 轉換只支援 function tool；一般的 function tool 與 shell 仍可用，其他 profile 不受影響。
+Use it with `codex --profile llama-cpp` ([Codex 0.134+](https://learn.chatgpt.com/docs/config-file/config-advanced)). `--profile` reads from the default `~/.codex`, not a custom `CODEX_HOME`. Disable with `programs.ai.codex.localProfile.enable = false`. The module manages no other Codex settings or credentials.
 
-用 `codex --profile llama-cpp` 或 `codex exec --profile llama-cpp "任務"` 選用（需要 [Codex 0.134 以上](https://learn.chatgpt.com/docs/config-file/config-advanced)）。使用前先準備 AI 資源並收斂服務。換模型或 context 後，下一個 Home Manager 世代啟用時生效。
+Qwen3.5 uses a managed chat template that keeps multiple system/developer messages in order. The GGUF's built-in template rejects them with HTTP 500 (`System message must be at the beginning`), which Codex may show as a generic overload error.
 
-Qwen3.5 使用受管理的 chat template，依對話順序保留多個 system/developer 指令（包含使用者訊息後的指令更新），原本的 tool 與 thinking 格式不變。GGUF 內建的範本會以 HTTP 500（`System message must be at the beginning`）拒絕這些指令，Codex 可能顯示成一般的高負載錯誤。範本更新後重新部署即可，不需重新下載或建置模型。
+## FIM completion
 
-`--profile` 讀的是預設 `~/.codex` 下的檔案；自訂 `CODEX_HOME` 時不會讀到。`programs.ai.codex.localProfile.enable = false` 可停止管理。這個檔案獨立於 `~/.codex/config.toml`，模組不管理 Codex 的其他設定、憑證或權限；啟用前先處理既有的同名檔案。
-
-## FIM 補全
-
-透過 `/v1/completions` 使用 base completion 權重，以原始的 prefix/suffix token 而非 chat 訊息：
+Base completion weights are served on `/v1/completions` with raw prefix/suffix tokens:
 
 ```bash
 curl --fail http://127.0.0.1:11434/v1/completions \
@@ -91,13 +87,13 @@ curl --fail http://127.0.0.1:11434/v1/completions \
   --data '{"model":"Qwen2.5-Coder-3B-Q4_K_M.gguf","prompt":"<|fim_prefix|>def add(a, b):\n    <|fim_suffix|>\n\nassert add(2, 3) == 5\n<|fim_middle|>","max_tokens":64,"temperature":0,"stop":["<|fim_pad|>","<|endoftext|>","<|im_end|>"]}'
 ```
 
-兩個補全候選模型都有這些 FIM token；因為它們的 GGUF EOS 宣告不同，所以明確設定 stop。內建的 chat 範本不會讓 base 權重變成 instruct 模型。編輯器外掛用另一個補全 ID 與 prefix/suffix 格式；語法不明確時，在 prefix 加上檔案或語言提示（例如 `# Nix expression`）。預設模型總 context 為 16K，讓工具在 prompt 加輸出達到上限前壓縮；加大 context 要重新量測速度。
+Set stop tokens explicitly; the candidate models declare different EOS tokens. Add a file or language hint to the prefix (for example `# Nix expression`) when the syntax is ambiguous.
 
-## 本機量測
+## Benchmarks
 
-這些工具會實際使用 GPU，與部署和 flake checks 分開。候選模型下載到暫存目錄並驗證 SHA-256。避免在受管理的路由之外再跑一個大型模型；需要隔離測試時，在約定的時間停止路由，結束後恢復，不要修改 `/etc`、收據或已準備的 selector。
+These tools use the real GPU and are separate from deployment and checks. Download candidates to a scratch directory and verify their SHA-256. Avoid running another large model beside the managed router; for isolated runs, stop the router and restore it afterwards without touching `/etc`, receipts or the prepared selector.
 
-先找出獨立顯示卡的 sysfs 路徑，不要假設是 `card0`：
+Find the discrete GPU's sysfs path instead of assuming `card0`:
 
 ```bash
 for device in /sys/class/drm/card[0-9]/device; do
@@ -115,7 +111,7 @@ python modules/ai/benchmark.py \
   --min-free-mib 4096 --output /var/tmp/ai-bench.json
 ```
 
-依序量測 PP512、PP4096、TG128，各重複三次，記錄執行檔版本、模型 checksum、參數、原始診斷與 VRAM 峰值。`--depths 8192` 可量測較長前綴後的生成速度。保留量監控在超出或逾時時終止自己的測試行程；輪詢擋不住瞬間配置，不是硬上限。
+It measures PP512, PP4096 and TG128 three times each and records binary version, model checksum, parameters, raw diagnostics and peak VRAM. `--depths 8192` measures generation after a longer prefix. The headroom monitor stops its own benchmark processes; polling cannot catch instant allocations.
 
 ```bash
 python modules/ai/probe.py --base-url http://127.0.0.1:11434 \
@@ -125,26 +121,22 @@ python modules/ai/probe.py --base-url http://127.0.0.1:11434 \
   --model COMPLETION_ID --mode fim --output /var/tmp/ai-fim.json
 ```
 
-probe 使用合成的 prompt，比較 thinking 開關，並重複前綴以觀察 cache 重用。它分開記錄第一個 SSE 事件、推理與可見回答，失敗與部分輸出也會保留。路由的別名可能強制 thinking 設定，用 `--thinking-model` 與預設模型比較；token 上限可能在最終回答前就結束 thinking。不要用空 context 的 TG128 推論長 context 的速度。
+The probe uses synthetic prompts, compares thinking on and off, and repeats prefixes to observe cache reuse. It records the first SSE event, reasoning and visible answer separately, including failures and partial output. Do not infer long-context speed from empty-context TG128. Results for this machine are in [benchmarks](ai-benchmarks.md).
 
-agent 延遲包含載入、排隊、prompt 處理、推理與可見輸出；穩定的前綴有助 cache 重用。MTP 能加速解碼，但需要 MTP tensor 並增加記憶體，目前鎖定的 Qwen3.6 MXFP4 檔案沒有；只有解碼是瓶頸且預算允許時才測。上游的 [HIP PP 退化 #18823](https://github.com/ggml-org/llama.cpp/issues/18823) 與 [MTP 預留 #26038](https://github.com/ggml-org/llama.cpp/issues/26038) 只是排查線索，不代表這台機器有這些問題。
-
-硬體、選定參數與限制見[本機量測結果](ai-benchmarks.md)。宣稱遠端串流效能前，要在實際 Sunshine 串流時測試同時常駐與並行請求。
-
-## 準備（部署之外）
+## Preparation
 
 ```bash
-just prepare-ai          # 建置並驗證所有宣告的資源
-just prepare-ai build    # 只準備鎖定版本的 llama.cpp
-just prepare-ai model    # 只下載並完整驗證宣告的模型
+just prepare-ai          # build and verify every declared artifact
+just prepare-ai build    # only the pinned llama.cpp
+just prepare-ai model    # only download and fully verify the declared models
 ```
 
-- 建置使用宣告的 llama.cpp 版本與審閱過的 patch，安裝到以版本命名的目錄，再以原子方式更新 `current` selector。需要原生的 C++、ROCm 與 Vulkan 工具鏈。
-- 模型依宣告的身分暫存，通過完整 SHA-256 驗證後才以原子方式發布，並寫入 root 擁有的收據。日常部署只比對收據的身分與檔案 metadata，不會每次雜湊整個 GGUF；`just prepare-ai model` 會完整驗證並更新相符的收據。
-- 未知的暫存狀態、不符的 selector 或 checksum 需要人工確認。
-- 下載使用 `hf download --local-dir`，不用 `--cache-dir`，metadata 留在自己的暫存目錄。下載失敗時重跑 `just prepare-ai model`：相同身分的暫存會被沿用，完成後仍須通過 SHA-256 驗證；屬於其他宣告的暫存仍需人工確認。見 [Hugging Face 下載說明](https://huggingface.co/docs/huggingface_hub/guides/download)。
+- The build uses the declared llama.cpp version and reviewed patches, installs into a versioned directory, then atomically moves the `current` selector. It needs native C++, ROCm and Vulkan toolchains.
+- Models are staged by declared identity, published atomically only after a full SHA-256 check, and recorded in a root-owned receipt. Routine deployment compares receipt identity and file metadata instead of rehashing the GGUF.
+- Unknown staging state, a mismatched selector or checksum needs a manual decision.
+- Downloads use `hf download --local-dir`. After a failed download, rerun `just prepare-ai model`: staging for the same identity is reused and still verified.
 
-## 部署與檢查
+## Deploying and checking
 
 ```bash
 just arch-workstation
@@ -154,8 +146,8 @@ sudo tailscale serve status --json
 systemctl status llama-swap.service caddy.service
 ```
 
-從未準備過 build selector 時，部署會醒目地略過 AI，不碰它的檔案與服務。selector 存在之後，缺模型、build 或模型收據無效、checksum 改變、Caddy 設定不受管理、服務失敗，或預檢後狀態改變，都會中止部署。服務收斂前會先驗證已準備的資源。需要原生指令的診斷時用 `just arch-workstation verbose`。
+Until the build selector exists, deployment skips AI visibly and leaves its files and services alone. Afterwards, a missing model, invalid build or model receipt, checksum change, unmanaged Caddy configuration, failed service or state change after preflight stops the run.
 
-舊的獨立 `llama-server` preset 與 drop-in 以固定的歷史內容辨識，與目前選取的模型無關。內容完全相符的舊檔在遷移到 llama-swap 期間可以保留，部署會在需要時停用舊服務；被修改過的 preset、drop-in 與手動覆寫仍需明確接管。舊檔與模型資源不會被自動移除。
+Legacy standalone `llama-server` presets and drop-ins are recognized by their fixed historical content. Exact matches may stay during the migration to llama-swap; modified ones need explicit adoption. Nothing is removed automatically.
 
-停用 AI 只是停止收斂，不會移除已準備的執行檔、模型、原生檔案、pending 標記或 Tailscale 路由。`purge` 會撤下 Tailscale Serve 路由、Caddy site 與 `llama-swap`，保留已準備的執行檔、模型與收據。進度與復原見[部署](deployment.md)。
+Disabling AI stops convergence and removes nothing. `purge` withdraws the Tailscale Serve route, the Caddy site and `llama-swap`, keeping prepared binaries, models and receipts.

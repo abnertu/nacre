@@ -1,17 +1,17 @@
-# 部署與復原
+# Deployment and recovery
 
-以選定的部署使用者，在 `x86_64-linux` 的 Arch 上從這個 checkout 執行。前提：
+Run from this checkout as the deployment user on `x86_64-linux` Arch. Prerequisites:
 
-- 帳號已存在且屬於 `wheel`
-- 已安裝原生 Nix、`yay` 與必要指令
-- 宣告了 `lib32-*` 套件時，`/etc/pacman.conf` 已啟用 `[multilib]`
-- 執行中的核心有對應的模組目錄
+- the account exists and is in `wheel`
+- native Nix, `yay` and the required commands are installed
+- `[multilib]` is enabled in `/etc/pacman.conf` when `lib32-*` packages are declared
+- the running kernel has a matching module directory
 
-啟用前先讀[設定](configuration.md)、[系統設定](system-settings.md)，以及已啟用功能的準備指南。
+Read [configuration](configuration.md), [system settings](system-settings.md) and the preparation guide of each enabled feature first.
 
 ## Bootstrap
 
-全新的 Arch 尚未安裝 Nix 或 just 時，clone 後執行 bootstrap。它會啟用 `[multilib]`、安裝前置套件、設定 Nix 並啟動 `nix-daemon.service`：
+On a fresh Arch install without Nix or just, run the bootstrap after cloning. It enables `[multilib]`, installs prerequisites, configures Nix and starts `nix-daemon.service`:
 
 ```bash
 git clone https://github.com/gin31259461/nix-config.git ~/.config/nix
@@ -19,72 +19,64 @@ cd ~/.config/nix
 ./scripts/bootstrap.sh
 ```
 
-Bootstrap 會改動主機，執行前先看過腳本與現有套件狀態。
+The bootstrap changes the host; read the script first.
 
-## 容器測試
-
-`just container-test` 用 podman 把 `checks/container/configuration.nix`（工作站設定扣除 rootless 容器無法提供的硬體與核心功能）部署進 systemd Arch 容器，依序驗證：
-
-1. 以 checked-in 的 bootstrap 準備環境
-2. 缺套件時以代碼 3 停止
-3. `update` 成功
-4. 再跑一次沒有任何變更
-5. `plan` 也回報沒有變更
-6. purge 後 pacman 仍可用
-7. store 路徑未被修改
-
-pacman 與 yay 快取存在 `nix-config-container-pacman`、`nix-config-container-yay` 兩個 volume，第一次會下載完整套件。`--keep` 保留容器以便檢查。CI 在 `main` 的部署相關變更、每週排程與手動觸發時執行同一測試（`.github/workflows/container-test.yml`）。
-
-## 檢查與啟用
+## Commands
 
 ```bash
-just check-fast                 # 格式、型別、lint 與介面
-just check                      # 所有 flake checks，含隔離測試
-just build                      # 建置部署產物，不啟用
-just arch-workstation plan      # 預覽部署會做的變更，不改任何東西
-just arch-workstation           # 收斂 Arch，再啟用建置好的 home
-just arch-workstation update    # 同時升級並收斂宣告的 pacman / AUR 套件
-just arch-workstation verbose   # 輸出完整診斷
-just arch-workstation purge     # 移除受管理的 Arch 部署狀態，略過 home
+just arch-workstation plan      # read-only preview
+just arch-workstation           # converge Arch, then activate the built home
+just arch-workstation update    # also upgrade and converge declared pacman / AUR packages
+just arch-workstation verbose   # full diagnostics
+just arch-workstation purge     # remove managed Arch state, skip home
 ```
 
-- `plan` 只讀：列出缺少與可升級的套件、core 的每一項檔案與 runtime 變更、system 與可選模組的預檢結果，以及 Home Manager 世代是否更新。每行以 `=`（不變）、`~`（變更）、`+`（新增）、`!`（衝突）開頭，終端機上依此上色；有衝突時以非零代碼結束。system settings 目前只顯示預檢結果，不預覽細項。
-- 日常部署不安裝套件；缺套件時以代碼 3 停止，改用 `update`。
-- `update` 完整升級 pacman 並收斂 AUR；核心更新後可能需要重新開機。
-- `purge` 依序撤回：
-  - AI：Tailscale Serve 路由、Caddy site、`llama-swap` 的 unit 與設定。
-  - 系統設定：timesyncd、journald、logind、fstrim timer 的 drop-in。
-  - core：受管理的系統 unit、核心檔案、LizardByte 套件庫、Personal Agent unit、Nix 設定區塊與 pending 狀態。
+- **plan** lists missing and upgradable packages, every core file and runtime change, system and optional module preflight, and whether the Home Manager generation changes. Lines start with `=` (unchanged), `~` (changed), `+` (added) or `!` (conflict); conflicts exit non-zero. System settings show preflight only, not per-item detail.
+- **Routine runs** install nothing. Missing packages exit with code 3; use `update`.
+- **update** fully upgrades pacman and converges AUR. A kernel update may need a reboot.
+- **purge** withdraws, in order:
+  - AI: the Tailscale Serve route, the Caddy site, the `llama-swap` unit and config.
+  - System settings: timesyncd, journald, logind and fstrim timer drop-ins.
+  - Core: managed system units, kernel files, the LizardByte repository, the Personal Agent unit, the Nix configuration block and pending state.
 
-  保留套件、帳號、Runner 註冊、可變資料、已準備的 AI 執行檔與模型，以及語系、時區、主機名稱、console、防火牆規則、熱點設定這些系統現值；initramfs 的模組區塊也保留，因為撤回需要重建開機映像。已停用功能的檔案不再受管理，purge 不會動。purge 不啟用 Home Manager。
+  It keeps packages, accounts, Runner registrations, mutable data, prepared AI binaries and models, and the current locale, timezone, hostname, console, firewall rules and hotspot settings. The initramfs module block also stays, since withdrawing it needs a boot image rebuild. Files of disabled features are no longer managed and purge leaves them alone. Purge does not activate Home Manager.
 
-`just arch-workstation` 先建置內含固定 Home Manager 啟用套件的部署產物，執行時依序：預檢核心狀態與可選模組、（`update` 時）更新套件、收斂原生檔案與服務、啟用 home。兩個階段沒有共同的回滾：home 啟用失敗時，Arch 的變更仍保留。Runner 與 [AI 準備](ai.md) 不在這個流程內。
+A run preflights core state and optional modules, upgrades packages (with `update`), converges native files and services, then activates the home. The two stages share no rollback: if home activation fails, the Arch changes remain. Runners and [AI preparation](ai.md) are outside this flow.
 
-可選模組只有在從未完成準備時才能回報 `not ready` 並被略過，略過時不碰它的檔案與服務。無效的收據、checksum 不符、所有權衝突、缺少宣告的核心硬體、原生指令失敗，以及預檢後狀態改變，都會中止部署。
+An optional module is skipped as `not ready` only if it was never prepared; a skipped module's files and services are untouched. Invalid receipts, checksum drift, ownership conflicts, missing declared core hardware, native command failures and state changing after preflight all stop the run.
 
-## 進度與診斷
+## Container test
 
-Nix 顯示原生建置進度；部署開始後，共用的進度列顯示進行中、完成、略過與失敗的任務，原生工具輸出時會讓出終端機。`verbose`、stderr 被導向、`TERM=dumb`、設定了 `NO_COLOR`（空值也算）或非空的 `CI`，會改用純文字 log。`verbose` 會傳到 Nix、Home Manager 與特權轉接器。轉接器失敗時附上指令、結束代碼、stdout、stderr 與逾時前的部分輸出，機密會遮蔽。
+`just container-test` deploys `checks/container/configuration.nix` (the workstation minus hardware and kernel features a rootless container cannot provide) into a systemd Arch container with podman, and checks that:
 
-```bash
-NO_COLOR=1 just build
-just arch-workstation update verbose
-```
+1. the checked-in bootstrap prepares the environment
+2. a routine run with missing packages exits 3
+3. `update` succeeds
+4. a repeat run changes nothing
+5. `plan` agrees nothing is left
+6. pacman still works after purge
+7. store paths are unmodified
 
-直接呼叫時，Nix 參數放在目標前，轉接器參數放在 `--` 之後：
+Pacman and yay caches live in the `nix-config-container-pacman` and `nix-config-container-yay` volumes, so only the first run downloads everything. `--keep` leaves the container for inspection. CI runs the same test on deployment changes to `main`, weekly and on demand.
+
+## Progress and diagnostics
+
+Nix shows native build progress. During deployment a shared progress display tracks running, finished, skipped and failed tasks, and yields the terminal to native tool output. It falls back to plain logs with `verbose`, redirected stderr, `TERM=dumb`, any `NO_COLOR` or a non-empty `CI`. `verbose` reaches Nix, Home Manager and the privileged adapters. Adapter failures include the command, exit code, stdout, stderr and partial output before a timeout, with secrets redacted.
+
+When calling the app directly, Nix flags go before the target and adapter flags after `--`:
 
 ```bash
 nix run --show-trace --print-build-logs --verbose .#arch-workstation -- --verbose
 ```
 
-## 中斷後復原
+## Recovery
 
-| 狀況 | 處理 |
+| Situation | Action |
 | --- | --- |
-| 代碼 2 | 修正指令參數 |
-| 代碼 3 | 確認缺少的原生套件，需要時執行 `update` |
-| 代碼 75 | 等待鎖釋放，或開機到模組相符的核心 |
-| 可選模組被略過 | 完成該模組的準備步驟 |
-| 原生指令失敗 | 修正回報的原因後重跑同一指令 |
+| Exit 2 | Fix the command arguments |
+| Exit 3 | Review the missing native packages, run `update` |
+| Exit 75 | Wait for the lock, or boot the kernel matching the installed modules |
+| Optional module skipped | Finish that module's preparation |
+| Native command failed | Fix the reported cause and rerun the same command |
 
-受管理的寫入在變更前於 `/var/lib/nix-config/arch/` 記錄 pending 標記，成功後才清除。保留這些標記讓重跑能接續，不要刪除它們來掩蓋未完成的工作。健康的重跑不會改寫相同的檔案，也不會重啟正常的服務。Home Manager 在 Arch 收斂後失敗時，修正 home 的錯誤再重跑部署。purge 不是復原捷徑。
+Managed writes record a pending marker in `/var/lib/nix-config/arch/` before changing anything and clear it after success. Keep the markers so a rerun can resume; deleting them hides unfinished work. A healthy rerun rewrites no identical files and restarts no healthy services. If Home Manager fails after Arch convergence, fix the home error and rerun. Purge is not a recovery shortcut.
