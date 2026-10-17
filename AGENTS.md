@@ -72,6 +72,10 @@ These build without activating. For deployment or adapter changes, also run `jus
 - Squash unpushed commits that make related changes to the same unit into one; keep unrelated changes separate.
 - Commits carry the configured Git author only: no `Co-Authored-By` or other attribution trailers.
 
+## Releases
+
+`VERSION` holds the semantic version that `nacre --version` reports. While in 0.x, a change that breaks configuration or CLI compatibility bumps the minor version. `just release X.Y.Z` writes `VERSION`, prepends git-cliff notes to `CHANGELOG.md`, commits and tags locally. Pushing the tag publishes a GitHub release, so it needs the user's go-ahead like any push.
+
 ## Documentation
 
 [README.md](README.md) is the entry point, [CONTEXT.md](CONTEXT.md) the composition model and `docs/` the operator procedures. All documentation is English. Write for an operator: state behavior, commands and limits; cut background, repetition and anything the code or `--help` already says. Update the relevant guide when public behavior changes. Agent constraints live only in this file.

@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish the GitHub release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install Nix
+        uses: cachix/install-nix-action@b85815f71a6de0ddee80b8a80a98d43f4bcc66c7 # v31
+      - name: Verify the tag matches VERSION
+        run: |
+          [[ $GITHUB_REF_NAME == "v$(cat VERSION)" ]] || {
+            echo "::error title=release::tag $GITHUB_REF_NAME does not match VERSION $(cat VERSION)"
+            exit 1
+          }
+      - name: Write release notes
+        run: |
+          # The release commit's own changelog section, up to the next heading.
+          awk -v v="## $(cat VERSION)" 'index($0, v) == 1 {on=1; next} /^## /{on=0} on' CHANGELOG.md >"$RUNNER_TEMP/notes.md"
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "Nacre ${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
