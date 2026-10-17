@@ -56,7 +56,6 @@ let
         };
     }
   ) profileInputs;
-  packages = import ./packages.nix;
   codexLocalProfileEnabled =
     config.enable && config.codex.enable && llama && config.codex.localProfile.enable;
   codexLocalProfile =
@@ -96,11 +95,6 @@ in
     };
     concurrentModels = config.llama.concurrentModels;
   };
-  aurPackages =
-    lib.optionals (config.enable && config.codex.enable) packages.codex
-    ++ lib.optionals (
-      config.enable && config.agy.enable && config.agy.pkg.enable && config.agy.package.enable
-    ) packages.agy;
   homeModule = {
     home.file = lib.optionalAttrs config.enable (
       let

@@ -21,7 +21,6 @@ check-fast:
     exec nix "${nix_progress_args[@]}" build --no-link --show-trace --print-build-logs \
       .#checks.x86_64-linux.source-format \
       .#checks.x86_64-linux.python-types \
-      .#checks.x86_64-linux.host-interface \
       .#checks.x86_64-linux.gitlab-runner-interface \
       .#checks.x86_64-linux.system-settings-interface
 

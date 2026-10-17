@@ -12,11 +12,12 @@ Each resource has exactly one owner:
 | --- | --- |
 | `lib/` | Evaluation, normalization (`lib/eval-configuration.nix`) and deployment composition |
 | `hosts/` | Identity and baselines, always via `lib.mkDefault` |
-| `platforms/<distro>/` | Native realization; distro-specific code stays here so other distros can sit beside `arch/` |
-| `modules/` | Capabilities and their typed `interface.nix` |
+| `platforms/<distro>/` | Native realization and its contribution interface (`platforms/arch/module.nix`); distro-specific code stays here so other distros can sit beside `arch/` |
+| `modules/` | Feature modules: each `module.nix` declares its options and contributes its own `arch.*` packages, groups and units (registry: `modules/default.nix`) |
 | `profiles/`, `homes/` | Home Manager composition |
 
-- Public options live in `lib/configuration-options.nix` or a module interface. Reject unknown fields, invalid types and invalid combinations. Precedence comes from `lib.mkDefault` baselines versus ordinary user definitions, never import order.
+- Shared options live in `lib/configuration-options.nix`, feature options in their `module.nix`. Express single-value rules as option types and cross-field rules as entries in `lib/configuration-assertions.nix` (or a feature `interface.nix` for derived values). Precedence comes from `lib.mkDefault` baselines versus ordinary user definitions, never import order.
+- Deployment code reads merged contributions from the evaluated `arch` option; a new feature adds its native names there instead of wiring them through `lib/mk-deployment.nix`.
 - Registries stay explicit. Package and service inventories live in their owning Nix source.
 - Static, public policy is Nix-generated. Python and Bash adapters do safe live-state reconciliation, validation and recovery only. Secrets, runtime receipts, registration tokens and mutable data stay outside derivations.
 - Human accounts exist before deployment. Modules own service accounts, which get no home composition. Home Manager `stateVersion` stays fixed through routine updates.

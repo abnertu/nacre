@@ -4,7 +4,7 @@
   hostName,
   platform,
   hardware,
-  capabilities ? null,
+  capabilities,
   username,
   user,
   ai ? {
@@ -89,9 +89,7 @@ inputs.home-manager.lib.homeManagerConfiguration {
   ]
   ++ userNormalized.homeModules
   ++ map (resolve profileRegistry "profile") (
-    builtins.filter (
-      name: capabilities == null || capabilities.desktop.enable || name != "workstation"
-    ) userNormalized.profiles
+    builtins.filter (name: capabilities.desktop.enable || name != "workstation") userNormalized.profiles
   )
   ++ map (resolve moduleRegistry "home module") userNormalized.modules;
 }

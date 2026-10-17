@@ -88,7 +88,6 @@
       checks.${system} = {
         configuration = import ./checks/configuration.nix { inherit lib pkgs inputs; };
         capabilities = import ./checks/capabilities.nix { inherit lib pkgs inputs; };
-        optional-modules = import ./checks/optional-modules.nix { inherit lib pkgs inputs; };
         source-format = import ./checks/format.nix { inherit lib pkgs; };
         python-types = import ./checks/python-types.nix {
           inherit lib pkgs;

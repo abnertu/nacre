@@ -20,7 +20,7 @@ nix eval .#lib.configurations.arch.services.fstrim.enable
 nix eval --json .#lib.configurations.arch.networking.firewall
 ```
 
-`lib/configuration-options.nix` and capability interfaces under `modules/` own option types; `lib/eval-configuration.nix` produces private Host and adapter values. `hosts/arch` owns machine defaults and user identity. `profiles/`, `homes/` and home modules own reusable and user-specific Home Manager composition.
+`lib/configuration-options.nix` and feature modules under `modules/` own option types; `lib/configuration-assertions.nix` holds cross-field rules; `lib/eval-configuration.nix` produces private Host and adapter values. `hosts/arch` owns machine defaults and user identity. `profiles/`, `homes/` and home modules own reusable and user-specific Home Manager composition.
 
 ## Pick the correct owner
 

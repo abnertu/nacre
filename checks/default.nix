@@ -8,9 +8,6 @@
 }:
 {
   home-source-assets = import ./assets.nix { inherit pkgs; };
-  host-interface =
-    assert import ./host-interface.nix { inherit lib pkgs; };
-    pkgs.writeText "host-interface" "passed";
   workflow = pkgs.runCommand "github-workflow-check" { nativeBuildInputs = [ pkgs.actionlint ]; } ''
     actionlint ${../.github/workflows/check.yml}
     touch "$out"

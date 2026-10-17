@@ -53,10 +53,6 @@ let
     hardware = host.hardware;
     tailscale = capabilities.tailscale;
   };
-  virtualization = import ../modules/virtualization {
-    inherit lib;
-    config = host.virtualization;
-  };
   powerpanel = import ../modules/powerpanel {
     inherit lib pkgs;
     config = host.powerpanel;
@@ -65,13 +61,6 @@ let
     inherit lib pkgs;
     config = host.systemSettings;
     hostName = host.name;
-  };
-  nativePackages = import ../platforms/arch/packages.nix {
-    inherit lib capabilities;
-    hardware = host.hardware;
-    modulePackages = runners.requiredPackages ++ virtualization.requiredPackages;
-    systemSettings = host.systemSettings;
-    moduleAurPackages = ai.aurPackages ++ powerpanel.aurPackages;
   };
   arch-switch = import ../platforms/arch/package.nix {
     inherit
@@ -83,10 +72,8 @@ let
       powerpanel
       adapterPython
       ;
-    moduleGroups = virtualization.loginGroups ++ powerpanel.loginGroups;
-    moduleSystemUnits = virtualization.systemUnits ++ powerpanel.systemUnits;
     username = deployment.username;
-    packages = nativePackages;
+    arch = host.arch;
     hardware = host.hardware;
     sysctl = host.sysctl;
     aiConfig = host.ai;

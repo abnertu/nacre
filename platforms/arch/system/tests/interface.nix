@@ -10,19 +10,12 @@ let
     address = "192.0.2.1/24";
   };
   valid = raw: (builtins.tryEval (builtins.deepSeq (parse raw) true)).success;
-  baseline =
-    (import ../../../../lib/eval-configuration.nix {
-      inherit lib;
-      modules = [ ../../../../checks/fixtures/configuration.nix ];
-    }).host.systemSettings;
-  packages = import ../../packages.nix {
+  evaluated = import ../../../../lib/eval-configuration.nix {
     inherit lib;
-    systemSettings = baseline;
-    hardware = {
-      graphics = "generic";
-      openrazer = false;
-    };
+    modules = [ ../../../../checks/fixtures/configuration.nix ];
   };
+  baseline = evaluated.host.systemSettings;
+  packages = evaluated.config.arch;
   optional = import ../default.nix {
     inherit lib pkgs;
     hostName = "fixture";

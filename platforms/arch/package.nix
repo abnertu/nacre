@@ -3,9 +3,10 @@
   pkgs,
   deploymentUser,
   username,
-  packages,
+  # Merged native contributions: the evaluated configuration's `arch` option.
+  arch,
   hardware,
-  capabilities ? import ../../lib/default-capabilities.nix,
+  capabilities,
   systemSettings ? null,
   aiConfig ? null,
   aiArtifacts ? null,
@@ -13,8 +14,6 @@
   personalAgentConfig ? {
     enable = false;
   },
-  moduleGroups ? [ ],
-  moduleSystemUnits ? [ ],
   sysctl ? { },
   powerpanel ? null,
   adapterPython ? pkgs.python3,
@@ -38,12 +37,10 @@ let
       deploymentUser
       hardware
       capabilities
-      packages
+      arch
       sysctl
       powerpanel
       ;
-    groups = moduleGroups;
-    systemUnits = moduleSystemUnits;
   };
   ai =
     if aiConfig == null then
@@ -103,18 +100,11 @@ pkgs.writeShellApplication {
     readonly tar_bin=${pkgs.libarchive}/bin/bsdtar
     readonly flock_bin=${pkgs.util-linux}/bin/flock
     readonly expected_user=${lib.escapeShellArg username}
-    pacman_packages=(${lib.escapeShellArgs packages.pacman})
-    lizardbyte_package_names=(${lib.escapeShellArgs packages.lizardbyte})
-    lizardbyte_packages=(${lib.escapeShellArgs (map (name: "lizardbyte/${name}") packages.lizardbyte)})
-    aur_packages=(${lib.escapeShellArgs packages.aur})
-    user_services=(${
-      lib.escapeShellArgs (
-        lib.optional hardware.openrazer "openrazer-daemon.service"
-        ++ lib.optional (
-          capabilities.desktop.enable && capabilities.programs.sunshine.enable
-        ) "app-dev.lizardbyte.app.Sunshine.service"
-      )
-    })
+    pacman_packages=(${lib.escapeShellArgs arch.pacman})
+    lizardbyte_package_names=(${lib.escapeShellArgs arch.lizardbyte})
+    lizardbyte_packages=(${lib.escapeShellArgs (map (name: "lizardbyte/${name}") arch.lizardbyte)})
+    aur_packages=(${lib.escapeShellArgs arch.aur})
+    user_services=(${lib.escapeShellArgs arch.userServices})
   ''
   + progress.shell
   + builtins.readFile ./arch-switch.sh;

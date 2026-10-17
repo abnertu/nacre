@@ -12,6 +12,8 @@ let
       enable = enable name;
     });
   system = import ./system-settings-options.nix { inherit lib; };
+  named = types.strMatching "[a-z][a-z0-9_-]*";
+  absolute = types.strMatching "/.*";
   # Reuse the owning interface's types rather than admitting arbitrary settings.
   systemSection =
     original: defaults:
@@ -43,24 +45,24 @@ let
         description = "Login account description.";
       };
       homeDirectory = mkOption {
-        type = types.str;
-        description = "Existing login home under /home.";
+        type = types.strMatching "/home/[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*";
+        description = "Existing login home: named path segments under /home.";
       };
       stateVersion = mkOption {
-        type = types.str;
+        type = types.strMatching "[0-9]{2}\\.[0-9]{2}";
         description = "Home Manager compatibility version; do not bump routinely.";
       };
       admin = option types.bool false "Whether this login account is an administrator.";
-      groups = option (types.listOf types.str) [ ] "Additional native login groups.";
+      groups = option (types.listOf named) [ ] "Additional native login groups.";
       profiles = switches (builtins.attrNames (import ../profiles));
       modules = switches (builtins.attrNames (import ../modules/home));
       homeModules = option (types.listOf types.path) [ ] "Explicit user Home Manager module paths.";
       development = section {
         neovimPath =
-          option (types.nullOr types.str) null
+          option (types.nullOr absolute) null
             "Absolute path to a local Neovim config git worktree.";
         hyprlandPath =
-          option (types.nullOr types.str) null
+          option (types.nullOr absolute) null
             "Absolute path to a local Hyprland config git worktree.";
       };
       home =
@@ -74,7 +76,7 @@ in
     hostname = {
       enable = enable "native hostname management";
       name = mkOption {
-        type = types.strMatching "[a-zA-Z0-9][a-zA-Z0-9.-]*";
+        type = named;
         description = "Host identity and deployment output prefix.";
       };
     };
@@ -89,7 +91,7 @@ in
   deployment = {
     platform = option (types.enum [ "arch" ]) "arch" "Native realization platform.";
     username = mkOption {
-      type = types.str;
+      type = named;
       description = "Existing administrator to deploy.";
     };
     profile = option (types.enum (
@@ -105,9 +107,10 @@ in
     bluetooth.enable = enable "Bluetooth";
     initramfs = {
       enable = enable "managed initramfs module addition";
-      modules = option (types.listOf types.str) [ ] "Host's explicit early modules.";
+      modules = option (types.listOf (types.strMatching "[a-zA-Z0-9_-]+")) [
+      ] "Host's explicit early modules.";
       images = mkOption {
-        type = types.nonEmptyListOf types.str;
+        type = types.nonEmptyListOf (types.strMatching "/boot/[^/]+(/[^/]+)*");
         description = "Expected native /boot initramfs images.";
       };
     };
@@ -131,18 +134,13 @@ in
     fstrim.enable = enable "the native no-catch-up TRIM timer";
     powerProfilesDaemon.enable = enable "power-profiles-daemon";
     tailscale.enable = enable "Tailscale";
-    gitlabRunner = import ../modules/gitlab-runner/options.nix { inherit lib; };
     personalAgent = {
       enable = (lib.mkEnableOption "the Personal Agent system service") // {
         default = true;
       };
     };
-    powerpanel = import ../modules/powerpanel/options.nix { inherit lib; };
   };
-  programs = {
-    ai = import ../modules/ai/options.nix { inherit lib; };
-  }
-  // switches [
+  programs = switches [
     "sunshine"
     "vesktop"
     "vicinae"
@@ -155,6 +153,18 @@ in
     "overview"
     "tailscaleTray"
   ];
-  virtualization = import ../modules/virtualization/options.nix { inherit lib; };
   users.users = option (types.attrsOf user) { } "Existing human login accounts.";
+  assertions = mkOption {
+    type = types.listOf (
+      types.submodule {
+        options = {
+          assertion = mkOption { type = types.bool; };
+          message = mkOption { type = types.str; };
+        };
+      }
+    );
+    default = [ ];
+    internal = true;
+    description = "Cross-field invariants checked after evaluation.";
+  };
 }

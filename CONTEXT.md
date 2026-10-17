@@ -4,13 +4,13 @@ This repository describes one existing Arch Linux workstation with a Nix-evaluat
 
 | Boundary | Owner | Responsibility |
 | --- | --- | --- |
-| Public configuration | `configuration.nix`, `lib/configuration-options.nix`, feature interfaces in `modules/` | Typed options, defaults and validation |
+| Public configuration | `configuration.nix`, `lib/configuration-options.nix`, feature modules in `modules/` | Typed options, defaults, assertions and native contributions |
 | Host | `hosts/` | Identity, users, hardware and capability baselines |
 | Native platform | `platforms/arch/` | Arch packages, generated policy, privileged reconciliation |
 | Home | `profiles/`, `homes/`, home modules | User packages, managed static files and user services |
 | External runtime | Operator and feature preparation commands | Secrets, mutable data, native builds and model downloads |
 
-`configuration.nix` imports the selected Host. Host baselines use `lib.mkDefault`, so ordinary user definitions override them without depending on import order. `lib/eval-configuration.nix` normalizes the typed result for private consumers. Registries are explicit. One package, account, file or service should have one owner.
+`configuration.nix` imports the selected Host. Host baselines use `lib.mkDefault`, so ordinary user definitions override them without depending on import order. `lib/eval-configuration.nix` evaluates the explicit feature registry (`modules/default.nix`) and the platform module, checks cross-field assertions and normalizes the typed result for private consumers. Feature modules contribute native packages, groups and units to the internal `arch` option, which `lib/mk-deployment.nix` hands to the Arch realization. Registries are explicit. One package, account, file or service should have one owner.
 
 ## Static policy and live reconciliation
 

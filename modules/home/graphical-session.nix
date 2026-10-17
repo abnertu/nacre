@@ -1,11 +1,10 @@
 {
   lib,
   hardware,
-  capabilities ? null,
+  capabilities,
   ...
 }:
 let
-  caps = if capabilities == null then import ../../lib/default-capabilities.nix else capabilities;
   systemBin = "/usr/bin";
   bin = name: "${systemBin}/${name}";
   hyprpolkitagentExecutable = "/usr/lib/hyprpolkitagent/hyprpolkitagent";
@@ -39,7 +38,7 @@ in
     startServices = "suggest";
 
     services = {
-      hyprpolkitagent = lib.mkIf (caps.desktop.hyprpolkitagent.enable) {
+      hyprpolkitagent = lib.mkIf (capabilities.desktop.hyprpolkitagent.enable) {
         Unit = graphicalUnit // {
           Description = "Hyprland Polkit authentication agent";
         };
@@ -50,7 +49,7 @@ in
         Install.WantedBy = [ "graphical-session.target" ];
       };
 
-      vicinae = lib.mkIf (caps.programs.vicinae.enable) {
+      vicinae = lib.mkIf (capabilities.programs.vicinae.enable) {
         Unit = trayConsumerUnit // {
           Description = "Vicinae launcher daemon";
           Documentation = [ "https://docs.vicinae.com" ];
@@ -77,7 +76,7 @@ in
       noctalia = {
         Unit = graphicalUnit // {
           Description = "Noctalia desktop shell";
-          Wants = lib.optional caps.programs.vicinae.enable "vicinae.service";
+          Wants = lib.optional capabilities.programs.vicinae.enable "vicinae.service";
         };
         Service = restartableService // {
           ExecStart = bin "noctalia";
@@ -86,7 +85,7 @@ in
         Install.WantedBy = [ "graphical-session.target" ];
       };
 
-      quickshell-overview = lib.mkIf (caps.desktop.overview.enable) {
+      quickshell-overview = lib.mkIf (capabilities.desktop.overview.enable) {
         Unit = graphicalUnit // {
           Description = "Quickshell workspace overview";
         };
@@ -110,7 +109,7 @@ in
         Install.WantedBy = [ "graphical-session.target" ];
       };
 
-      tailscale-systray = lib.mkIf (caps.tailscale && caps.desktop.tailscaleTray.enable) {
+      tailscale-systray = lib.mkIf (capabilities.tailscale && capabilities.desktop.tailscaleTray.enable) {
         Unit = trayConsumerUnit // {
           Description = "Tailscale systray";
         };
@@ -121,7 +120,7 @@ in
         Install.WantedBy = [ "graphical-session.target" ];
       };
 
-      vesktop = lib.mkIf (caps.programs.vesktop.enable) {
+      vesktop = lib.mkIf (capabilities.programs.vesktop.enable) {
         Unit = trayConsumerUnit // {
           Description = "Vesktop communication client";
         };
@@ -140,8 +139,10 @@ in
   xdg.configFile = {
     # The Arch launcher reads this after electron-flags.conf. Do not force all
     # Electron applications onto XWayland or replace the native executable.
-    "vesktop-flags.conf" = lib.mkIf caps.programs.vesktop.enable { text = "${vesktopPlatformFlag}\n"; };
-    "vicinae/nix-managed.json" = lib.mkIf caps.programs.vicinae.enable {
+    "vesktop-flags.conf" = lib.mkIf capabilities.programs.vesktop.enable {
+      text = "${vesktopPlatformFlag}\n";
+    };
+    "vicinae/nix-managed.json" = lib.mkIf capabilities.programs.vicinae.enable {
       text = builtins.toJSON {
         providers.applications.entrypoints = {
           kitty.preferences.defaultAction = "launch";
@@ -156,7 +157,7 @@ in
       '';
     };
     "systemd/user/app-dev.lizardbyte.app.Sunshine.service.d/override.conf" =
-      lib.mkIf caps.programs.sunshine.enable
+      lib.mkIf capabilities.programs.sunshine.enable
         {
           text = ''
             [Service]

@@ -19,7 +19,6 @@ let
   };
 in
 {
-  requiredPackages = lib.optionals enabled (import ./packages.nix);
   packages = lib.optionalAttrs enabled { runnerctl = controller; };
   apps = lib.optionalAttrs enabled {
     runnerctl = {

@@ -130,7 +130,4 @@ in
   inherit content;
   configFile = pkgs.writeText "pwrstatd.conf" content;
   enable = config.enable;
-  aurPackages = lib.optional config.enable "powerpanel";
-  loginGroups = lib.optional config.enable "power";
-  systemUnits = lib.optional config.enable "pwrstatd.service";
 }

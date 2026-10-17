@@ -7,30 +7,22 @@
 }:
 let
   lib = pkgs.lib;
+  fixtures = import ../../checks/lib.nix { inherit inputs lib; };
+  # A minimal session home; the full variant adds OpenRazer and Noctalia storage.
   fixture =
     full:
-    (import ../../lib/mk-home-configuration.nix { inherit inputs; }) {
-      system = pkgs.stdenv.hostPlatform.system;
-      hostName = "fixture";
-      platform = "arch";
-      hardware = {
-        graphics = "generic";
-        openrazer = full;
-      };
+    let
       username = if full then "tester" else "second";
-      user = {
-        homeDirectory = if full then "/home/tester" else "/home/team/second";
-        stateVersion = "26.05";
-        profiles = [ ];
-        modules = [
-          "graphical-session"
-        ]
-        ++ lib.optionals full [
-          "noctalia-storage"
-        ];
-        homeModules = [ ];
-      };
-    };
+    in
+    fixtures.home [
+      {
+        hardware.openrazer.enable = full;
+        users.users.${username} = fixtures.login {
+          homeDirectory = if full then "/home/tester" else "/home/team/second";
+          modules = [ "graphical-session" ] ++ lib.optional full "noctalia-storage";
+        };
+      }
+    ] username;
   sessionFixture =
     full:
     let
@@ -107,29 +99,19 @@ in
     pkgs.writeText "home-projection-interface" "passed";
   home-development-mode =
     let
-      devHome = (import ../../lib/mk-home-configuration.nix { inherit inputs; }) {
-        system = pkgs.stdenv.hostPlatform.system;
-        hostName = "dev-fixture";
-        platform = "arch";
-        hardware = {
-          graphics = "generic";
-          openrazer = false;
-        };
-        username = "tester";
-        user = {
-          homeDirectory = "/home/tester";
-          stateVersion = "26.05";
-          profiles = [ "dev" ];
-          modules = [
-            "hyprland"
-          ];
-          homeModules = [ ];
-          development = {
-            neovimPath = "/home/tester/src/neovim";
-            hyprlandPath = "/home/tester/src/hyprland";
+      devHome = fixtures.home [
+        {
+          users.users.tester = fixtures.login {
+            homeDirectory = "/home/tester";
+            profiles = [ "dev" ];
+            modules = [ "hyprland" ];
+            development = {
+              neovimPath = "/home/tester/src/neovim";
+              hyprlandPath = "/home/tester/src/hyprland";
+            };
           };
-        };
-      };
+        }
+      ] "tester";
     in
     assert !devHome.config.xdg.configFile.hypr.recursive;
     assert devHome.config.xdg.configFile.hypr.source != inputs.hypr-config;

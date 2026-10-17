@@ -25,18 +25,31 @@ let
         vercel = inputs.vercel-skills;
       };
     };
-  virtualization =
-    raw:
-    import ../modules/virtualization {
+  evaluate =
+    extra:
+    import ../lib/eval-configuration.nix {
       inherit lib;
-      config = import ../modules/virtualization/interface.nix { inherit lib raw; };
+      modules = [
+        ./fixtures/configuration.nix
+        # Runners also need podman; keep feature contributions separable.
+        { services.gitlabRunner.enable = false; }
+        extra
+      ];
     };
+  archFor = extra: (evaluate extra).config.arch;
+  virtualization = raw: archFor { virtualization = raw; };
+  aiAur =
+    raw:
+    builtins.sort builtins.lessThan (
+      lib.intersectLists [ "antigravity-cli" "openai-codex-bin" ] (archFor { programs.ai = raw; }).aur
+    );
+  validConfig = module: (builtins.tryEval (builtins.deepSeq (evaluate module).host true)).success;
   valid =
     name: raw:
     (builtins.tryEval (
-      builtins.deepSeq (import (../modules + "/${name}/interface.nix") {
+      builtins.deepSeq (import ../modules/ai/interface.nix {
         inherit lib;
-        raw = if name == "ai" then lib.recursiveUpdate aiDefaults raw else raw;
+        raw = lib.recursiveUpdate aiDefaults raw;
       }) true
     )).success;
   enabled = ai { enable = true; };
@@ -146,6 +159,7 @@ let
     llama.profiles.coding.preserveThinking = false;
   };
   disabled = ai { enable = false; };
+  baseline = archFor { };
   v = virtualization {
     enable = true;
     kvm.gui.enable = false;
@@ -159,24 +173,9 @@ let
       inherit lib;
       modules = [ ./fixtures/configuration.nix ];
     }).host;
-  home = (import ../lib/mk-home-configuration.nix { inherit inputs; }) {
-    inherit (host)
-      system
-      platform
-      hardware
-      ai
-      ;
-    hostName = host.name;
-    username = host.deployment.username;
-    user = host.users.${host.deployment.username};
-  };
-  homeDisabled = (import ../lib/mk-home-configuration.nix { inherit inputs; }) {
-    inherit (host) system platform hardware;
-    ai.enable = false;
-    hostName = host.name;
-    username = host.deployment.username;
-    user = host.users.${host.deployment.username};
-  };
+  fixtures = import ./lib.nix { inherit inputs lib; };
+  home = fixtures.home [ ] "abnertu";
+  homeDisabled = fixtures.home [ { programs.ai.enable = false; } ] "abnertu";
   skillRegistry = import ../modules/ai/skills.nix {
     inherit lib;
     skillSources = {
@@ -213,12 +212,6 @@ let
       };
     };
   };
-  native = import ../platforms/arch/packages.nix {
-    inherit lib;
-    inherit (host) hardware;
-    modulePackages = v.requiredPackages;
-    moduleAurPackages = enabled.aurPackages;
-  };
   upstreamSkill = builtins.head (builtins.attrNames skillRegistry.roots);
   skills = lib.filterAttrs (name: _: lib.hasPrefix ".agents/skills/" name) home.config.home.file;
   geminiSkills = lib.filterAttrs (
@@ -226,11 +219,11 @@ let
   ) home.config.home.file;
 in
 assert
-  enabled.aurPackages == [
-    "openai-codex-bin"
+  aiAur { enable = true; } == [
     "antigravity-cli"
+    "openai-codex-bin"
   ];
-assert disabled.aurPackages == [ ] && disabled.homeModule.home.file == { };
+assert aiAur { enable = false; } == [ ] && disabled.homeModule.home.file == { };
 assert
   home.config.home.file.".codex/llama-cpp.config.toml".text
   == codexProfile.homeModule.home.file.".codex/llama-cpp.config.toml".text;
@@ -256,21 +249,21 @@ assert !(codexProfileOff.homeModule.home.file ? ".codex/llama-cpp.config.toml");
 assert !(codexOff.homeModule.home.file ? ".codex/llama-cpp.config.toml");
 assert !(llamaOff.homeModule.home.file ? ".codex/llama-cpp.config.toml");
 assert
-  (ai {
+  aiAur {
     enable = true;
     codex.enable = false;
-  }).aurPackages == [ "antigravity-cli" ];
+  } == [ "antigravity-cli" ];
 assert
-  (ai {
+  aiAur {
     enable = true;
     agy.pkg.enable = false;
-  }).aurPackages == [ "openai-codex-bin" ];
+  } == [ "openai-codex-bin" ];
 assert
-  (ai {
+  aiAur {
     enable = true;
     codex.enable = false;
     agy.pkg.enable = false;
-  }).aurPackages == [ ];
+  } == [ ];
 assert
   (ai {
     enable = true;
@@ -278,26 +271,23 @@ assert
     agy.skills.enable = false;
     codex.localProfile.enable = false;
   }).homeModule.home.file == { };
-assert (virtualization { }).requiredPackages != [ ];
-assert (virtualization { enable = false; }).loginGroups == [ ];
-assert builtins.elem "qemu-desktop" v.requiredPackages;
-assert builtins.elem "podman" v.requiredPackages;
-assert v.loginGroups == [ "kvm" ];
-assert v.systemUnits == [ ];
-assert !(builtins.elem "virt-manager" v.requiredPackages);
-assert builtins.elem "virt-manager" gui.requiredPackages;
-assert builtins.elem "libvirt" gui.requiredPackages;
-assert gui.systemUnits == [ "libvirtd.socket" ];
-assert gui.loginGroups == [ "kvm" ];
+assert builtins.elem "qemu-desktop" (virtualization { }).pacman;
+assert !(builtins.elem "kvm" (virtualization { enable = false; }).groups);
+assert builtins.elem "qemu-desktop" v.pacman && builtins.elem "podman" v.pacman;
+assert builtins.elem "kvm" v.groups;
+assert !(builtins.elem "libvirtd.socket" v.systemUnits);
+assert !(builtins.elem "virt-manager" v.pacman);
+assert builtins.elem "virt-manager" gui.pacman && builtins.elem "libvirt" gui.pacman;
+assert builtins.elem "libvirtd.socket" gui.systemUnits && builtins.elem "kvm" gui.groups;
 assert lib.all
   (
     raw:
     let
       disabledGui = virtualization raw;
     in
-    disabledGui.systemUnits == [ ]
-    && !(builtins.elem "virt-manager" disabledGui.requiredPackages)
-    && !(builtins.elem "libvirt" disabledGui.requiredPackages)
+    !(builtins.elem "libvirtd.socket" disabledGui.systemUnits)
+    && !(builtins.elem "virt-manager" disabledGui.pacman)
+    && !(builtins.elem "libvirt" disabledGui.pacman)
   )
   [
     {
@@ -314,31 +304,29 @@ assert lib.all
       kvm.gui.enable = false;
     }
   ];
-assert !(valid "virtualization" { kvm.gui.enable = "true"; });
-assert !(valid "virtualization" { kvm.gui.enabel = true; });
 assert
   !(builtins.elem "podman"
     (virtualization {
       enable = true;
       podman.enable = false;
-    }).requiredPackages
+    }).pacman
   );
 assert
-  (virtualization {
-    enable = true;
-    kvm.enable = false;
-  }).loginGroups == [ ];
-assert
-  !(builtins.elem "qemu-desktop"
-    (virtualization {
+  let
+    noKvm = virtualization {
       enable = true;
       kvm.enable = false;
-    }).requiredPackages
-  );
-assert lib.all (name: !(valid name { enable = "true"; }) && !(valid name { typo = true; })) [
-  "ai"
-  "virtualization"
+    };
+  in
+  !(builtins.elem "kvm" noKvm.groups) && !(builtins.elem "qemu-desktop" noKvm.pacman);
+assert lib.all (module: !(validConfig module)) [
+  { virtualization.kvm.gui.enable = "true"; }
+  { virtualization.kvm.gui.enabel = true; }
+  { virtualization.kvm.enabel = true; }
+  { virtualization.enable = "true"; }
+  { virtualization.typo = true; }
 ];
+assert !(valid "ai" { enable = "true"; }) && !(valid "ai" { typo = true; });
 assert !(valid "ai" { codex.enabel = true; });
 assert !(valid "ai" { codex.localProfile.enable = "true"; });
 assert !(valid "ai" { agy.enabel = true; });
@@ -444,9 +432,6 @@ assert
       preserveThinking = true;
     };
   });
-assert !(valid "virtualization" { kvm.enabel = true; });
-assert builtins.elem "openai-codex-bin" native.aur;
-assert builtins.elem "antigravity-cli" native.aur;
 assert enabled.artifacts.model.contextSize == 4096;
 assert profiled.artifacts.profiles.coding.artifacts.temperature == 0.6;
 assert
@@ -464,9 +449,8 @@ assert selectedModels.artifacts.model.batchSize == 2048;
 assert selectedModels.artifacts.model.microBatchSize == 512;
 assert preserveOverride.artifacts.profiles.coding.artifacts.enableThinking == null;
 assert preserveOverride.artifacts.profiles.coding.artifacts.preserveThinking == false;
-assert !(builtins.elem "llama-cpp" native.pacman);
-assert !(builtins.elem "caddy" native.pacman);
-assert builtins.elem "qemu-desktop" native.pacman && builtins.elem "podman" native.pacman;
+# Prepared llama.cpp binaries and Caddy stay outside the declared inventory.
+assert !(builtins.elem "llama-cpp" baseline.pacman) && !(builtins.elem "caddy" baseline.pacman);
 assert
   lib.filterAttrs (name: _: lib.hasPrefix ".agents/skills/" name) homeDisabled.config.home.file
   == { };

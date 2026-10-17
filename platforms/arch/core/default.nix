@@ -7,9 +7,7 @@
   deploymentUser,
   hardware,
   capabilities,
-  packages,
-  groups ? [ ],
-  systemUnits ? [ ],
+  arch,
   sysctl ? { },
   powerpanel ? null,
 }:
@@ -41,7 +39,7 @@ let
       ) "units"
     );
   repository =
-    if packages.lizardbyte == [ ] then
+    if arch.lizardbyte == [ ] then
       null
     else
       {
@@ -65,14 +63,16 @@ let
     action = "initramfs";
     create = false;
   };
-  units = lib.unique ((import ../services.nix { inherit lib capabilities; }) ++ systemUnits);
   manifest = {
     user = username;
     files = managedFiles;
-    inherit repository units;
+    inherit repository;
+    units = arch.systemUnits;
     blocks = lib.optional capabilities.initramfs initramfsBlock ++ [ nixBlock ];
     initramfsImages = lib.optionals capabilities.initramfs hardware.initramfsImages;
-    groups = lib.unique (groups ++ deploymentUser.groups ++ lib.optional deploymentUser.admin "wheel");
+    groups = lib.unique (
+      arch.groups ++ deploymentUser.groups ++ lib.optional deploymentUser.admin "wheel"
+    );
     reloadUnits = capabilities.desktop.enable;
     restarts =
       lib.optional capabilities.networking {

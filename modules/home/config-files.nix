@@ -1,11 +1,10 @@
 {
   lib,
-  capabilities ? null,
+  capabilities,
   hardware,
   ...
 }:
 let
-  caps = if capabilities == null then import ../../lib/default-capabilities.nix else capabilities;
   sourceRoot = ../../files/home;
   configDirectories = [
     "Kvantum"
@@ -23,7 +22,7 @@ let
     "swappy"
   ]
   ++ lib.optional hardware.openrazer "openrazer"
-  ++ lib.optionals caps.programs.vesktop.enable [
+  ++ lib.optionals capabilities.programs.vesktop.enable [
     "vesktop/settings"
     "vesktop/themes"
   ];
@@ -44,10 +43,10 @@ in
       "polychromatic/preferences.json" = lib.mkIf (hardware.openrazer) {
         source = sourceRoot + "/.config/polychromatic/preferences.json";
       };
-      "sunshine/sunshine.conf" = lib.mkIf (caps.programs.sunshine.enable) {
+      "sunshine/sunshine.conf" = lib.mkIf (capabilities.programs.sunshine.enable) {
         source = sourceRoot + "/.config/sunshine/sunshine.conf";
       };
-      "vesktop/settings.json" = lib.mkIf (caps.programs.vesktop.enable) {
+      "vesktop/settings.json" = lib.mkIf (capabilities.programs.vesktop.enable) {
         source = sourceRoot + "/.config/vesktop/settings.json";
       };
     };
