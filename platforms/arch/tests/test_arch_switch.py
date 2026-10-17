@@ -177,6 +177,28 @@ class ArchSwitchTests(unittest.TestCase):
         self.assertLess(upgrade, aur)
         self.assertLess(aur, self.index(lambda call: call == [*SYSTEM, "converge"]))
 
+    def test_resolution_simulates_the_upgrade_and_reports_conflicts(self):
+        self.invoke("--update")
+        calls = self.commands()
+        resolve = self.index(lambda call: call[0] == "pacman" and "--print" in call)
+        self.assertIn("--sysupgrade", calls[resolve])
+        refresh = self.index(lambda call: call[-2:] == ["--sync", "--refresh"])
+        self.assertLess(refresh, resolve)
+        (self.root / "commands.jsonl").unlink()
+        self.state["resolve_conflict"] = True
+        self.save()
+        result = self.invoke("--update", code=1)
+        self.assertIn("breaks dependency required by lib32-glibc", result.stderr)
+        self.assertNotIn("repo.example", result.stderr)
+        self.assertFalse(
+            any(
+                call[0] in ("pacman", "yay")
+                and "--needed" in call
+                and "--print" not in call
+                for call in self.commands()
+            )
+        )
+
     def test_failed_upgrade_stops_before_aur_and_policy(self):
         for key, code in (("upgrade_failure", 1), ("kernel_upgrade", 75)):
             with self.subTest(key=key):

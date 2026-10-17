@@ -71,6 +71,13 @@ elif command == "pacman-conf":
 elif command == "pacman":
     if "--query" in args:
         sys.exit(1 if args[-1] in state.get("missing", []) else 0)
+    if "--print" in args:
+        if state.get("resolve_conflict"):
+            print("https://repo.example/glibc.pkg.tar.zst")
+            print(":: installing glibc breaks dependency required by lib32-glibc")
+            print("error: failed to prepare transaction", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
     if "--sysupgrade" in args:
         if state.get("upgrade_failure"):
             sys.exit(1)

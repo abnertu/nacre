@@ -106,17 +106,26 @@ report_failure() {
   progress_resume
 }
 
-resolve_inventory() {
+require_multilib() {
   local package
   for package in "${pacman_packages[@]}"; do
     if [[ $package == lib32-* ]]; then
       native pacman-conf --repo multilib Server >/dev/null 2>&1 ||
         fail "declared package $package requires the [multilib] repository in /etc/pacman.conf"
-      break
+      return
     fi
   done
-  if ! native pacman --sync --print --needed -- "${pacman_packages[@]}" \
-    2>"$work_dir/pacman-resolve.err" >/dev/null; then
+}
+
+resolve_inventory() {
+  local package
+  require_multilib
+  # Simulate the transaction update performs: a full upgrade with the inventory.
+  # Resolving the inventory alone would fail on pending upgrades of its deps.
+  if ! native pacman --sync --sysupgrade --print --needed -- "${pacman_packages[@]}" \
+    >"$work_dir/pacman-resolve.out" 2>"$work_dir/pacman-resolve.err"; then
+    # pacman prints the conflicting dependencies on stdout, beside package URLs.
+    grep -v '://' "$work_dir/pacman-resolve.out" >>"$work_dir/pacman-resolve.err" || true
     report_failure 'Package resolution error' "$work_dir/pacman-resolve.err"
     fail 'Arch package inventory did not resolve; check for package conflicts'
   fi
@@ -309,9 +318,13 @@ progress_finish 'done'
 native sudo -v
 if ((update_system)); then
   next_step 'Resolve and update native packages'
-  resolve_inventory
+  # Declared repositories first, then one refresh, so resolution and the
+  # upgrade both see the databases the transaction will use.
+  require_multilib
   core repositories
-  root pacman --sync --refresh --sysupgrade --needed --noconfirm -- \
+  root pacman --sync --refresh
+  resolve_inventory
+  root pacman --sync --sysupgrade --needed --noconfirm -- \
     "${pacman_packages[@]}" "${lizardbyte_packages[@]}"
   check_kernel
   if ((${#aur_packages[@]})); then native yay --sync --needed --noconfirm -- "${aur_packages[@]}"; fi
