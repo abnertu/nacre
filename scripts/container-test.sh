@@ -66,7 +66,6 @@ binary=$(find "$deployment/bin" -mindepth 1 -maxdepth 1 -printf '%f\n' | head -n
 step 'Start the systemd container'
 podman rm -f "$name" >/dev/null 2>&1 || true
 podman run -d --name "$name" --hostname arch --systemd=always --privileged \
-  -v "/usr/lib/modules/$(uname -r):/usr/lib/modules/$(uname -r):ro" \
   -v nacre-container-pacman:/var/cache/pacman/pkg \
   -v nacre-container-yay:/var/cache/nacre-yay \
   "$image" /usr/lib/systemd/systemd >/dev/null
@@ -82,8 +81,11 @@ if [[ -r /etc/pacman.d/mirrorlist ]]; then
   podman cp /etc/pacman.d/mirrorlist "$name:/etc/pacman.d/mirrorlist"
 fi
 # The image strips locale sources and documentation through NoExtract.
-podman exec -i "$name" bash -euo pipefail -s "$user" "$home" <<'EOF'
+podman exec -i "$name" bash -euo pipefail -s "$user" "$home" "$(uname -r)" <<'EOF'
 user=$1 home=$2
+# The kernel gate needs a module directory for the running kernel; the
+# container configuration loads no modules, so it may stay empty.
+mkdir -p "/usr/lib/modules/$3"
 sed -i '/^NoExtract/d' /etc/pacman.conf
 pacman -Syu --noconfirm --needed sudo >/dev/null
 pacman -S --noconfirm glibc >/dev/null # reinstall to extract the locale sources
@@ -142,7 +144,8 @@ step 'Plan agrees that nothing is left to change'
 deploy plan.log --plan || { show plan.log; fail 'plan failed'; }
 # Upstream may publish packages between update and plan: available upgrades
 # are information, not deployment drift.
-if ! grep -Fxq 'Core plan: 0 files to update, 0 runtime actions.' "$work/plan.log" ||
+if ! grep -Fxq 'Core plan: 0 changes.' "$work/plan.log" ||
+  ! grep -Fxq 'System settings plan: 0 changes.' "$work/plan.log" ||
   grep -E '^[~+!] ' "$work/plan.log" | grep -v 'repository package upgrades available'; then
   last_log=plan.log
   fail 'plan reported changes after a converged deployment'
