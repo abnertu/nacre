@@ -5,6 +5,7 @@
   deployment.username = lib.mkDefault "abnertu";
   hardware = lib.mapAttrsRecursive (_: lib.mkDefault) (import ./hardware.nix);
   programs.ai.llama = lib.mapAttrsRecursive (_: lib.mkDefault) {
+    enable = true;
     model = {
       name = "qwen3.5-4b-q4-k-m";
       device = "Vulkan0";

@@ -6,6 +6,7 @@
   ];
   time.timeZone = lib.mkDefault "Asia/Taipei";
   networking.hotspot = lib.mapAttrs (_: lib.mkDefault) {
+    enable = true;
     connection = "Arch-Hyprland";
     ssid = "Arch-Hyprland";
     interface = "wlp15s0";

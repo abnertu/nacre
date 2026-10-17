@@ -7,9 +7,7 @@ let
     mkOption { inherit type default description; };
 in
 {
-  enable = (lib.mkEnableOption "CyberPower PowerPanel UPS daemon management") // {
-    default = true;
-  };
+  enable = lib.mkEnableOption "CyberPower PowerPanel UPS daemon management";
   powerfailDelay =
     option (bounded 0 3600) 60
       "Delay in seconds after power failure before executing script and shutdown.";

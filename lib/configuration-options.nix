@@ -19,7 +19,9 @@ let
     original: defaults:
     section (
       {
-        enable = enable "management of this setting";
+        enable = enable "management of this setting" // {
+          default = defaults.enable or true;
+        };
       }
       // lib.mapAttrs (
         name: opt:
@@ -81,7 +83,8 @@ in
       };
     };
     networkmanager.enable = enable "NetworkManager";
-    hotspot = systemSection system.hotspot { };
+    # Needs a prepared NetworkManager AP, so hosts opt in.
+    hotspot = systemSection system.hotspot { enable = false; };
     firewall = systemSection system.firewall { };
   };
   boot.kernelModules = mkOption {
@@ -137,11 +140,7 @@ in
     fstrim.enable = enable "the native no-catch-up TRIM timer";
     powerProfilesDaemon.enable = enable "power-profiles-daemon";
     tailscale.enable = enable "Tailscale";
-    personalAgent = {
-      enable = (lib.mkEnableOption "the Personal Agent system service") // {
-        default = true;
-      };
-    };
+    personalAgent.enable = lib.mkEnableOption "the Personal Agent system service";
   };
   # Off by default; the workstation role enables them.
   programs = lib.genAttrs [ "sunshine" "vesktop" "vicinae" ] (name: {

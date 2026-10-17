@@ -128,7 +128,7 @@ in
     skills.enable = enable "the Antigravity / Gemini skills";
   };
   llama = {
-    enable = enable "llama.cpp";
+    enable = lib.mkEnableOption "llama.cpp on a local GPU";
     maxLoadedModels = lib.mkOption {
       type = lib.types.ints.positive;
       default = 1;
@@ -167,7 +167,10 @@ in
         type = lib.types.enum (builtins.attrNames inventory.models);
         default = inventory.defaultModel;
       };
-      device = lib.mkOption { type = lib.types.strMatching "(ROCm|Vulkan)[0-9]+"; };
+      device = lib.mkOption {
+        type = lib.types.nullOr (lib.types.strMatching "(ROCm|Vulkan)[0-9]+");
+        default = null;
+      };
       contextSize = lib.mkOption {
         type = lib.types.nullOr lib.types.ints.positive;
         default = null;

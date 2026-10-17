@@ -44,8 +44,9 @@ let
       powerpanel
       ;
   };
+  # Without llama.cpp the AI adapter manages nothing; it gets the unmanaged manifest.
   ai =
-    if aiConfig == null then
+    if aiConfig == null || !(aiConfig.enable && aiConfig.llama.enable) then
       null
     else
       import ./ai {

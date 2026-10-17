@@ -6,6 +6,7 @@
 let
   aiDefaults = {
     llama = {
+      enable = true;
       model = {
         device = "ROCm0";
         contextSize = 4096;
