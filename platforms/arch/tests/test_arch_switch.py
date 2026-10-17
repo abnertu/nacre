@@ -206,7 +206,12 @@ class ArchSwitchTests(unittest.TestCase):
 
     def test_cli_rejects_invalid_modes_before_any_command(self):
         self.assertIn("usage: arch-switch", self.invoke("--help").stdout)
-        for args in (("--check", "--update"), ("--update", "--purge"), ("--unknown",)):
+        for args in (
+            ("--check", "--update"),
+            ("--update", "--purge"),
+            ("--plan", "--update"),
+            ("--unknown",),
+        ):
             with self.subTest(args=args):
                 self.invoke(*args, code=2)
         self.assertEqual(self.commands(), [])
@@ -243,6 +248,25 @@ class ArchSwitchTests(unittest.TestCase):
             [[*CORE, "purge"]],
         )
         self.assertFalse(any(call[0] in ("pacman", "yay") for call in self.commands()))
+
+    def test_plan_reads_without_changing_anything(self):
+        self.state["missing"] = ["extra"]
+        self.save()
+        result = self.invoke("--plan")
+        self.assertIn("+ package extra (missing; installed by update)", result.stdout)
+        self.assertIn("~ enable user service openrazer-daemon.service", result.stdout)
+        self.assertEqual(self.adapter_phases(CORE), ["plan"])
+        self.assertEqual(self.adapter_phases(SYSTEM), ["preflight"])
+        self.assertFalse(any(call[0] in ("yay", "curl") for call in self.commands()))
+        self.assertFalse(
+            any(call[0] == "pacman" and "--sync" in call for call in self.commands())
+        )
+        self.assertNotIn("user_services", self.state)
+
+    def test_plan_fails_on_a_core_conflict(self):
+        self.state["fail"] = ["python", "/fixture/core-adapter"]
+        self.save()
+        self.invoke("--plan", code=1)
 
     def test_user_services_are_enabled_once(self):
         self.invoke()

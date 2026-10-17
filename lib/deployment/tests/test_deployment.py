@@ -60,6 +60,63 @@ class DeploymentTests(unittest.TestCase):
                     else ["arch", "home"],
                 )
 
+    def test_plan_previews_both_stages_and_never_activates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("arch", "home"):
+                path = root / name
+                path.write_text(
+                    f"#!{shutil.which('bash')}\n"
+                    + f'echo "{name} $*" >> {root}/calls\n'
+                )
+                path.chmod(0o755)
+            script = (
+                f"set -euo pipefail\ndeployment_name=fixture\narch_switch={root}/arch\nhome_switch={root}/home\n"
+                + DEPLOY
+            )
+            result = subprocess.run(
+                ["bash", "-c", script, "deploy", "--plan"], capture_output=True
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                (root / "calls").read_text().splitlines(),
+                ["arch --plan", "home --plan"],
+            )
+            result = subprocess.run(
+                ["bash", "-c", script, "deploy", "--plan", "--update"],
+                capture_output=True,
+            )
+            self.assertEqual(result.returncode, 2)
+
+    def test_home_plan_compares_the_active_generation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            generation = root / "generation"
+            (generation).mkdir()
+            (generation / "activate").write_text(f"#!{shutil.which('bash')}\nexit 9\n")
+            (generation / "activate").chmod(0o755)
+            profile = root / "state/nix/profiles/home-manager"
+            profile.parent.mkdir(parents=True)
+            script = (
+                f"set -euo pipefail\nactivation_package={shlex.quote(str(generation))}\n"
+                + HOME
+            )
+            env = {**os.environ, "XDG_STATE_HOME": str(root / "state"), "NO_COLOR": ""}
+            for target, expected in (
+                (root, "~ Home Manager activates"),
+                (generation, "= Home Manager generation unchanged"),
+            ):
+                profile.unlink(missing_ok=True)
+                profile.symlink_to(target)
+                result = subprocess.run(
+                    ["bash", "-c", script, "home", "--plan"],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue(result.stdout.startswith(expected), result.stdout)
+
     def test_home_activates_exact_generation_with_profile_managing_driver(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

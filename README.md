@@ -45,6 +45,7 @@ just build        # 建置部署產物，不啟用
 首次啟用前先讀[部署指南](docs/deployment.md)。
 
 ```bash
+just arch-workstation plan      # 預覽會做的變更，不改任何東西
 just arch-workstation           # 收斂 Arch 狀態並啟用 Home Manager
 just arch-workstation update    # 同時更新宣告的 pacman / AUR 套件
 just arch-workstation verbose   # 輸出 Nix、Home Manager 與轉接器診斷

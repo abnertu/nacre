@@ -2,7 +2,7 @@
 # The test harness supplies an isolated filesystem and fake native commands.
 # Package operations run here because yay must run as the login user; the
 # privileged Python adapters own every file, unit and runtime change.
-usage() { printf 'usage: arch-switch [--check | --update | --purge] [--verbose]\n'; }
+usage() { printf 'usage: arch-switch [--check | --plan | --update | --purge] [--verbose]\n'; }
 native() {
   local status
   progress_suspend
@@ -30,12 +30,14 @@ optional_skip() {
 }
 
 check_only=0
+plan_only=0
 update_system=0
 purge=0
 verbose=0
 for argument in "$@"; do
   case "$argument" in
     --check) check_only=1 ;;
+    --plan) plan_only=1 ;;
     --update) update_system=1 ;;
     --purge) purge=1 ;;
     --verbose) verbose=1 ;;
@@ -58,7 +60,7 @@ arch_exit() {
 trap arch_exit EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-if ((check_only + update_system + purge > 1)); then
+if ((check_only + plan_only + update_system + purge > 1)); then
   usage >&2
   exit 2
 fi
@@ -135,68 +137,18 @@ resolve_inventory() {
     fail 'AUR package inventory did not resolve'
   fi
 }
-if ((check_only)); then
-  progress_start 'Check package inventories' 1
-  resolve_inventory
-  progress_suspend
-  printf 'Arch, LizardByte, and AUR package inventories resolve\n'
-  progress_resume
-  progress_update 1 1
-  progress_finish 'done'
-  exit 0
-fi
-
-# Only the selected login user can deploy. Its private runtime directory also
-# serializes update and routine activation; the lock inode is never removed.
-runtime_dir="$fs_root/run/user/$(native id -u)"
-[[ -d $runtime_dir && ! -L $runtime_dir ]] || fail 'login runtime directory is unavailable'
-exec {lock_fd}>"$runtime_dir/nix-config-arch.lock"
-"$flock_bin" -n "$lock_fd" || fail 'another arch-switch is running' 75
-
 adapter() {
   local args=("$1" "$2" "$3")
   if ((verbose)); then args+=(--verbose); fi
+  if [[ $3 == plan ]] && ((plan_color)); then args+=(--color); fi
   native sudo "$adapter_python" "${args[@]}"
 }
 core() { adapter "$core_adapter" "$core_manifest" "$1"; }
-
-if ((purge)); then
-  progress_start 'Purge managed Arch state' 1
-  native sudo -v
-  core purge
-  progress_update 1 1
-  progress_finish 'done'
-  exit 0
-fi
-
-total_steps=5
-if ((update_system)); then total_steps=6; fi
-current_step=1
-next_step() {
-  progress_start "[$current_step/$total_steps] $1"
-  current_step=$((current_step + 1))
-}
-
-next_step 'Validate Arch host, packages, and kernel'
-missing_packages=()
-for package in "${pacman_packages[@]}" "${lizardbyte_package_names[@]}" "${aur_packages[@]}"; do
-  native pacman --query -- "$package" >/dev/null 2>&1 || missing_packages+=("$package")
-done
-if ((!update_system && ${#missing_packages[@]})); then
-  progress_suspend
-  printf 'declared Arch packages are missing; rerun with --update to install them safely:\n' >&2
-  printf '  %s\n' "${missing_packages[@]}" >&2
-  progress_resume
-  exit 3
-fi
 running_kernel=$(uname -r)
 check_kernel() {
   [[ -d $fs_root/usr/lib/modules/$running_kernel ]] ||
     fail "kernel modules do not match running kernel $running_kernel; reboot, then rerun the deployment" 75
 }
-check_kernel
-progress_finish 'done'
-
 # An optional adapter exits 20 only while its preparation has never completed.
 optional_preflight() {
   local name=$1 reason=$2 status=0
@@ -216,6 +168,123 @@ optional_converge() {
   fi
   ((status == 0)) || exit "$status"
 }
+
+missing_packages=()
+find_missing_packages() {
+  local package
+  for package in "${pacman_packages[@]}" "${lizardbyte_package_names[@]}" "${aur_packages[@]}"; do
+    native pacman --query -- "$package" >/dev/null 2>&1 || missing_packages+=("$package")
+  done
+}
+
+# Plan lines share the core adapter's markers: = unchanged, ~ change,
+# + addition, ! conflict. Color follows the progress display's terminal rules.
+plan_color=0
+if ((${progress_interactive:-0})) && [[ -t 1 ]]; then plan_color=1; fi
+plan_line() {
+  local style
+  case "$1" in
+    '=') style=2 ;;
+    '~') style=33 ;;
+    '+') style=32 ;;
+    '!') style='1;31' ;;
+    *) style='1;33' ;;
+  esac
+  progress_suspend
+  if ((plan_color)); then
+    printf '\033[%sm%s %s\033[0m\n' "$style" "$1" "$2"
+  else
+    printf '%s %s\n' "$1" "$2"
+  fi
+  progress_resume
+}
+
+if ((plan_only)); then
+  progress_start 'Plan Arch changes' 1
+  find_missing_packages
+  for package in "${missing_packages[@]}"; do
+    plan_line '+' "package $package (missing; installed by update)"
+  done
+  if [[ -x $native_bin/checkupdates ]]; then
+    upgrades=0
+    if output=$(native checkupdates 2>/dev/null); then
+      upgrades=$(printf '%s\n' "$output" | grep -c .)
+    fi
+    if ((upgrades)); then plan_line '~' "$upgrades repository package upgrades available (installed by update)"; fi
+  fi
+  if [[ ! -d $fs_root/usr/lib/modules/$running_kernel ]]; then
+    plan_line '!' "kernel modules do not match running kernel $running_kernel; reboot first"
+  fi
+  core plan
+  adapter "$system_adapter" "$system_manifest" preflight
+  plan_line '=' 'system settings preflight passed (their changes are not previewed)'
+  if optional_preflight ai "llama.cpp build/model is not prepared; run 'just prepare-ai'" \
+    "$ai_adapter" "$ai_manifest"; then
+    plan_line '=' 'ai ready'
+    if optional_preflight personal-agent 'runtime configuration is not prepared' \
+      "$personal_agent_adapter" "$personal_agent_manifest"; then
+      plan_line '=' 'personal-agent ready'
+    fi
+  else
+    optional_skip personal-agent 'local inference is not ready'
+  fi
+  for service in "${user_services[@]}"; do
+    if ! native systemctl --user is-enabled --quiet "$service"; then
+      plan_line '~' "enable user service $service"
+    fi
+  done
+  progress_update 1 1
+  progress_finish 'done'
+  exit 0
+fi
+
+if ((check_only)); then
+  progress_start 'Check package inventories' 1
+  resolve_inventory
+  progress_suspend
+  printf 'Arch, LizardByte, and AUR package inventories resolve\n'
+  progress_resume
+  progress_update 1 1
+  progress_finish 'done'
+  exit 0
+fi
+
+# Only the selected login user can deploy. Its private runtime directory also
+# serializes update and routine activation; the lock inode is never removed.
+runtime_dir="$fs_root/run/user/$(native id -u)"
+[[ -d $runtime_dir && ! -L $runtime_dir ]] || fail 'login runtime directory is unavailable'
+exec {lock_fd}>"$runtime_dir/nix-config-arch.lock"
+"$flock_bin" -n "$lock_fd" || fail 'another arch-switch is running' 75
+
+
+if ((purge)); then
+  progress_start 'Purge managed Arch state' 1
+  native sudo -v
+  core purge
+  progress_update 1 1
+  progress_finish 'done'
+  exit 0
+fi
+
+total_steps=5
+if ((update_system)); then total_steps=6; fi
+current_step=1
+next_step() {
+  progress_start "[$current_step/$total_steps] $1"
+  current_step=$((current_step + 1))
+}
+
+next_step 'Validate Arch host, packages, and kernel'
+find_missing_packages
+if ((!update_system && ${#missing_packages[@]})); then
+  progress_suspend
+  printf 'declared Arch packages are missing; rerun with --update to install them safely:\n' >&2
+  printf '  %s\n' "${missing_packages[@]}" >&2
+  progress_resume
+  exit 3
+fi
+check_kernel
+progress_finish 'done'
 
 # Read-only ownership preflight precedes package and configuration writes.
 next_step 'Preflight core and optional modules'

@@ -15,23 +15,26 @@ import traceback
 from nix_adapter import Conflict
 import runtime
 
-PHASES = ("preflight", "repositories", "converge", "finish", "purge")
+PHASES = ("preflight", "plan", "repositories", "converge", "finish", "purge")
+FLAGS = {"--verbose", "--color"}
 
 
 def main() -> int:
     args = sys.argv[1:]
-    verbose = args[2:] == ["--verbose"]
+    flags = set(args[2:])
     if (
-        len(args) not in (2, 3)
+        len(args) < 2
         or args[1] not in PHASES
-        or (len(args) == 3 and not verbose)
+        or not flags <= FLAGS
+        or len(flags) != len(args) - 2
         or os.geteuid() != 0
     ):
         print("private core adapter must be invoked by arch-switch", file=sys.stderr)
         return 2
+    verbose = "--verbose" in flags
     if verbose:
         os.environ["NIX_CONFIG_VERBOSE"] = "1"
-    core = runtime.Core(json.loads(Path(args[0]).read_text()))
+    core = runtime.Core(json.loads(Path(args[0]).read_text()), color="--color" in flags)
     try:
         getattr(core, args[1])()
         return 0

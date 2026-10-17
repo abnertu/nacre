@@ -41,7 +41,14 @@ if command == "python":
     assert ADAPTERS[adapter][0] == manifest, args
     assert rest in ([], ["--verbose"]), args
     if adapter == "/fixture/core-adapter":
-        assert phase in ("preflight", "repositories", "converge", "finish", "purge")
+        assert phase in (
+            "preflight",
+            "plan",
+            "repositories",
+            "converge",
+            "finish",
+            "purge",
+        )
     else:
         assert phase in ("preflight", "converge"), args
     optional = ADAPTERS[adapter][1]

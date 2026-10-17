@@ -113,6 +113,7 @@ class RecipeTests(unittest.TestCase):
             ("arch-workstation", [], ".#arch-workstation", None),
             ("arch-workstation", ["update"], ".#arch-workstation", "--update"),
             ("arch-workstation", ["purge"], ".#arch-workstation", "--purge"),
+            ("arch-workstation", ["plan"], ".#arch-workstation", "--plan"),
             ("prepare-ai", [], ".#llama-prepare", None),
             ("prepare-ai", ["build"], ".#llama-prepare", "--build-only"),
             ("prepare-ai", ["model"], ".#llama-prepare", "--model-only"),
@@ -196,6 +197,7 @@ class RecipeTests(unittest.TestCase):
     def test_invalid_options_do_not_launch_nix(self):
         for args in (
             ("arch-workstation", "update", "update"),
+            ("arch-workstation", "plan", "update"),
             ("arch-workstation", "unknown"),
             ("prepare-ai", "unknown"),
             ("initialize-runner", "fixture"),

@@ -10,12 +10,20 @@ from typing import Any
 from nix_adapter import BaseAdapter, Conflict
 
 STATE = "/var/lib/nix-config/arch"
+# Plan markers: unchanged, change, addition, conflict, skip. The symbol carries
+# the meaning; color only emphasizes it on a terminal.
+PLAN_STYLES = {"=": "2", "~": "33", "+": "32", "!": "1;31", "-": "1;33"}
 
 
 class Core(BaseAdapter):
-    def __init__(self, desired: dict[str, Any], files=None, native=None):
+    def __init__(self, desired: dict[str, Any], files=None, native=None, color=False):
         root = getattr(files, "root", Path("/")) if files else Path("/")
         super().__init__(desired=desired, root=root, runner=native, files=files)
+        self.color = color
+
+    def emit(self, kind: str, text: str) -> None:
+        line = f"{kind} {text}"
+        print(f"\033[{PLAN_STYLES[kind]}m{line}\033[0m" if self.color else line)
 
     # Pending markers keep their historic names so interrupted runs resume.
     def marker(self, action: str) -> str:
@@ -232,6 +240,83 @@ class Core(BaseAdapter):
         if not real.is_relative_to(self.root) or not real.is_file():
             raise Conflict(f"executable is missing: {name}")
         return "/" + str(real.relative_to(self.root))
+
+    def file_plan(self, name: str, text: str) -> tuple[str, str]:
+        if not self.files.path(name).exists():
+            return "+", name
+        if self.files.read(name) != text:
+            return "~", f"{name} (content differs)"
+        if not self.files.matches(name, text):
+            return "~", f"{name} (mode or owner differs)"
+        return "=", name
+
+    def plan(self) -> None:
+        """Report what converge and finish would change, without changing anything."""
+        try:
+            self.preflight()
+        except Conflict as error:
+            self.emit("!", str(error))
+            raise
+        d = self.desired
+        files = [self.file_plan(entry["path"], entry["text"]) for entry in d["files"]]
+        files += [
+            self.file_plan(block["path"], self.with_block(block))
+            for block in d["blocks"]
+        ]
+        repository = d["repository"]
+        if repository:
+            files.append(self.file_plan(repository["path"], repository["text"]))
+            if (
+                repository["include"]
+                not in self.files.read("/etc/pacman.conf").splitlines()
+            ):
+                files.append(("~", "/etc/pacman.conf (add repository Include)"))
+        actions: list[tuple[str, str]] = []
+        images = d["initramfsImages"]
+        if images and (
+            self.pending("initramfs") or not all(map(self.nonempty, images))
+        ):
+            actions.append(("~", "rebuild initramfs images"))
+        current = set(self.run("id", "-nG", d["user"]).stdout.split())
+        actions += [
+            ("~", f"add {d['user']} to group {g}")
+            for g in d["groups"]
+            if g not in current
+        ]
+        if d["reloadUnits"] and self.pending("units"):
+            actions.append(("~", "reload systemd units"))
+        for unit in d["units"]:
+            enabled = self.systemctl_ok("is-enabled", "--quiet", unit)
+            active = self.systemctl_ok("is-active", "--quiet", unit)
+            if not enabled:
+                actions.append(("~", f"enable {unit}"))
+            if not active:
+                actions.append(("~", f"start {unit}"))
+            if enabled and active:
+                actions.append(("=", unit))
+        for restart in d["restarts"]:
+            if self.pending(restart["action"]):
+                actions.append(("~", f"restart {restart['unit']} (pending)"))
+        for module in d["kernelModules"]:
+            if not (self.root / "sys/module" / module).is_dir():
+                actions.append(("~", f"load kernel module {module}"))
+        for key, value in d["sysctl"].items():
+            current_value = self.run("sysctl", "-n", key).stdout.strip()
+            if current_value != value:
+                actions.append(("~", f"sysctl {key}: {current_value} -> {value}"))
+        for entry in d["fileCapabilities"]:
+            target = self.resolve(entry["path"])
+            if (
+                self.run("getcap", target).stdout.strip()
+                != f"{target} {entry['capability']}"
+            ):
+                actions.append(("~", f"set {entry['capability']} on {target}"))
+        for kind, text in files + actions:
+            self.emit(kind, text)
+        updates = sum(kind != "=" for kind, _ in files)
+        runtime = sum(kind != "=" for kind, _ in actions)
+        summary = f"Core plan: {updates} files to update, {runtime} runtime actions."
+        print(f"\033[1m{summary}\033[0m" if self.color else summary)
 
     def purge(self) -> None:
         d = self.desired

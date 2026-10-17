@@ -138,6 +138,14 @@ if grep -E 'converged: ' "$work/repeat.log" | grep -Ev 'converged: 0 files updat
   fail 'repeat deployment was not quiet'
 fi
 
+step 'Plan agrees that nothing is left to change'
+deploy plan.log --plan || { show plan.log; fail 'plan failed'; }
+if ! grep -Fxq 'Core plan: 0 files to update, 0 runtime actions.' "$work/plan.log" ||
+  grep -E '^[~+!] ' "$work/plan.log"; then
+  last_log=plan.log
+  fail 'plan reported changes after a converged deployment'
+fi
+
 step 'Purge withdraws managed state and keeps pacman usable'
 deploy purge.log --purge || { show purge.log; fail 'purge failed'; }
 podman exec "$name" pacman -Q >/dev/null || fail 'pacman is unusable after purge'

@@ -86,26 +86,32 @@ status-runner instance:
     source {{ quote(justfile_directory() + "/lib/cli/nix.sh") }}
     nix_exec_root NO_COLOR run .#runnerctl -- status {{ quote(instance) }}
 
-# Build and activate the Arch workstation; combine update, purge and verbose as needed.
+# Build and activate the Arch workstation; `plan` previews changes without making them.
 arch-workstation option1="" option2="":
     #!/usr/bin/env bash
     set -euo pipefail
-    readonly usage='usage: just arch-workstation [update] [purge] [verbose]'
+    readonly usage='usage: just arch-workstation [plan | update | purge] [verbose]'
     options=({{ quote(option1) }} {{ quote(option2) }})
     deployment_args=()
     nix_args=(--show-trace --print-build-logs)
     update_seen=0
     purge_seen=0
+    plan_seen=0
     verbose_seen=0
     for option in "${options[@]}"; do
       case "$option" in
         '') ;;
         update)
-          (( update_seen == 0 )) || { printf '%s\n' "$usage" >&2; exit 2; }
+          (( update_seen == 0 && plan_seen == 0 )) || { printf '%s\n' "$usage" >&2; exit 2; }
           update_seen=1
           ;;
+        plan)
+          (( plan_seen == 0 && update_seen == 0 && purge_seen == 0 )) || { printf '%s\n' "$usage" >&2; exit 2; }
+          deployment_args+=(--plan)
+          plan_seen=1
+          ;;
         purge)
-          (( purge_seen == 0 && update_seen == 0 )) || { printf '%s\n' "$usage" >&2; exit 2; }
+          (( purge_seen == 0 && update_seen == 0 && plan_seen == 0 )) || { printf '%s\n' "$usage" >&2; exit 2; }
           deployment_args+=(--purge)
           purge_seen=1
           ;;

@@ -230,6 +230,52 @@ class CoreTests(unittest.TestCase):
             )
         )
 
+    def plan(self):
+        self.output.truncate(0)
+        self.output.seek(0)
+        self.core().plan()
+        return self.output.getvalue().splitlines()
+
+    def test_plan_lists_every_change_without_making_it(self):
+        before = sorted(str(path) for path in self.root.rglob("*"))
+        lines = self.plan()
+        self.assertEqual(sorted(str(path) for path in self.root.rglob("*")), before)
+        for expected in (
+            "+ /etc/NetworkManager/conf.d/main.conf",
+            "~ /etc/nix/nix.conf (content differs)",
+            "~ /etc/pacman.conf (add repository Include)",
+            "~ rebuild initramfs images",
+            "~ add tester to group i2c",
+            "~ start libvirtd.socket",
+            "~ load kernel module br_netfilter",
+            "~ sysctl net.ipv4.ip_forward: 0 -> 1",
+            "~ set cap_sys_admin=p on /usr/bin/sunshine",
+        ):
+            self.assertIn(expected, lines)
+        self.assertFalse(
+            any(
+                call[0] in ("gpasswd", "modprobe", "setcap")
+                for call in self.native.calls
+            )
+        )
+        self.assertFalse(
+            any(call[:2] == ("systemctl", "start") for call in self.native.calls)
+        )
+
+    def test_plan_after_deploy_reports_no_change(self):
+        self.deploy()
+        lines = self.plan()
+        self.assertTrue(all(line.startswith("=") for line in lines[:-1]), lines)
+        self.assertEqual(lines[-1], "Core plan: 0 files to update, 0 runtime actions.")
+
+    def test_plan_reports_a_conflict_and_fails(self):
+        (self.root / "etc/mkinitcpio.conf").write_text("# BEGIN nix-config modules\n")
+        with self.assertRaises(Conflict):
+            self.plan()
+        self.assertTrue(
+            self.output.getvalue().startswith("! unterminated managed block")
+        )
+
     def test_withdrawn_sections_leave_files_and_pending_actions(self):
         main = self.root / "etc/NetworkManager/conf.d/main.conf"
         main.parent.mkdir(parents=True)

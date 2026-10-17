@@ -29,8 +29,9 @@ Bootstrap 會改動主機，執行前先看過腳本與現有套件狀態。
 2. 缺套件時以代碼 3 停止
 3. `update` 成功
 4. 再跑一次沒有任何變更
-5. purge 後 pacman 仍可用
-6. store 路徑未被修改
+5. `plan` 也回報沒有變更
+6. purge 後 pacman 仍可用
+7. store 路徑未被修改
 
 pacman 與 yay 快取存在 `nix-config-container-pacman`、`nix-config-container-yay` 兩個 volume，第一次會下載完整套件。`--keep` 保留容器以便檢查。CI 在 `main` 的部署相關變更、每週排程與手動觸發時執行同一測試（`.github/workflows/container-test.yml`）。
 
@@ -40,12 +41,14 @@ pacman 與 yay 快取存在 `nix-config-container-pacman`、`nix-config-containe
 just check-fast                 # 格式、型別、lint 與介面
 just check                      # 所有 flake checks，含隔離測試
 just build                      # 建置部署產物，不啟用
+just arch-workstation plan      # 預覽部署會做的變更，不改任何東西
 just arch-workstation           # 收斂 Arch，再啟用建置好的 home
 just arch-workstation update    # 同時升級並收斂宣告的 pacman / AUR 套件
 just arch-workstation verbose   # 輸出完整診斷
 just arch-workstation purge     # 移除受管理的 Arch 部署狀態，略過 home
 ```
 
+- `plan` 只讀：列出缺少與可升級的套件、core 的每一項檔案與 runtime 變更、system 與可選模組的預檢結果，以及 Home Manager 世代是否更新。每行以 `=`（不變）、`~`（變更）、`+`（新增）、`!`（衝突）開頭，終端機上依此上色；有衝突時以非零代碼結束。system settings 目前只顯示預檢結果，不預覽細項。
 - 日常部署不安裝套件；缺套件時以代碼 3 停止，改用 `update`。
 - `update` 完整升級 pacman 並收斂 AUR；核心更新後可能需要重新開機。
 - `purge` 停用受管理的系統 unit，移除目前宣告的核心檔案、LizardByte 套件庫、Personal Agent unit、pending 狀態與 Nix 設定區塊；保留套件、帳號、Runner 註冊與可變資料。已停用功能的檔案不再受管理，purge 不會動；system-settings、AI 與 initramfs 的變更也不會撤回。purge 不啟用 Home Manager。
