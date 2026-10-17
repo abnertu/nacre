@@ -11,7 +11,6 @@ import sys
 import tempfile
 import unittest
 
-builtin_palettes = Path(sys.argv.pop(1))
 spec = importlib.util.spec_from_file_location("sync", sys.argv.pop())
 assert spec is not None and spec.loader is not None
 sync = importlib.util.module_from_spec(spec)
@@ -48,7 +47,6 @@ class SyncTests(unittest.TestCase):
             self.state,
             self.control,
             self.run_fake,
-            builtin_palettes=builtin_palettes,
         )
         self.instance.stopped = self.stopped
 
@@ -65,10 +63,6 @@ class SyncTests(unittest.TestCase):
                 if self.validation_output is not None:
                     return self.validation_output
                 return b"WARN fixture" if self.validation_warning else b"valid"
-            if len(argv) > 1 and argv[1] == "theme":
-                if getattr(self, "theme_handler", None):
-                    self.theme_handler(argv, env, cwd)
-                return b""
             return sync.encode(self.exported)
         if argv[:2] == ["/usr/bin/nix", "build"]:
             sync.require(not self.fail_build, "fake build failure")
@@ -153,154 +147,6 @@ class SyncTests(unittest.TestCase):
             sync.parse(self.settings.read_bytes()), {"weather": {"city": "fixture"}}
         )
         self.assertEqual(self.exported["wallpaper"], wallpaper)
-
-    def test_capture_renders_and_updates_tracked_themes(self):
-        self.exported.update(
-            {
-                "theme": {
-                    "source": "wallpaper",
-                    "wallpaper_scheme": "m3-content",
-                    "mode": "dark",
-                },
-                "wallpaper": {"default": {"path": "/tmp/moonlight.png"}},
-            }
-        )
-        kitty_file = self.repo / "files/home/.config/kitty/themes/noctalia.conf"
-        kitty_file.parent.mkdir(parents=True, exist_ok=True)
-        kitty_file.write_bytes(b"old-kitty")
-
-        vesktop_file = (
-            self.repo / "files/home/.config/vesktop/themes/noctalia.theme.css"
-        )
-        vesktop_file.parent.mkdir(parents=True, exist_ok=True)
-        vesktop_file.write_bytes(b"old-vesktop")
-
-        discord_template = self.state / "community-templates/discord/template.toml"
-        discord_template.parent.mkdir(parents=True, exist_ok=True)
-        discord_template.write_text("[templates]\n")
-
-        def fake_theme(argv, env, cwd):
-            tmpdir = Path(env["XDG_CONFIG_HOME"])
-            if "--builtin-config" in argv:
-                k = tmpdir / "kitty/themes/noctalia.conf"
-                k.parent.mkdir(parents=True, exist_ok=True)
-                k.write_bytes(b"new-kitty")
-                untracked = tmpdir / "alacritty/themes/noctalia.toml"
-                untracked.parent.mkdir(parents=True, exist_ok=True)
-                untracked.write_bytes(b"untracked-content")
-            if "-c" in argv:
-                v = tmpdir / "vesktop/themes/noctalia.theme.css"
-                v.parent.mkdir(parents=True, exist_ok=True)
-                v.write_bytes(b"new-vesktop")
-
-        self.theme_handler = fake_theme
-        self.instance.capture()
-
-        self.assertEqual(kitty_file.read_bytes(), b"new-kitty")
-        self.assertEqual(vesktop_file.read_bytes(), b"new-vesktop")
-        self.assertFalse((self.repo / "files/home/.config/alacritty").exists())
-
-    def test_capture_dry_run_and_skip_themes(self):
-        self.exported.update(
-            {
-                "theme": {
-                    "source": "wallpaper",
-                    "wallpaper_scheme": "m3-content",
-                    "mode": "dark",
-                },
-                "wallpaper": {"default": {"path": "/tmp/moonlight.png"}},
-            }
-        )
-        kitty_file = self.repo / "files/home/.config/kitty/themes/noctalia.conf"
-        kitty_file.parent.mkdir(parents=True, exist_ok=True)
-        kitty_file.write_bytes(b"old-kitty")
-
-        def fake_theme(argv, env, cwd):
-            tmpdir = Path(env["XDG_CONFIG_HOME"])
-            k = tmpdir / "kitty/themes/noctalia.conf"
-            k.parent.mkdir(parents=True, exist_ok=True)
-            k.write_bytes(b"new-kitty")
-
-        self.theme_handler = fake_theme
-
-        # Dry run should not update the file
-        self.instance.capture(dry_run=True)
-        self.assertEqual(kitty_file.read_bytes(), b"old-kitty")
-
-        # Skip themes should not run theme generation
-        theme_calls_before = [
-            cmd for cmd in self.commands if len(cmd) > 1 and cmd[1] == "theme"
-        ]
-        self.instance.capture(skip_themes=True)
-        self.assertEqual(kitty_file.read_bytes(), b"old-kitty")
-        theme_calls_after = [
-            cmd for cmd in self.commands if len(cmd) > 1 and cmd[1] == "theme"
-        ]
-        self.assertEqual(len(theme_calls_before), len(theme_calls_after))
-
-    def test_capture_renders_themes_from_palette_json(self):
-        self.exported.update(
-            {
-                "theme": {
-                    "source": "community",
-                    "community_palette": "Tokyo Night Moon",
-                    "mode": "dark",
-                },
-            }
-        )
-        palettes_dir = self.state / "community-palettes"
-        palettes_dir.mkdir(parents=True, exist_ok=True)
-        (palettes_dir / "Tokyo%20Night%20Moon.json").write_text('{"dark": {}}')
-
-        kitty_file = self.repo / "files/home/.config/kitty/themes/noctalia.conf"
-        kitty_file.parent.mkdir(parents=True, exist_ok=True)
-        kitty_file.write_bytes(b"old-kitty")
-
-        theme_args = []
-
-        def fake_theme(argv, env, cwd):
-            theme_args.append(list(argv))
-            tmpdir = Path(env["XDG_CONFIG_HOME"])
-            k = tmpdir / "kitty/themes/noctalia.conf"
-            k.parent.mkdir(parents=True, exist_ok=True)
-            k.write_bytes(b"tokyo-kitty")
-
-        self.theme_handler = fake_theme
-        self.instance.capture()
-        self.assertEqual(kitty_file.read_bytes(), b"tokyo-kitty")
-        self.assertTrue(any("--theme-json" in argv for argv in theme_args))
-
-    def test_capture_renders_builtin_palette_without_community_cache(self):
-        self.exported["theme"] = {
-            "source": "builtin",
-            "builtin": "Tokyo-Night",
-            "mode": "dark",
-        }
-        kitty_file = self.repo / "files/home/.config/kitty/themes/noctalia.conf"
-        kitty_file.parent.mkdir(parents=True, exist_ok=True)
-        kitty_file.write_bytes(b"old-kitty")
-
-        gtk_file = self.repo / "files/home/.config/gtk-4.0/noctalia.css"
-        gtk_file.parent.mkdir(parents=True, exist_ok=True)
-        gtk_file.write_bytes(b"old-gtk")
-
-        def fake_theme(argv, env, cwd):
-            self.assertIn("--theme-json", argv)
-            palette = Path(argv[argv.index("--theme-json") + 1])
-            self.assertEqual(
-                json.loads(palette.read_text())["dark"]["mPrimary"], "#7AA2F7"
-            )
-            output = Path(env["XDG_CONFIG_HOME"]) / "kitty/themes/noctalia.conf"
-            output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_bytes(b"tokyo-kitty")
-            gtk_output = Path(env["XDG_CONFIG_HOME"]) / "gtk-4.0/noctalia.css"
-            gtk_output.parent.mkdir(parents=True, exist_ok=True)
-            gtk_output.write_bytes(b".color { color: blue; \n}\n")
-
-        self.theme_handler = fake_theme
-        self.instance.capture()
-        self.assertEqual(kitty_file.read_bytes(), b"tokyo-kitty")
-        self.assertEqual(gtk_file.read_bytes(), b".color { color: blue;\n}\n")
 
     def test_wallpaper_commands_are_excluded_from_capture(self):
         self.exported["wallpaper"] = {

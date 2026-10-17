@@ -195,7 +195,6 @@ class Sync:
         state,
         control,
         run=execute,
-        builtin_palettes=None,
     ):
         require(bool(re.fullmatch(r"[a-z_][a-z0-9_-]*", user)), "Invalid login user")
         self.repo, self.run = repo, run
@@ -204,7 +203,6 @@ class Sync:
         self.control = control
         self.home_configuration = home_configuration
         self.pending = control / "pending.json"
-        self.builtin_palettes = builtin_palettes
 
     def validate(self, data):
         with tempfile.TemporaryDirectory(prefix="noctalia-validate-") as directory:
@@ -293,126 +291,7 @@ class Sync:
             "An interrupted deployment exists; use deploy --recover",
         )
 
-    def render_themes(self, exported, dry_run=False):
-        theme = exported.get("theme", {})
-        source = theme.get("source", "wallpaper")
-
-        args = ["/usr/bin/noctalia", "theme"]
-        palette = None
-
-        if source == "wallpaper":
-            wallpaper_conf = exported.get("wallpaper", {}).get("default", {})
-            path = wallpaper_conf.get("path")
-            if not path:
-                return []
-            args.append(str(path))
-            scheme = theme.get("wallpaper_scheme", "m3-content")
-            args.extend(["--scheme", scheme])
-        elif source == "builtin":
-            if self.builtin_palettes is None:
-                raise RuntimeError("Built-in palette catalog is missing")
-            palettes = json.loads(self.builtin_palettes.read_text())
-            palette_name = theme.get("builtin", "Noctalia")
-            palette = palettes.get(palette_name)
-            require(palette is not None, "Unsupported built-in Noctalia palette")
-        elif source == "community":
-            palette_name = theme.get("community_palette")
-            palette_path = None
-            if palette_name:
-                candidates = [
-                    self.state / "community-palettes" / f"{palette_name}.json",
-                    self.state
-                    / "community-palettes"
-                    / f"{palette_name.replace(' ', '%20')}.json",
-                ]
-                for candidate in candidates:
-                    if candidate.exists():
-                        palette_path = candidate
-                        break
-            if palette_path:
-                args.extend(["--theme-json", str(palette_path)])
-            else:
-                return []
-        else:
-            return []
-
-        mode = theme.get("mode", "dark")
-        if mode == "dark":
-            args.append("--dark")
-        elif mode == "light":
-            args.append("--light")
-
-        if theme.get("pure_black_dark"):
-            args.append("--pure-black")
-
-        with tempfile.TemporaryDirectory(prefix="noctalia-themes-") as tmpdir:
-            tmp_path = Path(tmpdir)
-            if palette is not None:
-                palette_path = tmp_path / "palette.json"
-                palette_path.write_text(json.dumps(palette))
-                args.extend(["--theme-json", str(palette_path)])
-            env = {
-                "HOME": tmpdir,
-                "XDG_CONFIG_HOME": tmpdir,
-                "XDG_STATE_HOME": tmpdir,
-                "NOCTALIA_CONFIG_HOME": tmpdir,
-                "NOCTALIA_STATE_HOME": tmpdir,
-            }
-
-            try:
-                self.run(list(args) + ["--builtin-config"], env=env)
-            except Exception as error:
-                print(
-                    f"Warning: Failed to render built-in templates: {error}",
-                    file=sys.stderr,
-                )
-                return []
-
-            discord_dir = self.state / "community-templates/discord"
-            discord_template = discord_dir / "template.toml"
-            if discord_template.exists():
-                (tmp_path / "vesktop/themes").mkdir(parents=True, exist_ok=True)
-                try:
-                    self.run(
-                        list(args) + ["-c", str(discord_template)],
-                        env=env,
-                        cwd=discord_dir,
-                    )
-                except Exception as error:
-                    print(
-                        f"Warning: Failed to render community template 'discord': {error}",
-                        file=sys.stderr,
-                    )
-
-            config_dest = self.repo / "files/home/.config"
-            updated = []
-            for root, _, files in os.walk(tmp_path):
-                for f in files:
-                    src_file = Path(root) / f
-                    rel_path = src_file.relative_to(tmp_path)
-                    name = rel_path.name.lower()
-                    if not (
-                        "noctalia" in name
-                        or rel_path.parts[:2] == ("vesktop", "themes")
-                    ):
-                        continue
-                    dest_file = config_dest / rel_path
-                    if dest_file.is_file():
-                        raw = src_file.read_bytes()
-                        if rel_path.suffix == ".css":
-                            raw = re.sub(
-                                rb"[ \t]+(?=\r?$)", b"", raw, flags=re.MULTILINE
-                            )
-                        if raw != read(dest_file):
-                            updated.append((dest_file, rel_path, raw))
-
-            if not dry_run:
-                for dest_file, _, raw in updated:
-                    atomic_write(dest_file, raw, stat.S_IMODE(dest_file.stat().st_mode))
-
-            return [rel for _, rel, _ in updated]
-
-    def capture(self, dry_run=False, skip_themes=False):
+    def capture(self, dry_run=False):
         self.preflight()
         original = read(self.target)
         exported = self.export()
@@ -425,15 +304,6 @@ class Sync:
             + ", ".join(name for name in skipped if name in SECTIONS)
             + f"; {sum(name not in SECTIONS for name in skipped)} unsupported sections"
         )
-        theme_updates = []
-        if not skip_themes:
-            theme_updates = self.render_themes(exported, dry_run=True)
-            if theme_updates:
-                prefix = "Would update" if dry_run else "Updated"
-                print(
-                    f"{prefix} terminal/app themes: "
-                    + ", ".join(str(p) for p in sorted(theme_updates))
-                )
 
         if dry_run:
             return
@@ -444,8 +314,6 @@ class Sync:
                 "Repository preferences changed during capture; retry",
             )
             atomic_write(self.target, encode(data), 0o644)
-            if not skip_themes and theme_updates:
-                self.render_themes(exported, dry_run=False)
         print(
             "Preferences captured. Review locally before committing; no Git index changes made."
         )
@@ -617,12 +485,10 @@ def main():
     parser.add_argument("operation", choices=("capture", "deploy"))
     parser.add_argument("--user", required=True, help=argparse.SUPPRESS)
     parser.add_argument("--home-configuration", required=True, help=argparse.SUPPRESS)
-    parser.add_argument("--builtin-palettes", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--replace-overrides", action="store_true")
     parser.add_argument("--recover", action="store_true")
-    parser.add_argument("--skip-themes", action="store_true")
     args = parser.parse_args()
     home = Path.home()
     config_root = Path(
@@ -646,7 +512,6 @@ def main():
         config_root / "noctalia",
         state_root / "noctalia",
         control,
-        builtin_palettes=args.builtin_palettes,
     )
     try:
         require(
@@ -654,7 +519,7 @@ def main():
             "Override replacement/recovery are deploy-only operations",
         )
         if args.operation == "capture":
-            sync.capture(args.dry_run, skip_themes=args.skip_themes)
+            sync.capture(args.dry_run)
         else:
             require(
                 not os.environ.get("NOCTALIA_CONFIG_HOME")

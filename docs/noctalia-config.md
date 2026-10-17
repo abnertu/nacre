@@ -4,7 +4,7 @@
 
 The snapshot is the single source of Noctalia's visual preferences, including the `wallpaper` section. Picking a wallpaper in the GUI writes an override that takes precedence over the declared default; `deploy --dry-run` detects the conflict.
 
-The Hyprland color template stays enabled for the local development worktree. Other application templates are disabled because Home Manager owns Kitty, Ghostty, GTK and Qt configuration, and the repository's terminal themes provide fixed palettes. After changing the wallpaper, check that the Noctalia and terminal palettes still match.
+Colors are not captured. Noctalia's templates write the theme files at runtime and follow the wallpaper; see [themes](desktop-session.md#themes).
 
 Validate source without reading live state:
 
@@ -17,12 +17,9 @@ noctalia config validate homes/abnertu/noctalia/config.toml
 ```bash
 nix run .#noctalia-config -- capture --dry-run
 nix run .#noctalia-config -- capture
-nix run .#noctalia-config -- capture --skip-themes
 ```
 
-Capture exports the effective settings, keeps only the UI sections it owns, validates a staged candidate and atomically updates the snapshot when it differs. It also syncs the terminal and application themes under `files/home/.config/` from the current wallpaper and palette (`--skip-themes` captures only the TOML). It never stages, commits or pushes. Review the diff before committing: labels and paths may contain personal data. Capture stops on validation warnings.
-
-Built-in palettes come from the bundled [Noctalia 5.1 palette catalog](../modules/home/noctalia-config/builtin-palettes.json), taken from [upstream `builtin_palettes.cpp`](https://github.com/noctalia-dev/noctalia/blob/v5.1.0/src/theme/builtin_palettes.cpp). Update it for the matching release after upgrading Noctalia.
+Capture exports the effective settings, keeps only the UI sections it owns, validates a staged candidate and atomically updates the snapshot when it differs. It never stages, commits or pushes. Review the diff before committing: labels and paths may contain personal data. Capture stops on validation warnings.
 
 ## Deploy
 
