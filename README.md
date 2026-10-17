@@ -1,12 +1,14 @@
-# nix-config
+# Nacre
 
-[![Check](https://img.shields.io/github/actions/workflow/status/gin31259461/nix-config/check.yml?branch=main&label=check&logo=githubactions&logoColor=white)](https://github.com/gin31259461/nix-config/actions/workflows/check.yml)
+[![Check](https://img.shields.io/github/actions/workflow/status/gin31259461/nacre/check.yml?branch=main&label=check&logo=githubactions&logoColor=white)](https://github.com/gin31259461/nacre/actions/workflows/check.yml)
 [![Arch Linux](https://img.shields.io/badge/Arch_Linux-1793D1?logo=archlinux&logoColor=white)](https://archlinux.org/)
 [![Hyprland](https://img.shields.io/badge/Hyprland-58E1FF?logo=hyprland&logoColor=black)](https://hypr.land/)
 [![Nix Flakes](https://img.shields.io/badge/Nix_Flakes-5277C3?logo=nixos&logoColor=white)](https://nixos.org/)
 [![Home Manager](https://img.shields.io/badge/Home_Manager-26.05-5277C3?logo=nixos&logoColor=white)](https://nix-community.github.io/home-manager/)
 
-Declarative Arch Linux + Hyprland workstation, managed with Nix and Home Manager.
+Declarative Arch Linux + Hyprland, layered with Nix.
+
+Nacre, mother-of-pearl, builds up in layers on the shell beneath it. Likewise this project layers a typed, reproducible configuration onto an existing Arch Linux install instead of replacing it.
 
 Nix evaluates a typed configuration into one fixed deployment artifact. Arch adapters converge native files, packages and services, then the embedded Home Manager generation activates. Platform code lives under `platforms/`; Arch Linux (`x86_64-linux`) is the only platform today. This is not NixOS and not an installer.
 
@@ -30,7 +32,7 @@ On a fresh Arch install without Nix, run the [bootstrap](docs/deployment.md#boot
 ## Quick start
 
 ```bash
-git clone https://github.com/gin31259461/nix-config ~/.config/nix
+git clone https://github.com/gin31259461/nacre ~/.config/nix
 cd ~/.config/nix
 ```
 

@@ -1,5 +1,5 @@
 {
-  description = "Arch workstation deployment and Home Manager configuration";
+  description = "Nacre: declarative Arch Linux + Hyprland, layered with Nix";
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 

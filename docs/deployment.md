@@ -14,7 +14,7 @@ Read [configuration](configuration.md), [system settings](system-settings.md) an
 On a fresh Arch install without Nix or just, run the bootstrap after cloning. It enables `[multilib]`, installs prerequisites, configures Nix and starts `nix-daemon.service`:
 
 ```bash
-git clone https://github.com/gin31259461/nix-config.git ~/.config/nix
+git clone https://github.com/gin31259461/nacre.git ~/.config/nix
 cd ~/.config/nix
 ./scripts/bootstrap.sh
 ```
