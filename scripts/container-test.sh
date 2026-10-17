@@ -30,11 +30,31 @@ cleanup() {
 }
 trap cleanup EXIT
 
-step() { printf '\n==> %s\n' "$1"; }
+current_step='' last_log=''
+step() {
+  current_step=$1
+  printf '\n==> %s\n' "$1"
+}
+# On GitHub Actions, also raise an error annotation with the failing log's
+# tail: annotations are readable without downloading the job log.
+annotate() {
+  [[ ${GITHUB_ACTIONS:-} == true && -z ${annotated:-} ]] || return 0
+  annotated=1
+  local text="$1"
+  if [[ -n $last_log && -f $work/$last_log ]]; then
+    text+=$'\n'"$(tail -n 40 "$work/$last_log" | sed 's/\x1b\[[0-9;]*m//g')"
+  fi
+  text=${text//'%'/'%25'}
+  text=${text//$'\r'/'%0D'}
+  text=${text//$'\n'/'%0A'}
+  printf '::error title=container-test::%s\n' "$text"
+}
 fail() {
   printf 'container-test: %s\n' "$1" >&2
+  annotate "$1"
   exit 1
 }
+trap 'annotate "command failed (exit $?) at line $LINENO during: $current_step"' ERR
 
 step 'Build the container deployment'
 deployment=$(nix build --no-link --print-out-paths "$source_root#container-deployment")
@@ -90,7 +110,10 @@ deploy() {
   as_user "$deployment/bin/$binary" "$@" >"$work/$log" 2>&1 || status=$?
   return "$status"
 }
-show() { tail -n 40 "$work/$1" >&2; }
+show() {
+  last_log=$1
+  tail -n 40 "$work/$1" >&2
+}
 
 step 'Bootstrap with the checked-in script'
 podman cp "$source_root/scripts/bootstrap.sh" "$name:/tmp/bootstrap.sh"
