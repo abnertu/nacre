@@ -42,7 +42,12 @@ let
   aiAur =
     raw:
     builtins.sort builtins.lessThan (
-      lib.intersectLists [ "antigravity-cli" "openai-codex-bin" ] (archFor { programs.ai = raw; }).aur
+      lib.intersectLists [
+        "antigravity-cli"
+        "claude-code"
+        "claude-desktop"
+        "openai-codex-bin"
+      ] (archFor { programs.ai = raw; }).aur
     );
   validConfig = module: (builtins.tryEval (builtins.deepSeq (evaluate module).host true)).success;
   validAi =
@@ -172,6 +177,11 @@ let
     enable = true;
     agy.enable = false;
   };
+  claudeSkillsOnly = ai {
+    enable = true;
+    skillsPresets.enable = false;
+    agy.enable = false;
+  };
   geminiSkillsOnly = ai {
     enable = true;
     skillsPresets.enable = false;
@@ -184,6 +194,7 @@ let
         enable = true;
         skillsPresets.enable = false;
         agy.skills.enable = false;
+        claude.skills.enable = false;
         codex.localProfile.enable = false;
       };
     };
@@ -197,6 +208,8 @@ in
 assert
   aiAur { enable = true; } == [
     "antigravity-cli"
+    "claude-code"
+    "claude-desktop"
     "openai-codex-bin"
   ];
 assert aiAur { enable = false; } == [ ] && disabled.homeModule.home.file == { };
@@ -218,6 +231,9 @@ assert !unknownSkillSelection.success;
 assert !missingSkillSource.success;
 assert agentSkillsOnly.homeModule.home.file ? ".agents/skills/${upstreamSkill}";
 assert !(agentSkillsOnly.homeModule.home.file ? ".gemini/config/skills/${upstreamSkill}");
+assert claudeSkillsOnly.homeModule.home.file ? ".claude/skills/${upstreamSkill}";
+assert claudeSkillsOnly.homeModule.home.file ? ".claude/skills/obsidian-vault";
+assert !(claudeSkillsOnly.homeModule.home.file ? ".agents/skills/${upstreamSkill}");
 assert geminiSkillsOnly.homeModule.home.file ? ".gemini/config/skills/${upstreamSkill}";
 assert !(geminiSkillsOnly.homeModule.home.file ? ".agents/skills/${upstreamSkill}");
 assert skillsDisabledWithoutSources.homeModule.home.file == { };
@@ -228,23 +244,39 @@ assert
   aiAur {
     enable = true;
     codex.enable = false;
+    claude.enable = false;
+    claudeDesktop.enable = false;
   } == [ "antigravity-cli" ];
 assert
   aiAur {
     enable = true;
     agy.pkg.enable = false;
+    claude.enable = false;
+    claudeDesktop.enable = false;
   } == [ "openai-codex-bin" ];
 assert
   aiAur {
     enable = true;
     codex.enable = false;
     agy.pkg.enable = false;
-  } == [ ];
+  } == [
+    "claude-code"
+    "claude-desktop"
+  ];
+# Claude Desktop is graphical and follows the desktop.
+assert
+  !(builtins.elem "claude-desktop"
+    (archFor {
+      programs.ai.enable = true;
+      desktop.enable = false;
+    }).aur
+  );
 assert
   (ai {
     enable = true;
     skillsPresets.enable = false;
     agy.skills.enable = false;
+    claude.skills.enable = false;
     codex.localProfile.enable = false;
   }).homeModule.home.file == { };
 assert builtins.elem "qemu-desktop" (virtualization { }).pacman;

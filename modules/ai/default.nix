@@ -98,8 +98,13 @@ in
   homeModule = {
     home.file = lib.optionalAttrs config.enable (
       let
+        claudeSkillsEnabled = config.claude.enable && config.claude.skills.enable;
         skills =
-          if config.skillsPresets.enable || (config.agy.enable && config.agy.skills.enable) then
+          if
+            config.skillsPresets.enable
+            || (config.agy.enable && config.agy.skills.enable)
+            || claudeSkillsEnabled
+          then
             import ./skills.nix {
               inherit lib skillSources;
             }
@@ -121,9 +126,18 @@ in
             ) (skills.geminiCustomRoots // skills.selected)
           else
             { };
+        claudeSkills =
+          if claudeSkillsEnabled then
+            assert skills.validateCustom skills.agentCustomRoots;
+            lib.mapAttrs' (name: source: lib.nameValuePair ".claude/skills/${name}" { inherit source; }) (
+              skills.agentCustomRoots // skills.selected
+            )
+          else
+            { };
       in
       agentSkills
       // geminiSkills
+      // claudeSkills
       // lib.optionalAttrs codexLocalProfileEnabled {
         ".codex/llama-cpp.config.toml" = {
           text = codexLocalProfile;

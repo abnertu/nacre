@@ -45,13 +45,29 @@ programs.ai.llama = {
 
 The option name `qwen3.6-35b-a3b-ud-q5-k-m` is kept for compatibility; the file is MXFP4_MOE. Query `/v1/models` for exact API IDs.
 
+## Agent tools
+
+With `programs.ai.enable`, the AI module installs these AUR packages, each with its own switch:
+
+| Package | Option |
+| --- | --- |
+| Claude Code (`claude-code`) | `programs.ai.claude.enable` |
+| Claude Desktop (`claude-desktop`, only with the desktop) | `programs.ai.claudeDesktop.enable` |
+| Codex (`openai-codex-bin`) | `programs.ai.codex.enable` |
+| Antigravity CLI (`antigravity-cli`) | `programs.ai.agy.pkg.enable` |
+
+New packages arrive with `nacre update`; until then a routine switch stops with exit code 3.
+
 ## Agent skills
 
-Home Manager installs explicitly selected skills as whole directory links in `~/.agents/skills` and `~/.gemini/config/skills`:
+Home Manager installs explicitly selected skills, including all of Matt Pocock's, as whole directory links:
 
-- the shared agent directory follows `programs.ai.enable` and `programs.ai.skillsPresets.enable`;
-- the Antigravity directory follows `programs.ai.agy.enable` and `programs.ai.agy.skills.enable`;
-- neither depends on llama.cpp preparation.
+- `~/.agents/skills` follows `programs.ai.enable` and `programs.ai.skillsPresets.enable`;
+- `~/.claude/skills` follows `programs.ai.claude.enable` and `programs.ai.claude.skills.enable`;
+- `~/.gemini/config/skills` follows `programs.ai.agy.enable` and `programs.ai.agy.skills.enable`;
+- none depends on llama.cpp preparation.
+
+A skill installed both here and as a Claude Code plugin (such as `mattpocock-skills`) appears twice; keep one source.
 
 Sources and the selection live in [`modules/ai/skills.nix`](../modules/ai/skills.nix). The `matt-pocock-skills` and `vercel-skills` inputs are pinned in `flake.lock`; custom skills stay in this repository. Deployment uses the prebuilt sources from the activation package: no `npx`, no download at activation, no Skills CLI lock file.
 

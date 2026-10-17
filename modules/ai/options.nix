@@ -121,6 +121,12 @@ in
     };
   };
   skillsPresets.enable = enable "the registered Codex agent skill presets";
+  claude = {
+    enable = enable "Claude Code";
+    skills.enable = enable "the registered agent skills in ~/.claude/skills";
+  };
+  # Graphical: installed only with the desktop.
+  claudeDesktop.enable = enable "Claude Desktop";
   agy = {
     enable = enable "Antigravity (agy)";
     pkg.enable = enable "the Antigravity CLI package (antigravity-cli)";
