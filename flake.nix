@@ -51,12 +51,24 @@
       mkDeployment = import ./lib/mk-deployment.nix;
       d = mkDeployment { inherit inputs; };
       inherit (d) lib pkgs system;
+      # Disables hardware and kernel features a rootless container cannot provide.
+      container = mkDeployment {
+        inherit inputs;
+        modules = [
+          ./configuration.nix
+          ./checks/container/configuration.nix
+        ];
+      };
     in
     {
       homeConfigurations = d.homes;
       # This is a queryable normalized configuration, not a NixOS system.
       lib.configurations.arch = d.configuration.config;
       lib.runnerctlEnabled = d.runners.packages != { };
+      lib.container = {
+        username = container.host.deployment.username;
+        inherit (container.deploymentUser) homeDirectory;
+      };
 
       devShells.${system}.default = pkgs.mkShell {
         packages = [
@@ -105,6 +117,7 @@
       packages.${system} = {
         inherit (d) arch-switch home-switch llama-prepare;
         ${d.deploymentName} = d.deployment;
+        container-deployment = container.deployment;
         default = d.arch-switch;
       }
       // lib.optionalAttrs d.noctaliaEnabled { inherit (d) noctalia-config; }

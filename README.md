@@ -95,4 +95,4 @@ just check-fast && just check && just build
 nix build --no-link '.#homeConfigurations."abnertu@arch".activationPackage'
 ```
 
-檢查只使用暫存目錄、假的原生指令與隔離 VM，不會部署或讀取受保護的資料。
+檢查只使用暫存目錄、假的原生指令與隔離 VM，不會部署或讀取受保護的資料。部署流程或轉接器有變更時，可用 `just container-test` 在 podman 容器中實際跑一次完整部署（見 [部署指南](docs/deployment.md#container-smoke-test)）。

@@ -41,6 +41,10 @@ build deployment="arch-workstation":
     nix_progress_init
     exec nix "${nix_progress_args[@]}" build --no-link --show-trace --print-build-logs {{ quote(".#" + deployment) }}
 
+# Deploy the container-test configuration into a rootless podman Arch container.
+container-test *options:
+    {{ quote(justfile_directory() + "/scripts/container-test.sh") }} {{ options }}
+
 # Prepare the pinned llama.cpp build and all declared models.
 prepare-ai mode="":
     #!/usr/bin/env bash
