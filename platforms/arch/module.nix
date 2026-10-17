@@ -104,8 +104,6 @@ in
       "kitty"
       "libnotify"
       "loupe"
-      "kvantum"
-      "kvantum-qt5"
       "mpv"
       "noto-fonts"
       "noto-fonts-emoji"

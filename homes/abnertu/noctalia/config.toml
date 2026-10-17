@@ -241,8 +241,17 @@ source = "builtin"
 wallpaper_scheme = "m3-content"
 
 [theme.templates]
-builtin_ids = ["hyprland"]
-community_ids = []
+builtin_ids = [
+    "btop",
+    "cava",
+    "ghostty",
+    "gtk3",
+    "gtk4",
+    "hyprland",
+    "kitty",
+    "qt",
+]
+community_ids = ["discord"]
 
 [wallpaper]
 edge_smoothness = 0.25
