@@ -23,8 +23,8 @@ in
       message = "the deployment user must be an administrator";
     }
     {
-      assertion = user == null || user.profiles.${deployment.profile}.enable;
-      message = "deployment.profile must be selected by the deployment user";
+      assertion = user == null || config.role != "workstation" || user.profiles.workstation.enable;
+      message = "the workstation role needs the deployment user's workstation profile";
     }
     {
       assertion = builtins.length homes == builtins.length (lib.unique homes);

@@ -19,6 +19,17 @@ nix eval .#lib.configurations.arch.networking.hostname.name
 nix eval --json .#lib.configurations.arch.networking.firewall
 ```
 
+## Roles
+
+`role` picks the baseline composition:
+
+| Role | Contents |
+| --- | --- |
+| `minimal` | Core system, shell and development tools; no graphical session |
+| `workstation` (default) | `minimal` plus the Hyprland desktop, Sunshine, Vesktop and Vicinae |
+
+Roles sit below host defaults, which sit below `configuration.nix`, so any value a role sets can be overridden. The deployment is named `<hostname>-<role>`, for example `arch-workstation`.
+
 ## Where to change things
 
 | Change | Namespace |

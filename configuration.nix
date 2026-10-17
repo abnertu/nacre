@@ -8,6 +8,9 @@
 {
   imports = [ ./hosts/arch ];
 
+  # Baseline composition: "workstation" (default) or "minimal".
+  # role = "minimal";
+
   # Example capability overrides:
   # networking.hotspot.enable = false;
   # networking.firewall.enable = false;

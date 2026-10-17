@@ -30,7 +30,7 @@ let
   deployment = host.deployment;
   deploymentUser =
     host.users.${deployment.username} or (throw "unknown deployment user: ${deployment.username}");
-  deploymentName = "${host.name}-${deployment.profile}";
+  deploymentName = "${host.name}-${host.role}";
   homeConfigurationName = "${deployment.username}@${host.name}";
   nacre = import ./cli/nacre { inherit lib pkgs deploymentName; };
   nixAdapter = inputs.nix-adapter.packages.${system}.nix-adapter;

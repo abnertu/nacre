@@ -8,6 +8,7 @@ let
     modules = [
       { options = import ./configuration-options.nix { inherit lib; }; }
       ./configuration-assertions.nix
+      ../roles
       ../platforms/arch/module.nix
       {
         # Container networking and throughput defaults; override individual keys.
@@ -34,6 +35,7 @@ let
   setting = value: if value.enable then builtins.removeAttrs value [ "enable" ] else null;
   host = {
     name = cfg.networking.hostname.name;
+    role = cfg.role;
     system = cfg.nixpkgs.hostPlatform;
     platform = cfg.deployment.platform;
     deployment = builtins.removeAttrs cfg.deployment [ "platform" ];

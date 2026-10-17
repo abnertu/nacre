@@ -11,6 +11,7 @@ Each resource has exactly one owner:
 | Path | Owns |
 | --- | --- |
 | `lib/` | Evaluation, normalization (`lib/eval-configuration.nix`) and deployment composition |
+| `roles/` | Baseline compositions at priority 1100, below host defaults |
 | `hosts/` | Identity and baselines, always via `lib.mkDefault` |
 | `platforms/<distro>/` | Native realization and its contribution interface (`platforms/arch/module.nix`); distro-specific code stays here so other distros can sit beside `arch/` |
 | `modules/` | Feature modules: each `module.nix` declares its options and contributes its own `arch.*` packages, groups and units (registry: `modules/default.nix`) |

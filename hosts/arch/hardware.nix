@@ -1,5 +1,6 @@
 {
   graphics = "amd";
+  openrazer.enable = true;
   initramfs = {
     modules = [
       "usbhid"

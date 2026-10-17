@@ -100,16 +100,13 @@ in
       type = named;
       description = "Existing administrator to deploy.";
     };
-    profile = option (types.enum (
-      builtins.attrNames (import ../profiles)
-    )) "workstation" "Label for the complete user composition.";
   };
   hardware = {
     graphics = option (types.enum [
       "amd"
       "generic"
     ]) "generic" "Declared graphics hardware.";
-    openrazer.enable = enable "OpenRazer";
+    openrazer.enable = lib.mkEnableOption "OpenRazer";
     bluetooth.enable = enable "Bluetooth";
     initramfs = {
       enable = enable "managed initramfs module addition";
@@ -146,13 +143,12 @@ in
       };
     };
   };
-  programs = switches [
-    "sunshine"
-    "vesktop"
-    "vicinae"
-  ];
+  # Off by default; the workstation role enables them.
+  programs = lib.genAttrs [ "sunshine" "vesktop" "vicinae" ] (name: {
+    enable = lib.mkEnableOption name;
+  });
   desktop = {
-    enable = enable "the graphical home composition";
+    enable = lib.mkEnableOption "the graphical home composition";
   }
   // switches [
     "hyprpolkitagent"

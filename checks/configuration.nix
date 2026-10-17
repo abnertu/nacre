@@ -49,6 +49,9 @@ let
     )
   ];
   home = fixtures.home [ disabledModule ] "abnertu";
+  # The minimal role alone drops the graphical session; host defaults beat roles.
+  minimalRole = fixtures.deploy [ { role = "minimal"; } ];
+  roleBelowHost = evaluate [ { desktop.enable = lib.mkDefault false; } ];
   overrideModule = (
     { lib, ... }:
     {
@@ -96,7 +99,7 @@ let
               "workstation"
               "enable"
             ]
-          ) { deployment.profile = "base"; }
+          ) { role = "minimal"; }
         ))
       ];
     in
@@ -161,6 +164,12 @@ assert lib.all (text: lib.hasInfix text home.config.programs.zsh.initContent) [
   "fzf --zsh"
 ];
 assert switchesWork;
+assert minimalRole.deploymentName == "fixture-minimal";
+assert !minimalRole.configuration.config.desktop.enable;
+assert !(builtins.elem "hyprland" minimalRole.configuration.config.arch.pacman);
+assert builtins.elem "hyprland" base.config.arch.pacman;
+assert !(minimalRole.homes."abnertu@fixture".config.home.file ? ".zprofile");
+assert !roleBelowHost.config.desktop.enable;
 assert builtins.length merged.host.systemSettings.firewall.rules == 2;
 assert base.config.programs.ai.enable && base.config.virtualization.kvm.gui.enable;
 assert base.host.systemSettings.trim.enable;
@@ -273,6 +282,7 @@ assert lib.all (module: !(valid module)) [
 ];
 pkgs.runCommand "configuration-interface" { } ''
   test -x ${minimal.arch-switch}/bin/arch-switch
+  test -x ${minimalRole.homes."abnertu@fixture".activationPackage}/activate
   test -x ${minimal.homes."abnertu@fixture".activationPackage}/activate
   test -x ${headlessHome.activationPackage}/activate
   test -x ${overriddenHome.activationPackage}/activate
