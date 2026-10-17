@@ -21,6 +21,7 @@ Each resource has exactly one owner:
 - Deployment code reads merged contributions from the evaluated `arch` option; a new feature adds its native names there instead of wiring them through `lib/mk-deployment.nix`.
 - Registries stay explicit. Package and service inventories live in their owning Nix source.
 - Static, public policy is Nix-generated. Python and Bash adapters do safe live-state reconciliation, validation and recovery only. Secrets, runtime receipts, registration tokens and mutable data stay outside derivations.
+- Host state keeps the `nix-config` namespace (`/var/lib/nix-config`, `60-nix-config.conf` drop-ins, `# BEGIN nix-config` blocks, receipts) so existing machines need no migration. New persistent identifiers use it too; `nacre` names only the project, its command and state without history.
 - Human accounts exist before deployment. Modules own service accounts, which get no home composition. Home Manager `stateVersion` stays fixed through routine updates.
 
 ## Deployment contracts
