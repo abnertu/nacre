@@ -84,6 +84,7 @@ Hyprland 與 Neovim 設定來自固定版本的 flake input；要使用本機 wo
 | [本機 AI](docs/ai.md) | 準備模型、loopback 服務與 agent skills；量測結果見 [ai-benchmarks](docs/ai-benchmarks.md) |
 | [GitLab Runner](docs/runners.md) | 獨立的 reconcile、註冊與驗證流程 |
 | [Personal Agent](docs/personal-agent.md) | 外部執行設定與原生服務 |
+| [備份清單](docs/backup.md) | repo 之外需要備份的狀態與還原順序 |
 
 架構與組合模型見 [CONTEXT.md](CONTEXT.md)。
 

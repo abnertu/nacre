@@ -10,17 +10,9 @@ UWSM 啟動 Hyprland 並擁有圖形工作階段。Arch 提供原生執行檔，
 
 確切的套件與 unit 以各自的模組為準。
 
-## Noctalia 加密儲存的首次啟用
+## Noctalia 加密儲存
 
-Noctalia 的檔案式加密儲存把主金鑰放在 `~/.local/share/noctalia/file-key-v1/`，不在 Git 也不在 Nix store。備份資料時一併備份金鑰。在新的 home 上，第一次啟用前先停止 Noctalia：
-
-```bash
-systemctl --user stop noctalia.service
-just arch-workstation
-systemctl --user start noctalia.service
-```
-
-啟用只會初始化一次儲存。需要隔離的既有剪貼簿與行事曆目錄，會在新狀態發布前移到固定的封存位置。封存位置衝突、symlink 或互相衝突的覆寫都會中止啟用。有 `ready` 標記卻缺金鑰時，不代表可以產生新金鑰，要還原原本的金鑰。初始化被中斷時，保留金鑰、標記與封存，停止 Noctalia 後重跑啟用。
+Noctalia 的檔案式加密儲存使用 `~/.local/share/noctalia/file-key-v1/master-key`，不在 Git 也不在 Nix store。Home Manager 啟用時，金鑰不存在就自動產生一把新的；所以**金鑰遺失後重新部署，會得到新金鑰，舊的加密資料將無法讀取**。這把金鑰要和它保護的資料一起備份，見[備份清單](backup.md)。
 
 ## 檢查工作階段
 
