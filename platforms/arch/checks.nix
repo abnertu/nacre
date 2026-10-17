@@ -16,6 +16,10 @@
       inherit (pkgs) lib;
     };
     pkgs.writeText "system-settings-interface" "passed";
+  core-tests = pkgs.runCommand "core-tests" { nativeBuildInputs = [ adapterPython ]; } ''
+    python ${./core}/tests/test_core.py
+    touch "$out"
+  '';
   system-settings-tests =
     pkgs.runCommand "system-settings-tests" { nativeBuildInputs = [ adapterPython ]; }
       ''

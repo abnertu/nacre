@@ -6,6 +6,7 @@ from pathlib import Path
 import pty
 import subprocess
 import sys
+from typing import Any
 import unittest
 
 SOURCE = Path(sys.argv.pop()).resolve()
@@ -18,7 +19,7 @@ spec.loader.exec_module(base)
 
 
 class OptionalLifecycleTests(unittest.TestCase):
-    state: dict[str, object]
+    state: dict[str, Any]
     root: Path
     script: Path
     setUp = base.ArchSwitchTests.setUp
@@ -41,7 +42,7 @@ class OptionalLifecycleTests(unittest.TestCase):
             ai_calls,
             [["python", "/fixture/ai-adapter", "/fixture/ai-manifest", "preflight"]],
         )
-        self.assertIn("Arch converged:", result.stdout)
+        self.assertIn("User services converged:", result.stdout)
 
     def test_empty_no_color_keeps_optional_skip_plain_on_a_terminal(self):
         self.state["ai_not_ready"] = True

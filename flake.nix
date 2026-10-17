@@ -46,143 +46,30 @@
   };
 
   outputs =
-    inputs@{
-      nixpkgs,
-      ...
-    }:
+    inputs:
     let
-      inherit (nixpkgs) lib;
-      mkHomeConfiguration = import ./lib/mk-home-configuration.nix { inherit inputs; };
-      configuration = import ./lib/eval-configuration.nix { inherit lib; };
-      archHost = configuration.host;
-      capabilities = configuration.capabilities;
-      archHomes = lib.mapAttrs' (
-        username: user:
-        lib.nameValuePair "${username}@${archHost.name}" (mkHomeConfiguration {
-          inherit username user capabilities;
-          ai = archHost.ai;
-          hostName = archHost.name;
-          platform = archHost.platform;
-          hardware = archHost.hardware;
-          system = archHost.system;
-        })
-      ) archHost.users;
-      deployment = archHost.deployment;
-      deploymentUser =
-        archHost.users.${deployment.username} or (throw "unknown deployment user: ${deployment.username}");
-      deploymentName = "${archHost.name}-${deployment.profile}";
-      homeConfigurationName = "${deployment.username}@${archHost.name}";
-      system = archHost.system;
-      pkgs = nixpkgs.legacyPackages.${system};
-      personalAgentPackage = inputs.personal-agent.packages.${system}.personal-agent;
-      nixAdapter = inputs.nix-adapter.packages.${system}.nix-adapter;
-      adapterPython = inputs.nix-adapter.packages.${system}.adapterPython;
-      runners = import ./modules/gitlab-runner {
-        inherit
-          lib
-          pkgs
-          adapterPython
-          ;
-        gitlab-runner = inputs.gitlab-runner;
-        rawInstances = archHost.gitlabRunners;
-      };
-      ai = import ./modules/ai {
-        inherit lib;
-        config = archHost.ai;
-        skillSources = {
-          matt-pocock = inputs.matt-pocock-skills;
-          vercel = inputs.vercel-skills;
-        };
-      };
-      archAi = import ./platforms/arch/ai {
-        inherit lib pkgs;
-        config = archHost.ai;
-        artifacts = ai.artifacts;
-        hardware = archHost.hardware;
-        tailscale = capabilities.tailscale;
-      };
-      virtualization = import ./modules/virtualization {
-        inherit lib;
-        config = archHost.virtualization;
-      };
-      powerpanel = import ./modules/powerpanel {
-        inherit lib pkgs;
-        config = archHost.powerpanel;
-      };
-      systemSettings = import ./platforms/arch/system {
-        inherit lib pkgs;
-        config = archHost.systemSettings;
-        hostName = archHost.name;
-      };
-      nativePackages = import ./platforms/arch/packages.nix {
-        inherit lib;
-        hardware = archHost.hardware;
-        inherit capabilities;
-        modulePackages = runners.requiredPackages ++ virtualization.requiredPackages;
-        systemSettings = archHost.systemSettings;
-        moduleAurPackages = ai.aurPackages ++ powerpanel.aurPackages;
-      };
-      arch-switch = import ./platforms/arch/package.nix {
-        inherit
-          lib
-          pkgs
-          deploymentUser
-          capabilities
-          systemSettings
-          powerpanel
-          adapterPython
-          ;
-        moduleGroups = virtualization.loginGroups ++ powerpanel.loginGroups;
-        moduleSystemUnits = virtualization.systemUnits ++ powerpanel.systemUnits;
-        username = deployment.username;
-        packages = nativePackages;
-        hardware = archHost.hardware;
-        aiConfig = archHost.ai;
-        aiArtifacts = ai.artifacts;
-        inherit personalAgentPackage;
-        personalAgentConfig = archHost.personalAgent;
-      };
-      llama-prepare = import ./modules/ai/package.nix {
-        inherit lib pkgs adapterPython;
-        artifacts = ai.artifacts;
-      };
-      home-switch = import ./lib/deployment/home/package.nix {
-        inherit pkgs;
-        activationPackage = archHomes.${homeConfigurationName}.activationPackage;
-      };
-      noctaliaEnabled = builtins.elem "noctalia-config" deploymentUser.modules;
-      noctalia-config = import ./modules/home/noctalia-config/package.nix {
-        inherit pkgs adapterPython;
-        username = deployment.username;
-        homeConfiguration = homeConfigurationName;
-      };
-      archDeployment = import ./lib/deployment/package.nix {
-        inherit
-          lib
-          pkgs
-          deploymentName
-          arch-switch
-          home-switch
-          ;
-      };
+      mkDeployment = import ./lib/mk-deployment.nix;
+      d = mkDeployment { inherit inputs; };
+      inherit (d) lib pkgs system;
     in
     {
-      homeConfigurations = archHomes;
+      homeConfigurations = d.homes;
       # This is a queryable normalized configuration, not a NixOS system.
-      lib.configurations.arch = configuration.config;
-      lib.runnerctlEnabled = runners.packages != { };
+      lib.configurations.arch = d.configuration.config;
+      lib.runnerctlEnabled = d.runners.packages != { };
 
       devShells.${system}.default = pkgs.mkShell {
         packages = [
           (pkgs.python3.withPackages (pythonPackages: [
             pythonPackages.jinja2
             pythonPackages.rich
-            nixAdapter
+            d.nixAdapter
           ]))
           pkgs.pyright
           pkgs.ruff
           pkgs.just
           pkgs.nix-output-monitor
+          pkgs.nixfmt
         ];
       };
 
@@ -191,63 +78,58 @@
         capabilities = import ./checks/capabilities.nix { inherit lib pkgs inputs; };
         optional-modules = import ./checks/optional-modules.nix { inherit lib pkgs inputs; };
         source-format = import ./checks/format.nix { inherit lib pkgs; };
-        python-types = import ./checks/python-types.nix { inherit lib pkgs nixAdapter; };
-        arch-home = archHomes.${homeConfigurationName}.activationPackage;
+        python-types = import ./checks/python-types.nix {
+          inherit lib pkgs;
+          inherit (d) nixAdapter;
+        };
+        arch-home = d.homes.${d.homeConfigurationName}.activationPackage;
       }
       // (import ./checks {
-        inherit
-          lib
-          pkgs
-          arch-switch
-          archDeployment
-          deploymentName
-          adapterPython
-          ;
+        inherit lib pkgs;
+        inherit (d) arch-switch deploymentName adapterPython;
+        archDeployment = d.deployment;
       })
       // (import ./platforms/arch/checks.nix {
-        inherit
-          pkgs
-          arch-switch
-          llama-prepare
-          adapterPython
-          ;
-        aiManifest = archAi.manifest;
+        inherit pkgs;
+        inherit (d) arch-switch llama-prepare adapterPython;
+        aiManifest = d.archAi.manifest;
       })
       // (import ./modules/home/checks.nix {
-        inherit pkgs inputs adapterPython;
-        home = archHomes.${homeConfigurationName};
-        user = deploymentUser;
+        inherit pkgs inputs;
+        inherit (d) adapterPython;
+        home = d.homes.${d.homeConfigurationName};
+        user = d.deploymentUser;
       })
-      // runners.checks;
+      // d.runners.checks;
 
       packages.${system} = {
-        inherit arch-switch home-switch llama-prepare;
-        ${deploymentName} = archDeployment;
-        default = arch-switch;
+        inherit (d) arch-switch home-switch llama-prepare;
+        ${d.deploymentName} = d.deployment;
+        default = d.arch-switch;
       }
-      // lib.optionalAttrs noctaliaEnabled { inherit noctalia-config; }
-      // runners.packages;
+      // lib.optionalAttrs d.noctaliaEnabled { inherit (d) noctalia-config; }
+      // d.runners.packages;
 
       apps.${system} = {
         llama-prepare = {
           type = "app";
-          program = "${llama-prepare}/bin/llama-prepare";
+          program = "${d.llama-prepare}/bin/llama-prepare";
           meta.description = "Explicitly prepare the pinned llama.cpp build and model";
         };
         arch-switch = {
           type = "app";
-          program = "${arch-switch}/bin/arch-switch";
+          program = "${d.arch-switch}/bin/arch-switch";
           meta.description = "Converge Arch-native workstation policy";
         };
-        ${deploymentName} = {
+        ${d.deploymentName} = {
           type = "app";
-          program = "${archDeployment}/bin/${deploymentName}";
-          meta.description = "Build and activate ${deploymentName}";
+          program = "${d.deployment}/bin/${d.deploymentName}";
+          meta.description = "Build and activate ${d.deploymentName}";
         };
         home-switch = {
           type = "app";
-          program = "${home-switch}/bin/home-switch";
-          meta.description = "Activate ${homeConfigurationName} through Home Manager";
+          program = "${d.home-switch}/bin/home-switch";
+          meta.description = "Activate ${d.homeConfigurationName} through Home Manager";
         };
         just = {
           type = "app";
@@ -255,14 +137,14 @@
           meta.description = "Run project commands before Home Manager is active";
         };
       }
-      // lib.optionalAttrs noctaliaEnabled {
+      // lib.optionalAttrs d.noctaliaEnabled {
         noctalia-config = {
           type = "app";
-          program = "${noctalia-config}/bin/noctalia-config";
+          program = "${d.noctalia-config}/bin/noctalia-config";
           meta.description = "Capture or deploy reviewed Noctalia preferences";
         };
       }
-      // runners.apps;
+      // d.runners.apps;
 
       formatter.${system} = pkgs.nixfmt;
     };

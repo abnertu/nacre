@@ -1,6 +1,6 @@
 # Arch system settings
 
-`configuration.nix` selects native system capabilities; `platforms/arch/system/` reconciles them. Nix generates fixed systemd drop-in content, including the fstrim timer policy. The Python adapter checks the live filesystem, ownership, native commands and units before writing or starting anything. Home Manager does not own these `/etc` files.
+`configuration.nix` selects native system capabilities; `platforms/arch/system/` reconciles them, and `platforms/arch/core/` owns the remaining core files, units, groups and kernel runtime values. Each adapter reads one Nix-generated manifest, so convergence and purge cover the same declarations. Nix generates fixed systemd drop-in content, including the fstrim timer policy. The Python adapter checks the live filesystem, ownership, native commands and units before writing or starting anything. Home Manager does not own these `/etc` files.
 
 | Public area | Native responsibility |
 | --- | --- |
@@ -35,6 +35,7 @@ Source-only validation:
 nix build --no-link --show-trace --print-build-logs \
   .#checks.x86_64-linux.system-settings-interface \
   .#checks.x86_64-linux.system-settings-tests \
+  .#checks.x86_64-linux.core-tests \
   .#checks.x86_64-linux.arch-switch-tests \
   .#checks.x86_64-linux.system-firewall-integration
 ```

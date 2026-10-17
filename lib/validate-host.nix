@@ -25,6 +25,7 @@ let
     "virtualization"
     "systemSettings"
     "powerpanel"
+    "sysctl"
   ] raw;
   deployment = fields "deployment" [ "username" "profile" ] host.deployment;
   hardware = fields "hardware" [

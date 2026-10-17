@@ -82,6 +82,9 @@ in
     hotspot = systemSection system.hotspot { };
     firewall = systemSection system.firewall { };
   };
+  boot.kernel.sysctl = option (types.attrsOf (
+    types.nullOr (types.either types.str types.int)
+  )) { } "Kernel parameters applied at boot and at runtime; null withdraws a default.";
   nixpkgs.hostPlatform = option (types.enum [ "x86_64-linux" ]) "x86_64-linux" "Nix build platform.";
   deployment = {
     platform = option (types.enum [ "arch" ]) "arch" "Native realization platform.";

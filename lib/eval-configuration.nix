@@ -5,7 +5,20 @@
 let
   evaluated = lib.evalModules {
     class = "nixConfig";
-    modules = [ { options = import ./configuration-options.nix { inherit lib; }; } ] ++ modules;
+    modules = [
+      { options = import ./configuration-options.nix { inherit lib; }; }
+      {
+        # Container networking and throughput defaults; override individual keys.
+        boot.kernel.sysctl = lib.mapAttrs (_: lib.mkDefault) {
+          "net.core.default_qdisc" = "fq";
+          "net.ipv4.tcp_congestion_control" = "bbr";
+          "net.ipv4.ip_forward" = 1;
+          "net.ipv6.conf.all.forwarding" = 1;
+          "net.bridge.bridge-nf-call-iptables" = 1;
+        };
+      }
+    ]
+    ++ modules;
   };
   cfg = evaluated.config;
   selected = values: builtins.attrNames (lib.filterAttrs (_: value: value.enable) values);
@@ -21,6 +34,7 @@ let
       initramfsModules = cfg.hardware.initramfs.modules;
       initramfsImages = cfg.hardware.initramfs.images;
     };
+    sysctl = lib.filterAttrs (_: value: value != null) cfg.boot.kernel.sysctl;
     ai = cfg.programs.ai;
     virtualization = cfg.virtualization;
     systemSettings = {
