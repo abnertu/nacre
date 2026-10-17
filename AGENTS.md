@@ -1,31 +1,56 @@
 # AGENTS Instructions
 
-Work in this operator-controlled Arch Linux checkout. Read [CONTEXT.md](CONTEXT.md) before changing composition logic and the relevant guide in [`docs/`](docs/) before editing a feature. Keep package and service inventories in their owning Nix sources, never in these instructions.
+Operator-controlled Nix configuration for an existing Arch Linux + Hyprland workstation. Nix evaluates typed policy into a fixed deployment artifact, Arch adapters reconcile live state, then the prebuilt Home Manager generation activates. Read [CONTEXT.md](CONTEXT.md) before changing composition, and the feature's guide in [`docs/`](docs/) before editing that feature.
 
-## Ownership and evaluation
+**Never read or print credentials, private keys, password stores, Runner tokens, Noctalia keys or mutable application data.** Keep them out of Git, derivations, command arguments and unredacted logs; tests use synthetic fixtures.
 
-- `configuration.nix` imports the selected Host. Put typed public options in `lib/configuration-options.nix` or a feature interface under `modules/`; normalize through `lib/eval-configuration.nix`.
-- Host baselines use `lib.mkDefault`; user overrides use ordinary definitions. Reject unknown fields, invalid types and invalid combinations. Never use import order to set precedence.
-- Give each resource one owner: `lib/` for evaluation and composition, `hosts/` for identity and defaults, `platforms/arch/` for native realization, `modules/` for capabilities, and `profiles/` or `homes/` for Home Manager composition. Keep registries explicit.
-- Keep static, public policy in Nix-generated artifacts. Keep Python and Bash adapters focused on safe live-state reconciliation, validation and recovery. Do not put secrets, runtime receipts, registration tokens or mutable application data into derivations.
-- Human accounts must exist before deployment. Modules own service accounts; those accounts receive no human home composition. Do not bump Home Manager `stateVersion` during routine updates.
+## Ownership
+
+Each resource has exactly one owner:
+
+| Path | Owns |
+| --- | --- |
+| `lib/` | Evaluation, normalization (`lib/eval-configuration.nix`) and deployment composition |
+| `hosts/` | Identity and baselines, always via `lib.mkDefault` |
+| `platforms/<distro>/` | Native realization; distro-specific code stays here so other distros can sit beside `arch/` |
+| `modules/` | Capabilities and their typed `interface.nix` |
+| `profiles/`, `homes/` | Home Manager composition |
+
+- Public options live in `lib/configuration-options.nix` or a module interface. Reject unknown fields, invalid types and invalid combinations. Precedence comes from `lib.mkDefault` baselines versus ordinary user definitions, never import order.
+- Registries stay explicit. Package and service inventories live in their owning Nix source.
+- Static, public policy is Nix-generated. Python and Bash adapters do safe live-state reconciliation, validation and recovery only. Secrets, runtime receipts, registration tokens and mutable data stay outside derivations.
+- Human accounts exist before deployment. Modules own service accounts, which get no home composition. Home Manager `stateVersion` stays fixed through routine updates.
 
 ## Deployment contracts
 
-- Build the exact Home Manager activation package into the deployment artifact. Complete Arch convergence before activating it; do not reevaluate a different home at runtime. The stages do not share a rollback transaction.
-- Core failures stop immediately. An optional `not ready` skip is allowed only when required preparation has never completed. Invalid receipts, checksum drift, ownership conflicts, missing declared core hardware, command failures and runtime drift are errors, including a readiness change after preflight.
-- Routine runs never install packages; only `--update` performs pacman/AUR convergence. Preserve kernel gates, locks and pending markers. Record intent before mutation, clear it only after success, and avoid rewriting unchanged files or restarting healthy services.
-- Preserve command failure diagnostics, including stdout, stderr and partial timeout output, while redacting secrets. Verbose mode must reach Nix, Home Manager and privileged adapters.
-- Disabling an Arch declaration withdraws management without authorizing removal or cleanup. Explicit `--purge` removes managed Arch deployment state, preserves packages, accounts, Runner registrations and mutable data, and skips Home Manager. Do not add automatic cleanup, directory backups, garbage collection or Runner purge.
-- AI preparation verifies the declared source selector, build receipt and every model identity/checksum before services converge. Prepared binaries and models stay outside the store; llama-swap, llama-server and Caddy stay loopback-only. Runner reconciliation, registration and verification remain separate from workstation deployment.
+- The deployment artifact embeds the exact Home Manager activation package. Arch convergence completes first, then that generation activates; nothing reevaluates a home at runtime. The two stages share no rollback transaction.
+- Core failures stop immediately. An optional module may skip as `not ready` only if its required preparation has never completed. Invalid receipts, checksum drift, ownership conflicts, missing declared core hardware, command failures and runtime drift — including readiness changing after preflight — are errors.
+- Only `--update` performs pacman/AUR convergence. Preserve kernel gates, locks and pending markers: record intent before mutation, clear it after success, leave unchanged files and healthy services untouched.
+- Failure diagnostics keep stdout, stderr and partial timeout output, with secrets redacted. `--verbose` reaches Nix, Home Manager and privileged adapters.
+- Disabling a declaration withdraws management only. `--purge` removes managed Arch deployment state, keeps packages, accounts, Runner registrations and mutable data, and skips Home Manager. Deployment performs no automatic cleanup, directory backups, garbage collection or Runner purge.
+- AI preparation verifies the source selector, build receipt and every model identity/checksum before services converge. Prepared binaries and models live outside the store; llama-swap, llama-server and Caddy bind loopback only. Runner reconcile, registration and verification stay separate from workstation deployment.
 
-## Protected state and desktop
+## Desktop
 
-**Never read or print credentials, private keys, password stores, Runner tokens, Noctalia keys or mutable application data.** Keep them outside Git and derivations. Tokens must not appear in command arguments or unredacted logs; use synthetic fixtures. Keep UWSM as the Hyprland entry point and one startup owner per application. Pass (`programs.password-store`) owns normal user credential storage. Hyprland and Neovim source trees stay outside managed runtime paths and can either be pinned via flake inputs (adopting published revisions through intentional lock updates) or configured through user `development` paths (`development.hyprlandPath`, `development.neovimPath`) for live local worktrees.
+- UWSM is the Hyprland entry point; each application has one startup owner.
+- Pass (`programs.password-store`) owns user credential storage.
+- Hyprland and Neovim sources live outside managed runtime paths: pinned flake inputs adopted through intentional lock updates, or local worktrees via `development.hyprlandPath` / `development.neovimPath`.
 
-## Validation and documentation
+## Tests
 
-Format Nix source with `nixfmt <files>` directly (or `find ... -name '*.nix' -print0 | xargs -0 nixfmt`); DO NOT use `nix fmt`, use `nixfmt`. Use temporary paths, fake native commands and isolated VMs; test behavior rather than copying inventories into assertions. For composition or adapter changes, run from the repository root:
+Decide per change whether a test is warranted. A test earns its place when it would catch a realistic regression in behavior or in a contract above; value tweaks, package additions and documentation usually need none. A reproducible bug fix gets a regression test.
+
+Tests exercise behavior through the real entry point, using temporary roots, fake native commands or isolated VMs. A test is invalid, and gets deleted when found, if it:
+
+- restates values copied from source (defaults, package lists, flags, recipe names, help text);
+- greps source text instead of running it;
+- compares a generated value with the expression that produced it;
+- repeats an assertion another test already makes;
+- cannot fail.
+
+## Validation
+
+Format Nix with `nixfmt <files>` (or `find . -name '*.nix' -print0 | xargs -0 nixfmt`), never `nix fmt`. For composition, adapter or test changes, run from the repository root:
 
 ```bash
 just check-fast
@@ -36,6 +61,15 @@ nix build --no-link --show-trace --print-build-logs \
 git diff --check
 ```
 
-These commands build source without activation. Deployment, preparation, registration, package installation and service operations affect live state and are not documentation checks. For documentation-only edits, check Markdown syntax, relative links and `git diff --check`.
+These build without activating. Deployment, preparation, registration, package installation and service operations change live state and need the user's go-ahead. For documentation-only edits, check Markdown syntax, relative links and `git diff --check`.
 
-Keep [README.md](README.md) as the entry point, [CONTEXT.md](CONTEXT.md) as the composition model and `docs/` as current operator procedures. Update the relevant guide when public behavior changes. Keep agent constraints here rather than duplicating runbooks.
+## Git
+
+- Commit validated work freely. Push only when the user explicitly asks.
+- Messages follow Conventional Commits (`type(scope): summary`, imperative), with a body explaining why for non-trivial changes.
+- Squash unpushed commits that make related changes to the same unit into one; keep unrelated changes separate.
+- Commits carry the configured Git author only: no `Co-Authored-By` or other attribution trailers.
+
+## Documentation
+
+[README.md](README.md) is the user-facing entry point, written in Chinese. [CONTEXT.md](CONTEXT.md) holds the composition model and `docs/` holds operator procedures; update the relevant guide when public behavior changes. Agent constraints live only in this file.
