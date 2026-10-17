@@ -481,10 +481,33 @@ class ArchSwitchTests(unittest.TestCase):
             )
         )
 
-    def test_nix_daemon_purge_removes_block(self):
+    def test_purge_removes_managed_state_through_privileged_writes(self):
+        conf = self.root / "fixture-pwrstatd.conf"
+        conf.write_text("runtime-threshold = 300\n")
+        source = self.script.read_text()
+        self.script.write_text(
+            f"manage_powerpanel=1\npowerpanel_conf={shlex.quote(str(conf))}\n" + source
+        )
         self.invoke()
+        self.assertTrue((self.root / "etc/pwrstatd.conf").exists())
+        # As on a real host, the login user cannot write /etc directly.
+        etc = [self.root / "etc", *(self.root / "etc").rglob("*")]
+        self.addCleanup(
+            lambda: [
+                path.chmod(path.stat().st_mode | 0o200) for path in etc if path.exists()
+            ]
+        )
+        for path in etc:
+            path.chmod(path.stat().st_mode & ~0o222)
         (self.root / "commands.jsonl").unlink()
         self.invoke("--purge")
+        self.assertFalse((self.root / "etc/pwrstatd.conf").exists())
+        self.assertFalse(
+            (self.root / "etc/pacman.d/nix-config-lizardbyte.conf").exists()
+        )
+        self.assertNotIn(
+            "nix-config-lizardbyte", (self.root / "etc/pacman.conf").read_text()
+        )
         conf = (self.root / "etc/nix/nix.conf").read_text()
         self.assertEqual(conf, "build-users-group = nixbld\n")
         self.assertTrue(
@@ -492,6 +515,37 @@ class ArchSwitchTests(unittest.TestCase):
                 call == ["systemctl", "restart", "nix-daemon.service"]
                 for call in self.commands()
             )
+        )
+
+    def test_failed_purge_keeps_pacman_repository_loadable(self):
+        self.invoke()
+        self.state["fail"] = ["install", "-m0644"]
+        self.save()
+        self.invoke("--purge", code=1)
+        pacman = (self.root / "etc/pacman.conf").read_text()
+        self.assertIn("nix-config-lizardbyte", pacman)
+        self.assertTrue(
+            (self.root / "etc/pacman.d/nix-config-lizardbyte.conf").exists()
+        )
+
+    def test_unit_that_stays_inactive_after_start_fails_with_its_name(self):
+        self.state["inactive_after_start"] = ["bluetooth.service"]
+        self.save()
+        result = self.invoke(code=1)
+        self.assertIn("bluetooth.service did not become active", result.stderr)
+
+    def test_multilib_package_requires_repository_before_update(self):
+        self.state["no_multilib"] = True
+        self.save()
+        self.script.write_text(
+            self.script.read_text().replace(
+                "pacman_packages=(base)", "pacman_packages=(base lib32-fixture)"
+            )
+        )
+        result = self.invoke("--update", code=1)
+        self.assertIn("[multilib]", result.stderr)
+        self.assertFalse(
+            any(call[0] == "pacman" and "--sync" in call for call in self.commands())
         )
 
     def test_powerpanel_converges_and_restarts_service(self):

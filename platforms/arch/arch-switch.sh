@@ -97,7 +97,14 @@ raw() {
 }
 
 resolve_inventory() {
-  local pacman_err="$work_dir/pacman-resolve.err"
+  local pacman_err="$work_dir/pacman-resolve.err" package
+  for package in "${pacman_packages[@]}"; do
+    if [[ $package == lib32-* ]]; then
+      native pacman-conf --repo multilib Server >/dev/null 2>&1 ||
+        fail "declared package $package requires the [multilib] repository in /etc/pacman.conf"
+      break
+    fi
+  done
   if ! native pacman --sync --print --needed -- "${pacman_packages[@]}" 2>"$pacman_err" >/dev/null; then
     progress_suspend
     if [[ -s $pacman_err ]]; then
@@ -137,6 +144,8 @@ resolve_inventory() {
     fi
   fi
 }
+repo_file="$fs_root/etc/pacman.d/nix-config-lizardbyte.conf"
+repo_include='Include = /etc/pacman.d/nix-config-lizardbyte.conf'
 lizardbyte_server=""
 if ((${#lizardbyte_package_names[@]})); then
   lizardbyte_server=$(native pacman-conf --config "$files/pacman-lizardbyte.conf" --repo lizardbyte Server)
@@ -167,21 +176,24 @@ if ((purge)); then
   for service in "${system_units[@]}"; do
     native systemctl is-enabled --quiet "$service" && root systemctl disable --now "$service" || true
   done
+  # Drop the Include before its target: pacman cannot load a missing include.
+  if [[ -e $fs_root/etc/pacman.conf ]] && grep -Fxq "$repo_include" "$fs_root/etc/pacman.conf"; then
+    grep -Fxv "$repo_include" "$fs_root/etc/pacman.conf" >"$work_dir/pacman.conf" || true
+    root install -m0644 -o0 -g0 -- "$work_dir/pacman.conf" "$fs_root/etc/pacman.conf"
+  fi
   for path in \
     "$fs_root/etc/NetworkManager/conf.d/main.conf" \
     "$fs_root/etc/NetworkManager/conf.d/99-tailscale.conf" \
     "$fs_root/etc/modules-load.d/nix-config-podman.conf" \
     "$fs_root/etc/sysctl.d/99-nix-config.conf" \
     "$fs_root/etc/systemd/system/getty@tty1.service.d/override.conf" \
+    "$fs_root/etc/pwrstatd.conf" \
     "$fs_root/etc/pacman.d/nix-config-lizardbyte.conf"; do
     [[ ! -e $path ]] || root rm -f -- "$path"
   done
-  [[ ! -e $fs_root/etc/pacman.conf ]] || sed -i "/^Include = \/etc\/pacman.d\/nix-config-lizardbyte.conf$/d" "$fs_root/etc/pacman.conf"
   if [[ -e $fs_root/etc/nix/nix.conf ]]; then
-    sed -i '/^# BEGIN nix-config settings$/,/^# END nix-config settings$/d' "$fs_root/etc/nix/nix.conf" 2>/dev/null || {
-      sed '/^# BEGIN nix-config settings$/,/^# END nix-config settings$/d' "$fs_root/etc/nix/nix.conf" >"$work_dir/nix.conf"
-      root install -m0644 -o0 -g0 -- "$work_dir/nix.conf" "$fs_root/etc/nix/nix.conf"
-    }
+    sed '/^# BEGIN nix-config settings$/,/^# END nix-config settings$/d' "$fs_root/etc/nix/nix.conf" >"$work_dir/nix.conf"
+    root install -m0644 -o0 -g0 -- "$work_dir/nix.conf" "$fs_root/etc/nix/nix.conf"
     if native systemctl is-active --quiet nix-daemon.service; then
       root systemctl restart nix-daemon.service
     fi
@@ -230,8 +242,6 @@ check_kernel() {
 }
 check_kernel
 progress_finish 'done'
-repo_file="$fs_root/etc/pacman.d/nix-config-lizardbyte.conf"
-repo_include='Include = /etc/pacman.d/nix-config-lizardbyte.conf'
 if ((${#lizardbyte_package_names[@]})) && ! grep -Fxq "$repo_include" "$fs_root/etc/pacman.conf" &&
   native pacman-conf --repo lizardbyte Server >/dev/null 2>&1; then
   fail 'an unmanaged [lizardbyte] repository already exists in pacman.conf'
@@ -422,6 +432,8 @@ for service in "${system_units[@]}"; do
   fi
   if ! native systemctl is-active --quiet "$service"; then
     root systemctl start "$service"
+    native systemctl is-active --quiet "$service" ||
+      fail "required system unit $service did not become active"
     actions=$((actions + 1))
   fi
 done

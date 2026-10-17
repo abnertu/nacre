@@ -10,7 +10,7 @@ usage() {
 usage: bootstrap.sh [--help]
 
 Prepare a fresh Arch Linux system for nix-config deployment:
-  1. Installs base-devel, git, nix, and just via pacman.
+  1. Enables [multilib] and installs base-devel, git, nix, and just via pacman.
   2. Configures /etc/nix/nix.conf with flakes and trusted-users.
   3. Enables and starts nix-daemon.service.
   4. Adds the current login user to the wheel group.
@@ -36,9 +36,16 @@ fi
 login_user=$(id --user --name)
 printf '==> Bootstrapping Arch Linux workstation for user: %s\n' "$login_user"
 
-# 1. Native base dependencies
-printf '==> 1/5 Installing native packages (base-devel, git, nix, just)...\n'
-sudo pacman -S --needed --noconfirm base-devel git nix just
+# 1. Native base dependencies. Declared lib32 packages require [multilib].
+printf '==> 1/5 Enabling [multilib] and installing native packages (base-devel, git, nix, just)...\n'
+if ! pacman-conf --repo multilib Server >/dev/null 2>&1; then
+  if grep -Fxq '#[multilib]' /etc/pacman.conf; then
+    sudo sed -i '/^#\[multilib\]$/{s/^#//;n;s/^#Include/Include/}' /etc/pacman.conf
+  else
+    printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' | sudo tee -a /etc/pacman.conf >/dev/null
+  fi
+fi
+sudo pacman -Syu --needed --noconfirm base-devel git nix just
 
 # 2. Configure /etc/nix/nix.conf
 printf '==> 2/5 Configuring /etc/nix/nix.conf for Flakes and trusted users...\n'
@@ -49,8 +56,11 @@ if [[ ! -f $nix_conf ]] || ! grep -Fq "experimental-features" "$nix_conf"; then
   printf 'experimental-features = nix-command flakes\n' | sudo tee -a "$nix_conf" >/dev/null
 fi
 
+# Write the block arch-switch owns, so deployment adopts it instead of adding a
+# second trusted-users entry.
 if ! grep -Fq "trusted-users" "$nix_conf"; then
-  printf 'trusted-users = root @wheel %s\n' "$login_user" | sudo tee -a "$nix_conf" >/dev/null
+  printf '# BEGIN nix-config settings\ntrusted-users = root @wheel %s\n# END nix-config settings\n' \
+    "$login_user" | sudo tee -a "$nix_conf" >/dev/null
 fi
 
 # 3. Enable and start nix-daemon

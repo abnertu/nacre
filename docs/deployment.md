@@ -1,10 +1,10 @@
 # Deploy and recover the Arch workstation
 
-Run from this checkout as the selected existing login user on `x86_64-linux` Arch. The account must be in `wheel`; native Nix, `yay` and the required commands must be available. The running kernel needs its installed module directory. Review [configuration](configuration.md), [system ownership](system-settings.md) and any enabled feature's preparation guide before activation.
+Run from this checkout as the selected existing login user on `x86_64-linux` Arch. The account must be in `wheel`; native Nix, `yay` and the required commands must be available. Declared `lib32-*` packages need the `[multilib]` repository enabled in `/etc/pacman.conf`. The running kernel needs its installed module directory. Review [configuration](configuration.md), [system ownership](system-settings.md) and any enabled feature's preparation guide before activation.
 
 ## Bootstrap
 
-On a freshly installed Arch machine lacking Nix or Just, clone this repository to the user's configuration checkout and run the checked-in bootstrap script there. It installs native prerequisites, configures Nix and starts `nix-daemon.service`:
+On a freshly installed Arch machine lacking Nix or Just, clone this repository to the user's configuration checkout and run the checked-in bootstrap script there. It enables `[multilib]`, installs native prerequisites, configures Nix and starts `nix-daemon.service`:
 
 ```bash
 git clone https://github.com/gin31259461/nix-config.git ~/.config/nix
@@ -26,7 +26,7 @@ just arch-workstation verbose   # Propagate verbose diagnostics throughout the r
 just arch-workstation purge     # Remove managed Arch deployment state; skip home.
 ```
 
-A routine run does not install missing native packages and exits 3 if they are absent. `update` performs a full pacman upgrade and declared AUR convergence. A kernel update may require a reboot before later convergence. `purge` removes managed Arch files, units, pending state and Nix configuration entries while preserving installed packages, accounts, Runner registrations and mutable application data. It does not activate Home Manager.
+A routine run does not install missing native packages and exits 3 if they are absent. `update` performs a full pacman upgrade and declared AUR convergence. A kernel update may require a reboot before later convergence. `purge` disables managed system units and removes the core managed files, the LizardByte repository entry, pending state and the Nix configuration block while preserving installed packages, accounts, Runner registrations and mutable application data. It does not yet withdraw system-settings, AI or initramfs changes, and it does not activate Home Manager.
 
 `just arch-workstation` first builds a deployment artifact containing one exact Home Manager activation package. Runtime preflights core system state and optional readiness, optionally updates packages, converges native files and services, then activates that built home. Arch changes remain applied if home activation fails; the stages have no shared rollback transaction. Runner reconciliation and registration are outside this sequence. [AI preparation](ai.md) is also separate.
 

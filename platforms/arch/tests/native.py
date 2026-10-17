@@ -13,7 +13,8 @@ state_path = root / "state.json"
 state = json.loads(state_path.read_text())
 command = Path(sys.argv[0]).name
 args = sys.argv[1:]
-if command == "sudo":
+privileged = command == "sudo"
+if privileged:
     if args == ["-v"]:
         sys.exit(0)
     command, args = Path(args[0]).name, args[1:]
@@ -30,6 +31,11 @@ def save():
 def target(value):
     path = Path(value)
     assert path.is_relative_to(root), value
+    # Tests may make /etc read-only to the login user; root writes regardless.
+    if privileged:
+        for item in (path.parent, path):
+            if item.exists():
+                item.chmod(item.stat().st_mode | 0o200)
     return path
 
 
@@ -68,6 +74,8 @@ elif command == "id":
         else "1000"
     )
 elif command == "pacman-conf":
+    if args[:2] == ["--repo", "multilib"]:
+        sys.exit(1 if state.get("no_multilib") else 0)
     if "--config" not in args and not state.get("unmanaged_repo"):
         if (
             "Include = /etc/pacman.d/nix-config-lizardbyte.conf"
@@ -132,6 +140,8 @@ elif command == "systemctl":
         sys.exit(0 if service.get("enabled") else 1)
     if verb == "is-active":
         sys.exit(0 if service.get("active") else 3)
+    if verb == "start" and units[0] in state.get("inactive_after_start", []):
+        sys.exit(0)
     service["enabled" if verb == "enable" else "active"] = True
     save()
 elif command == "sysctl":
