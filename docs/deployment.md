@@ -23,7 +23,7 @@ The bootstrap changes the host; read the script first.
 
 ## Moving an existing checkout
 
-Checkouts older than 0.1.0 live at `~/.config/nix`, the directory Nix reads for user settings, and a transitional `nix.conf` there enables flakes. Move to `~/.config/nacre` only after a deployment has written the `nix.settings` block to `/etc/nix/nix.conf`:
+Checkouts older than 0.1.0 live at `~/.config/nix`, where Nix also reads user settings; 0.1.x shipped a transitional `nix.conf` there to enable flakes, and 0.2.0 removes it. Deploy 0.1.x first, so the `nix.settings` block in `/etc/nix/nix.conf` enables flakes, then move:
 
 ```bash
 nacre switch
@@ -31,7 +31,7 @@ grep -A6 'BEGIN nix-config settings' /etc/nix/nix.conf   # experimental-features
 mv ~/.config/nix ~/.config/nacre
 ```
 
-`nacre` finds either location, so it keeps working throughout. Outside `~/.config/nix` the repository's `nix.conf` is inert.
+A checkout updated to 0.2.0 before that deployment needs `--extra-experimental-features 'nix-command flakes'` on its first `nix run .#nacre`. `nacre` still finds a checkout at either location.
 
 ## Commands
 
