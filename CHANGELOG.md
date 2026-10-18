@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 (2026-10-18)
+
+### Features
+
+- **cli**: Add bash and zsh completions
+
 ## 0.3.0 (2026-10-18)
 
 ### Features
