@@ -152,14 +152,15 @@ class Switch:
             )
 
     def missing_packages(self) -> list[str]:
+        # One query for every installed name, instead of one per package.
         c = self.config
+        installed = set(
+            self.native("pacman", "--query", "--quiet", capture=True).stdout.split()
+        )
         return [
             package
             for package in (*c["pacman"], *c["lizardbyte"], *c["aur"])
-            if self.native(
-                "pacman", "--query", "--", package, capture=True, check=False
-            ).returncode
-            != 0
+            if package not in installed
         ]
 
     def require_multilib(self) -> None:

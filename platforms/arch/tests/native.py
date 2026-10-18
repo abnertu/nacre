@@ -70,8 +70,11 @@ elif command == "pacman-conf":
         sys.exit(1 if state.get("no_multilib") else 0)
     print("https://repo.example")
 elif command == "pacman":
-    if "--query" in args:
-        sys.exit(1 if args[-1] in state.get("missing", []) else 0)
+    if args == ["--query", "--quiet"]:
+        config = json.loads((root / "config.json").read_text())
+        declared = config["pacman"] + config["lizardbyte"] + config["aur"]
+        print("\n".join(p for p in declared if p not in state.get("missing", [])))
+        sys.exit(0)
     if "--print" in args:
         if state.get("resolve_conflict"):
             print("https://repo.example/glibc.pkg.tar.zst")
