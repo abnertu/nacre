@@ -1,6 +1,7 @@
 # pyright: standard
 """Run the built nacre command against fake nix, sudo and Home Manager state."""
 
+import datetime
 import os
 import shutil
 import subprocess
@@ -123,6 +124,116 @@ class NacreTests(unittest.TestCase):
         self.assertTrue(call.endswith("-- register frontend"))
         self.run_nacre("runner", "prepare", "frontend")
         self.assertTrue(self.recorded()[-1].endswith("-- reconcile frontend"))
+
+    def test_changes_lists_package_events_since_the_last_update(self):
+        log = self.root / "var/log/pacman.log"
+        log.parent.mkdir(parents=True)
+        env = {"NACRE_ROOT": str(self.root)}
+        result = self.run_nacre("changes", **env)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--since", result.stderr)
+
+        def at(minutes):
+            when = datetime.datetime.now().astimezone()
+            return (when + datetime.timedelta(minutes=minutes)).strftime(
+                "%Y-%m-%dT%H:%M:%S%z"
+            )
+
+        log.write_text(
+            f"[{at(-60)}] [ALPM] upgraded before (1-1 -> 1-2)\n"
+            f"[{at(-60)}] [PACMAN] Running 'pacman -Syu'\n"
+        )
+        self.run_nacre("update", DEPLOY_STATUS="75", **env)
+        with log.open("a") as stream:
+            stream.write(
+                f"[{at(1)}] [ALPM] upgraded kitty (0.48.2-1 -> 0.49.2-1)\n"
+                f"[{at(1)}] [ALPM] installed claude-code (2.1-1)\n"
+                f"[{at(1)}] [ALPM] removed kvantum (1.1-1)\n"
+                f"[{at(1)}] [ALPM] upgraded hyprland (0.56.2-3 -> 0.56.2-4)\n"
+            )
+        result = self.run_nacre("changes", **env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("before", result.stdout)
+        lines = [line.split() for line in result.stdout.splitlines()]
+        self.assertEqual(
+            lines[2:],
+            [
+                ["Upgraded", "(2)"],
+                ["hyprland", "0.56.2-3", "->", "0.56.2-4"],
+                ["kitty", "0.48.2-1", "->", "0.49.2-1"],
+                [],
+                ["Installed", "(1)"],
+                ["claude-code", "2.1-1"],
+                [],
+                ["Removed", "(1)"],
+                ["kvantum", "1.1-1"],
+            ],
+        )
+        result = self.run_nacre("changes", "--since", at(-90)[:10], **env)
+        self.assertIn("before", result.stdout)
+
+    def test_doctor_reports_what_needs_attention(self):
+        env = {"NACRE_ROOT": str(self.root)}
+        bin_dir = self.root / "bin"
+        self.script(bin_dir / "uname", 'echo "${KERNEL:-7.2.11-arch1-1}"')
+        (self.root / "usr/lib/modules/7.2.11-arch1-1").mkdir(parents=True)
+        self.script(
+            bin_dir / "systemctl",
+            'case "$*" in\n'
+            '  "--failed --plain --no-legend") echo "${FAILED:-}" ;;\n'
+            '  "--user --failed --plain --no-legend") ;;\n'
+            '  "--user is-active graphical-session.target") echo active ;;\n'
+            '  "--user show "*)\n'
+            '    printf "Id=watch.path\\nActiveState=%s\\nInactiveExitTimestampMonotonic=%s\\n" \\\n'
+            '      "${WATCH_STATE:-active}" "${WATCH_STARTED:-5}" ;;\n'
+            "  *) exit 1 ;;\n"
+            "esac",
+        )
+        wants = self.home / ".config/systemd/user/graphical-session.target.wants"
+        wants.mkdir(parents=True)
+        (wants / "watch.path").symlink_to("/nix/store/fixture-home-files/watch.path")
+        files = self.root / "generation-1/home-files/.config/kitty"
+        files.mkdir(parents=True)
+        (files / "kitty.conf").write_text("")
+        profiles = self.home / ".local/state/nix/profiles"
+        profiles.mkdir(parents=True)
+        (profiles / "home-manager-1-link").symlink_to(self.root / "generation-1")
+        (profiles / "home-manager").symlink_to("home-manager-1-link")
+        self.run_nacre("switch", **env)
+
+        result = self.run_nacre("doctor", **env)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertTrue(
+            all(line.startswith("ok") for line in result.stdout.splitlines())
+        )
+
+        pending = self.root / "var/lib/nix-config/arch"
+        pending.mkdir(parents=True)
+        (pending / "hotspot.pending").write_text("")
+        (self.home / ".config/kitty").mkdir(parents=True)
+        (self.home / ".config/kitty/kitty.conf.bak").write_text("")
+        result = self.run_nacre(
+            "doctor",
+            KERNEL="7.2.6-arch2-1",
+            FAILED="broken.service loaded failed failed Broken",
+            WATCH_STATE="inactive",
+            WATCH_STARTED="0",
+            **env,
+        )
+        self.assertEqual(result.returncode, 1)
+        warnings = {
+            line.split()[1]: line
+            for line in result.stdout.splitlines()
+            if line.startswith("warn")
+        }
+        self.assertEqual(
+            sorted(warnings), ["failed", "kernel", "leftover", "pending", "started"]
+        )
+        self.assertIn("hotspot", warnings["pending"])
+        self.assertIn("7.2.6-arch2-1", warnings["kernel"])
+        self.assertIn("broken.service", warnings["failed"])
+        self.assertIn("watch.path", warnings["started"])
+        self.assertIn("~/.config/kitty/kitty.conf.bak", warnings["leftover"])
 
     def prepare_install(self, wheel="alice"):
         (self.flake / "configuration.nix").write_text("# shipped example\n")

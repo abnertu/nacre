@@ -46,6 +46,8 @@ nacre purge               # remove managed Arch state, skip home
 ```
 
 - **status** shows the checkout revision, the last switch made through `nacre`, the active home generation and any pending markers.
+- **doctor** reports what needs attention and changes nothing: a checkout ahead of the last switch, pending markers, a running kernel without installed modules, failed units, home units enabled under an active target that never started (activation adds them without starting them), and `.bak`, `.backup`, `.orig` or `.old` files beside managed home files. It exits 1 when anything is reported.
+- **changes [--since TIME]** lists the packages upgraded, downgraded, installed, reinstalled or removed since the last `nacre update` started, read from `/var/log/pacman.log`. Start here when something behaves differently after an update. `--since` takes an ISO date or time.
 - **generations** and **rollback [N]** list and reactivate earlier home generations. Rollback never touches Arch state: packages and `/etc` files stay as the last switch left them, and the next switch activates the current configuration again.
 - **plan** lists missing and upgradable packages, every core file and runtime change, system and optional module preflight, and whether the Home Manager generation changes. Lines start with `=` (unchanged), `~` (changed), `+` (added) or `!` (conflict); conflicts exit non-zero. System settings show preflight only, not per-item detail.
 - **Routine runs** install nothing. Missing packages exit with code 3; use `update`.

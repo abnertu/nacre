@@ -16,7 +16,7 @@ Nix evaluates a typed configuration into one fixed deployment artifact. Arch ada
 
 ## Features
 
-- **One command**: `nacre` installs a machine, previews and applies changes, reports status and rolls back home generations.
+- **One command**: `nacre` installs a machine, previews and applies changes, reports status and problems, lists what an update changed and rolls back home generations.
 - **Roles**: a `minimal` or `workstation` baseline that hosts and your configuration refine.
 - **Hyprland desktop** started by UWSM, with the Noctalia shell and one startup owner per application.
 - **Typed configuration**: unknown options, wrong types and invalid combinations fail at evaluation.
@@ -53,7 +53,7 @@ nacre --verbose switch    # full Nix, Home Manager and adapter diagnostics
 nacre purge               # remove managed Arch state, skip Home Manager
 ```
 
-`nacre --help` lists every command, including `status`, `generations`, `rollback` and the AI, Runner and Noctalia operations.
+`nacre --help` lists every command, including `status`, `doctor`, `changes`, `generations`, `rollback` and the AI, Runner and Noctalia operations.
 
 ## Configuration
 

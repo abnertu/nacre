@@ -37,6 +37,8 @@ Deployment
 
 Inspection
   status                   checkout, last switch, home generation, pending work
+  doctor                   report problems that need attention; changes nothing
+  changes [--since TIME]   package changes since the last update (or TIME)
   generations              list home generations
   rollback [GENERATION]    activate an earlier home generation (Arch is not rolled back)
 
@@ -52,8 +54,18 @@ Features
 The checkout is --flake, else $NACRE_FLAKE, else ~/.config/nacre or ~/.config/nix.
 """
 
-PENDING_DIR = Path("/var/lib/nix-config/arch")
+# Tests point this at a temporary root.
+ROOT = Path(os.environ.get("NACRE_ROOT") or "/")
+PENDING_DIR = ROOT / "var/lib/nix-config/arch"
+PACMAN_LOG = ROOT / "var/log/pacman.log"
 NAME = re.compile(r"[a-z][a-z0-9_-]*")
+PACKAGE_EVENT = re.compile(
+    r"\[(?P<when>[^\]]+)\] \[ALPM\] "
+    r"(?P<action>installed|upgraded|downgraded|reinstalled|removed) "
+    r"(?P<name>\S+) \((?P<versions>[^)]*)\)"
+)
+# Home Manager and editors leave these beside a file that was in the way.
+BACKUP_SUFFIXES = (".bak", ".backup", ".orig", ".old")
 
 
 class Usage(Exception):
@@ -78,6 +90,10 @@ def revision(flake: Path) -> str:
     return result.stdout.strip() if result.returncode == 0 else "unknown"
 
 
+def now() -> str:
+    return datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+
+
 def query(*argv: str) -> str | None:
     """A read-only probe's output, or None when it fails or is not installed."""
     try:
@@ -85,6 +101,15 @@ def query(*argv: str) -> str | None:
     except OSError:
         return None
     return result.stdout.strip() if result.returncode == 0 else None
+
+
+def parse_time(text: str) -> datetime.datetime:
+    """An ISO date or time; one without an offset is local time."""
+    try:
+        when = datetime.datetime.fromisoformat(text)
+    except ValueError:
+        raise Refusal(f"not an ISO date or time: {text}") from None
+    return when if when.tzinfo else when.astimezone()
 
 
 def find_flake(explicit: str | None) -> Path | None:
@@ -158,6 +183,12 @@ class Nacre:
         if built.returncode != 0:
             return built.returncode
         artifact = built.stdout.strip()
+        if mode == "update":
+            # Recorded before running: a stopped update has still upgraded packages.
+            record = state_home() / "nacre/updates"
+            record.parent.mkdir(parents=True, exist_ok=True)
+            with record.open("a") as updates:
+                updates.write(f"{now()}\n")
         # The deployment's only program is named after the machine.
         (program,) = Path(artifact, "bin").iterdir()
         status = subprocess.run(
@@ -166,8 +197,7 @@ class Nacre:
         if status == 0 and mode in ("switch", "update"):
             record = state_home() / "nacre/last-switch"
             record.parent.mkdir(parents=True, exist_ok=True)
-            when = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
-            record.write_text(f"{when} {revision(self.flake)} {artifact}\n")
+            record.write_text(f"{now()} {revision(self.flake)} {artifact}\n")
         return status
 
     def generations(self) -> list[int]:
@@ -205,6 +235,162 @@ class Nacre:
         else:
             print("Pending      none")
         return 0
+
+    def changes(self, since: str | None) -> int:
+        if since is None:
+            record = state_home() / "nacre/updates"
+            starts = record.read_text().split() if record.is_file() else []
+            if not starts:
+                raise Refusal("no update recorded by nacre yet; pass --since TIME")
+            since = starts[-1]
+        start = parse_time(since)
+        sections: dict[str, list[tuple[str, str]]] = {}
+        try:
+            log = PACMAN_LOG.read_text(errors="replace").splitlines()
+        except OSError as error:
+            raise Refusal(f"cannot read {PACMAN_LOG}: {error.strerror}") from None
+        for line in log:
+            event = PACKAGE_EVENT.match(line)
+            if event is None:
+                continue
+            try:
+                when = datetime.datetime.fromisoformat(event["when"])
+            except ValueError:
+                continue
+            if when >= start:
+                sections.setdefault(event["action"], []).append(
+                    (event["name"], event["versions"])
+                )
+        if not sections:
+            print(f"No package changes since {start.isoformat()}.")
+            return 0
+        print(f"Package changes since {start.isoformat()}")
+        for action in ("upgraded", "downgraded", "installed", "reinstalled", "removed"):
+            entries = sorted(sections.get(action, []))
+            if not entries:
+                continue
+            width = max(len(name) for name, _ in entries)
+            print(f"\n{action.capitalize()} ({len(entries)})")
+            for name, versions in entries:
+                print(f"  {name:<{width}}  {versions}")
+        return 0
+
+    def doctor(self) -> int:
+        problems = 0
+
+        def report(label: str, problem: str | None, fine: str) -> None:
+            nonlocal problems
+            problems += problem is not None
+            print(f"{'warn' if problem else 'ok':<5} {label:<9} {problem or fine}")
+
+        current = revision(self.flake)
+        record = state_home() / "nacre/last-switch"
+        switched = record.read_text().split()[1] if record.is_file() else None
+        report(
+            "switch",
+            "no switch recorded by nacre; run nacre switch"
+            if switched is None
+            else f"checkout is at {current}, last switch was from {switched}; "
+            "run nacre switch"
+            if switched != current or current.endswith("-dirty")
+            else None,
+            f"checkout matches the last switch ({current})",
+        )
+        pending = sorted(marker.stem for marker in PENDING_DIR.glob("*.pending"))
+        report(
+            "pending",
+            f"interrupted: {' '.join(pending)}; rerun the interrupted command"
+            if pending
+            else None,
+            "no interrupted work",
+        )
+        kernel = query("uname", "-r")
+        report(
+            "kernel",
+            f"running {kernel} has no installed modules; reboot"
+            if kernel and not (ROOT / "usr/lib/modules" / kernel).is_dir()
+            else None,
+            f"running {kernel}",
+        )
+        failed = [
+            *self.units("--failed"),
+            *(f"{unit} (user)" for unit in self.units("--user", "--failed")),
+        ]
+        report(
+            "failed",
+            f"failed units: {' '.join(failed)}" if failed else None,
+            "no failed units",
+        )
+        idle = self.idle_home_units()
+        report(
+            "started",
+            f"enabled but never started: {' '.join(idle)}; start them or log in again"
+            if idle
+            else None,
+            "every enabled home unit has started",
+        )
+        leftovers = self.backup_leftovers()
+        report(
+            "leftover",
+            f"backups beside managed files: {' '.join(leftovers)}"
+            if leftovers
+            else None,
+            "no backups beside managed files",
+        )
+        return 1 if problems else 0
+
+    def units(self, *selection: str) -> list[str]:
+        listing = query("systemctl", *selection, "--plain", "--no-legend")
+        return [line.split()[0] for line in (listing or "").splitlines() if line]
+
+    def idle_home_units(self) -> list[str]:
+        """Units the home generation enables under an active target but that
+        never started, as when activation adds them to a running session."""
+        config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+        wanted: list[str] = []
+        for wants in sorted((config / "systemd/user").glob("*.target.wants")):
+            target = wants.name.removesuffix(".wants")
+            if query("systemctl", "--user", "is-active", target) != "active":
+                continue
+            wanted += sorted(
+                link.name
+                for link in wants.iterdir()
+                if link.is_symlink() and os.readlink(link).startswith("/nix/store/")
+            )
+        if not wanted:
+            return []
+        shown = query(
+            "systemctl",
+            "--user",
+            "show",
+            "--property=Id,ActiveState,InactiveExitTimestampMonotonic",
+            *wanted,
+        )
+        idle: list[str] = []
+        for block in (shown or "").split("\n\n"):
+            fields = dict(
+                line.split("=", 1) for line in block.splitlines() if "=" in line
+            )
+            if (
+                fields.get("ActiveState") not in ("active", "activating", "reloading")
+                and fields.get("InactiveExitTimestampMonotonic") == "0"
+            ):
+                idle.append(fields.get("Id", "?"))
+        return idle
+
+    def backup_leftovers(self) -> list[str]:
+        current = self.current_generation()
+        if current is None:
+            return []
+        files = self.link(current) / "home-files"
+        found: list[str] = []
+        for directory, subdirectories, names in os.walk(files):
+            for name in [*names, *subdirectories]:
+                managed = Path(directory, name).relative_to(files)
+                for suffix in BACKUP_SUFFIXES:
+                    if (Path.home() / f"{managed}{suffix}").exists():
+                        found.append(f"~/{managed}{suffix}")
+        return sorted(found)
 
     def list_generations(self) -> int:
         current = self.current_generation()
@@ -438,6 +624,10 @@ def run(argv: list[str]) -> int:
         nacre.nix("build", "--no-link", nacre.target("deployment"))
     if command == "status" and not args:
         return nacre.status()
+    if command == "doctor" and not args:
+        return nacre.doctor()
+    if command == "changes" and (not args or (len(args) == 2 and args[0] == "--since")):
+        return nacre.changes(args[1] if args else None)
     if command == "generations" and not args:
         return nacre.list_generations()
     if command == "rollback" and len(args) <= 1:
