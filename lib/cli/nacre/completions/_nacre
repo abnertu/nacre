@@ -1,0 +1,69 @@
+#compdef nacre
+# zsh completion for nacre. Keep the commands in step with `nacre --help`;
+# tests/test_completions.py checks the bash completion against it.
+
+_nacre_generations() {
+  local profiles=${XDG_STATE_HOME:-$HOME/.local/state}/nix/profiles
+  local -a numbers
+  numbers=(${${${(f)"$(print -l $profiles/home-manager-<->-link(N:t))"}#home-manager-}%-link})
+  _describe -t generations 'home generation' numbers
+}
+
+_nacre() {
+  local curcontext=$curcontext state line
+  typeset -A opt_args
+  local -a commands
+  commands=(
+    'install:write configuration.nix for this machine, then plan and update'
+    'plan:show what switch would change; changes nothing'
+    'switch:converge Arch, then activate the home generation'
+    'update:switch, also upgrading declared pacman and AUR packages'
+    'purge:remove managed Arch state; skips Home Manager'
+    'status:checkout, last switch, home generation, pending work'
+    'doctor:report problems that need attention; changes nothing'
+    'changes:package changes since the last update'
+    'generations:list home generations'
+    'rollback:activate an earlier home generation'
+    'check:run every flake check'
+    'build:build the deployment without activating'
+    'ai:prepare the pinned llama.cpp build and models'
+    'runner:prepare, register, verify or inspect a Runner'
+    'noctalia:capture or deploy Noctalia preferences'
+  )
+
+  _arguments -C \
+    '--flake[machine flake checkout]:checkout:_files -/' \
+    '--verbose[pass --verbose to Nix, Home Manager and adapters]' \
+    '(- *)--help[show usage]' \
+    '(- *)--version[show the version]' \
+    '1:command:->command' \
+    '*::argument:->argument' && return
+
+  case $state in
+    command) _describe -t commands 'nacre command' commands ;;
+    argument)
+      case $line[1] in
+        install)
+          _arguments \
+            '--user[login account]:user:_users' \
+            '--hostname[host name]:hostname:' \
+            '--role[baseline role]:role:(minimal workstation)' \
+            '--timezone[time zone]:zone:_time_zone' \
+            '--locale[locale]:locale:_locales' \
+            '--yes[apply without asking]' \
+            '--force[overwrite uncommitted configuration.nix]' ;;
+        changes) _arguments '--since[ISO date or time]:time:' ;;
+        rollback) _arguments '1:generation:_nacre_generations' ;;
+        ai) _arguments '1:action:(prepare)' '2:part:(build model)' ;;
+        runner) _arguments '1:action:(prepare register verify status)' '2:runner name:' ;;
+        noctalia)
+          _arguments -C '1:action:(capture deploy)' '*::option:->option' && return
+          case $words[1] in
+            capture) _arguments '--dry-run[report without writing]' '--check[exit 3 when live preferences differ]' ;;
+            deploy) _arguments '--dry-run[report without changing anything]' '--replace-overrides[replace owned GUI overrides]' '--recover[finish an interrupted replacement]' ;;
+          esac ;;
+      esac ;;
+  esac
+}
+
+_nacre "$@"

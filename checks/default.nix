@@ -30,10 +30,12 @@
           pkgs.python3
           pkgs.bash
           pkgs.git
+          pkgs.zsh
         ];
       }
       ''
         python ${../lib/cli/nacre/tests/test_nacre.py} ${nacre}/bin/nacre
+        python ${../lib/cli/nacre/tests}/test_completions.py ${nacre}
         touch "$out"
       '';
   deployment-ordering =

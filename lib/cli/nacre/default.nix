@@ -11,6 +11,8 @@ pkgs.runCommand "nacre"
   }
   ''
     mkdir -p "$out/bin" "$out/libexec"
+    install -Dm644 ${./completions/_nacre} "$out/share/zsh/site-functions/_nacre"
+    install -Dm644 ${./completions/nacre.bash} "$out/share/bash-completion/completions/nacre"
     substitute ${./nacre.py} "$out/libexec/nacre.py" \
       --subst-var-by templates ${../../../templates/machine} \
       --subst-var-by version ${lib.escapeShellArg (lib.trim (builtins.readFile ../../../VERSION))}

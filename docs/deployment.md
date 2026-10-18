@@ -35,7 +35,7 @@ A checkout updated to 0.2.0 before that deployment needs `--extra-experimental-f
 
 ## Commands
 
-`nacre` is installed by the home generation. Before the first activation, run it from the checkout as `nix run .#nacre -- <command>`.
+`nacre` is installed by the home generation, with bash and zsh completions; a new shell picks them up. Before the first activation, run it from the checkout as `nix run .#nacre -- <command>`.
 
 ```bash
 nacre plan                # read-only preview
