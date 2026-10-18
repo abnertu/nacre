@@ -1,4 +1,6 @@
-# Exclude test files, fixtures, and harnesses from GitHub language statistics
+# Keep tests out of GitHub's language statistics.
 **/tests/** linguist-detectable=false
-*test*.py linguist-detectable=false
-platforms/arch/tests/native.py linguist-detectable=false
+
+# Generated: collapsed in diffs and left out of language statistics.
+flake.lock linguist-generated
+files/home/.p10k.zsh linguist-generated
