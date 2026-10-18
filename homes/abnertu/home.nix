@@ -6,6 +6,22 @@
 {
   config = lib.mkDefault {
     workstation.noctalia.preferencesFile = ./noctalia/config.toml;
+    workstation.fcitx5 = {
+      inputMethods = [
+        "keyboard-us"
+        "chewing"
+      ];
+      globalOptions = {
+        "Hotkey/TriggerKeys" = {
+          "0" = "Shift+Shift_R";
+          "1" = "Zenkaku_Hankaku";
+          "2" = "Hangul";
+        };
+        # Kitty does not draw the cursor inside embedded preedit text, so the
+        # candidate window shows the composition instead.
+        Behavior.PreeditEnabledByDefault = "False";
+      };
+    };
 
     programs.git.settings = {
       user = {

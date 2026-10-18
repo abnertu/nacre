@@ -39,6 +39,7 @@ Each resource has exactly one owner:
 
 - UWSM is the Hyprland entry point; each application has one startup owner.
 - Pass (`programs.password-store`) owns user credential storage.
+- Settings an application rewrites: declare them read-only when they change rarely and on purpose (fcitx5); keep a reviewed snapshot with capture when they change in the application's GUI (Noctalia), and let `nacre doctor` report the drift. Never capture or commit automatically.
 - Hyprland and Neovim sources live outside managed runtime paths: pinned flake inputs adopted through intentional lock updates, or local worktrees via `development.hyprlandPath` / `development.neovimPath`.
 
 ## Tests

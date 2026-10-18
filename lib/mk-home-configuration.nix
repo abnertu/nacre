@@ -89,6 +89,7 @@ inputs.home-manager.lib.homeManagerConfiguration {
   ]
   ++ [
     ../modules/home/noctalia-config
+    ../modules/home/fcitx5.nix
   ]
   ++ userNormalized.homeModules
   ++ map (resolve profileRegistry "profile") (

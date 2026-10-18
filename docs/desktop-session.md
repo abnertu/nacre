@@ -25,6 +25,13 @@ Home Manager owns each application's configuration; Noctalia owns its colors. Th
 
 The templates are selected in the Noctalia snapshot. Theme files are not in the repository: on a new machine they appear once Noctalia first runs. Noctalia's Kitty hook cannot touch the read-only `kitty.conf`, so the `kitty-theme-reload` user path unit watches the theme file and signals running Kitty windows to reload.
 
+## Application settings
+
+Some applications rewrite their own settings files. Nacre manages each one by how its settings change:
+
+- **Changed rarely, on purpose: declared read-only.** fcitx5's input methods and global options come from `workstation.fcitx5` in the home configuration, and `~/.config/fcitx5` is a read-only link: `fcitx5-configtool` cannot save, so change the options and switch. Only values that differ from fcitx5's defaults belong there. Learned phrases stay writable in `~/.local/share/fcitx5`. If `~/.config/fcitx5` already exists as a directory, activation stops; move it aside once.
+- **Changed often in the application: reviewed snapshot.** Noctalia keeps GUI changes live and the repository keeps a snapshot; `nacre doctor` reports uncaptured changes, and [`nacre noctalia capture`](noctalia-config.md#capture) brings them into the checkout for review.
+
 ## Noctalia encrypted storage
 
 Noctalia's file-based encrypted storage uses `~/.local/share/noctalia/file-key-v1/master-key`, outside Git and the store. Home Manager activation generates a key when none exists, so **redeploying after losing the key creates a new one and the old encrypted data becomes unreadable**. Back it up with the data it protects; see [backup](backup.md).
