@@ -1,15 +1,26 @@
 # Noctalia config
 
-`noctalia-config` syncs reviewed UI preferences between Noctalia's live settings and the snapshot `homes/abnertu/noctalia/config.toml`; Home Manager manages the matching links. Encryption keys and application data are out of scope; see [desktop session](desktop-session.md).
+`noctalia-config` syncs reviewed UI preferences between Noctalia's live settings and a snapshot in your machine flake at `homes/<user>/noctalia/config.toml`; Home Manager manages the matching links. Encryption keys and application data are out of scope; see [desktop session](desktop-session.md).
 
 The snapshot is the single source of Noctalia's visual preferences, including the `wallpaper` section. Picking a wallpaper in the GUI writes an override that takes precedence over the declared default; `deploy --dry-run` detects the conflict.
 
 Colors are not captured. Noctalia's templates write the theme files at runtime and follow the wallpaper; see [themes](desktop-session.md#themes).
 
-Validate source without reading live state:
+Start a snapshot by tracking an empty file and pointing Home Manager at it, then capture:
 
 ```bash
-noctalia config validate homes/abnertu/noctalia/config.toml
+mkdir -p homes/alice/noctalia && touch homes/alice/noctalia/config.toml
+git add homes/alice/noctalia/config.toml
+```
+
+```nix
+users.users.alice.home.workstation.noctalia.preferencesFile = ./homes/alice/noctalia/config.toml;
+```
+
+Without a snapshot, Noctalia keeps its own settings. Validate a snapshot without reading live state:
+
+```bash
+noctalia config validate homes/alice/noctalia/config.toml
 ```
 
 ## Capture
