@@ -3,6 +3,7 @@
 
 import datetime
 import os
+import pwd
 import shutil
 import subprocess
 import sys
@@ -209,6 +210,14 @@ class NacreTests(unittest.TestCase):
             all(line.startswith("ok") for line in result.stdout.splitlines())
         )
 
+        snapshot = self.flake / "homes" / pwd.getpwuid(os.getuid()).pw_name
+        (snapshot / "noctalia").mkdir(parents=True)
+        (snapshot / "noctalia/config.toml").write_text("")
+        self.script(
+            bin_dir / "noctalia-config",
+            'echo "Uncaptured Noctalia changes in: bar; run nacre noctalia capture"\n'
+            "exit 3",
+        )
         pending = self.root / "var/lib/nix-config/arch"
         pending.mkdir(parents=True)
         (pending / "hotspot.pending").write_text("")
@@ -229,8 +238,10 @@ class NacreTests(unittest.TestCase):
             if line.startswith("warn")
         }
         self.assertEqual(
-            sorted(warnings), ["failed", "kernel", "leftover", "pending", "started"]
+            sorted(warnings),
+            ["failed", "kernel", "leftover", "noctalia", "pending", "started"],
         )
+        self.assertIn("uncaptured GUI changes in: bar", warnings["noctalia"])
         self.assertIn("hotspot", warnings["pending"])
         self.assertIn("7.2.6-arch2-1", warnings["kernel"])
         self.assertIn("broken.service", warnings["failed"])

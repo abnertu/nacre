@@ -30,6 +30,8 @@ nacre noctalia capture --dry-run
 nacre noctalia capture
 ```
 
+`noctalia-config capture --check` compares the live preferences with the snapshot and writes nothing; it names the changed sections, never their values, and exits 3 when they differ. `nacre doctor`, and so every `nacre update`, runs it.
+
 Capture exports the effective settings, keeps only the UI sections it owns, validates a staged candidate and atomically updates the snapshot when it differs. It never stages, commits or pushes. Review the diff before committing: labels and paths may contain personal data. Capture stops on validation warnings.
 
 ## Deploy

@@ -181,6 +181,20 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(before.st_mtime_ns, self.target.stat().st_mtime_ns)
         self.assertEqual(before.st_ino, self.target.stat().st_ino)
 
+    def test_check_reports_uncaptured_sections_without_writing(self):
+        before = self.target.read_bytes()
+        self.exported["storage"] = {"key_file": "/private/key"}
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertFalse(self.instance.check())
+        self.assertIn("in: theme;", output.getvalue())
+        self.assertNotIn("light", output.getvalue())
+        self.assertNotIn("storage", output.getvalue())
+        self.assertEqual(before, self.target.read_bytes())
+        self.instance.capture()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertTrue(self.instance.check())
+
     def test_dry_runs_never_write_or_build(self):
         before = self.target.read_bytes()
         self.instance.capture(dry_run=True)

@@ -324,6 +324,29 @@ class Sync:
             "Preferences captured. Review locally before committing; no Git index changes made."
         )
 
+    def check(self) -> bool:
+        """Whether the live preferences match the snapshot; writes nothing.
+
+        Reports changed section names only, as values may be personal.
+        """
+        self.preflight()
+        live, _ = select(self.export())
+        captured = parse(read(self.target))
+        changed = sorted(
+            name
+            for name in set(live) | set(captured)
+            if live.get(name) != captured.get(name)
+        )
+        if changed:
+            print(
+                "Uncaptured Noctalia changes in: "
+                + ", ".join(changed)
+                + "; run nacre noctalia capture"
+            )
+            return False
+        print("Noctalia preferences match the snapshot")
+        return True
+
     def plan(self, replace: bool) -> tuple[Settings, bytes, bytes]:
         self.preflight()
         wanted = parse(read(self.target))
@@ -496,6 +519,11 @@ def main() -> int:
     parser.add_argument("--home-configuration", required=True, help=argparse.SUPPRESS)
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="capture only: exit 3 when live preferences differ from the snapshot",
+    )
     parser.add_argument("--replace-overrides", action="store_true")
     parser.add_argument("--recover", action="store_true")
     args = parser.parse_args()
@@ -527,6 +555,12 @@ def main() -> int:
             args.operation == "deploy" or not (args.replace_overrides or args.recover),
             "Override replacement/recovery are deploy-only operations",
         )
+        require(
+            args.operation == "capture" or not args.check,
+            "--check is a capture-only option",
+        )
+        if args.operation == "capture" and args.check:
+            return 0 if sync.check() else 3
         if args.operation == "capture":
             sync.capture(args.dry_run)
         else:

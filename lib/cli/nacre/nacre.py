@@ -335,6 +335,14 @@ class Nacre:
             else None,
             "every enabled home unit has started",
         )
+        snapshot, uncaptured = self.noctalia_drift()
+        report(
+            "noctalia",
+            uncaptured,
+            "GUI preferences match the snapshot"
+            if snapshot
+            else "no Noctalia snapshot in this checkout",
+        )
         leftovers = self.backup_leftovers()
         report(
             "leftover",
@@ -344,6 +352,29 @@ class Nacre:
             "no backups beside managed files",
         )
         return 1 if problems else 0
+
+    def noctalia_drift(self) -> tuple[bool, str | None]:
+        """Whether a snapshot exists, and the uncaptured GUI changes if any."""
+        user = pwd.getpwuid(os.getuid()).pw_name
+        if not (self.flake / "homes" / user / "noctalia/config.toml").is_file():
+            return False, None
+        try:
+            result = subprocess.run(
+                ["noctalia-config", "capture", "--check", "--repo", str(self.flake)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except OSError:
+            return True, "noctalia-config is not installed; run nacre switch"
+        if result.returncode == 0:
+            return True, None
+        if result.returncode == 3:
+            # "Uncaptured Noctalia changes in: <sections>; run ..."
+            return True, result.stdout.strip().replace(
+                "Uncaptured Noctalia changes", "uncaptured GUI changes"
+            )
+        return True, "could not compare; run nacre noctalia capture --dry-run"
 
     def units(self, *selection: str) -> list[str]:
         listing = query("systemctl", *selection, "--plain", "--no-legend")
