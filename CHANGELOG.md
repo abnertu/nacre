@@ -4,12 +4,15 @@
 
 First release under the Nacre name, after the project grew out of a personal Nix configuration.
 
-- `nacre` command: `install`, `plan`, `switch`, `update`, `purge`, `status`, `generations`, `rollback`, and the AI, Runner and Noctalia operations.
-- Roles: `minimal` and `workstation` baselines below host defaults.
-- `nacre install` writes a configuration for a new machine; host-specific features are opt-in.
-- `nix.settings` manages the Nix daemon settings in a block of `/etc/nix/nix.conf`; checkouts move from `~/.config/nix` to `~/.config/nacre`.
+- Machine flakes: `nacre.lib.mkFlake { modules = [ ./configuration.nix ]; }`. Each machine follows Nacre as an input and upgrades with `nix flake update nacre`.
+- `nacre` command: `install` (creates the machine flake), `plan`, `switch`, `update`, `purge`, `status`, `generations`, `rollback`, and the AI, Runner and Noctalia operations.
+- `nacre plan` previews every adapter's files, units, restarts and runtime changes, judged as convergence judges them.
+- Roles: `minimal` and `workstation` baselines below host defaults; host-specific features are opt-in.
 - Typed configuration evaluated into one deployment: Arch adapters converge native state, then the embedded Home Manager generation activates.
+- Python orchestration and adapters, pyright strict, with every adapter manifest declared as a `TypedDict` and checked against what Nix generates.
 - Read-only `plan`, idempotent repeat runs, pending markers for interrupted work and a scoped `purge`.
-- Hyprland desktop with Noctalia; application themes follow the wallpaper through Noctalia's templates.
-- Optional local AI (llama.cpp behind llama-swap), virtualization, GitLab Runner, Personal Agent and Wi-Fi hotspot.
+- `update` resolves the inventory against the full upgrade it performs and reports pacman's dependency conflicts.
+- `nix.settings` manages the Nix daemon settings in a block of `/etc/nix/nix.conf`; checkouts live at `~/.config/nacre`.
+- Hyprland desktop with Noctalia; application themes, including running Kitty windows, follow the wallpaper.
+- Optional local AI (llama.cpp behind llama-swap), Claude Code and Claude Desktop with pinned agent skills, virtualization, GitLab Runner, Personal Agent and Wi-Fi hotspot.
 - CI: flake checks, a container deployment test and weekly input updates.
