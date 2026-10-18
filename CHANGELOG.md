@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0 (2026-10-18)
+
+### Features
+
+- **arch**: Hold packages at their installed version during update
+- **cli**: Report doctor's findings after every update
+- **home**: Start new user units on activation
+- **home**: Declare fcitx5 settings read-only
+- **noctalia-config**: Report uncaptured GUI changes in doctor
+
+### Refactoring
+
+- **desktop**: Remove the unused top-level Quickshell configuration
+
+### Documentation
+
+- **backup**: Cover fcitx5 learning and uncaptured Noctalia changes
+
 ## 0.2.0 (2026-10-18)
 
 ### Features
