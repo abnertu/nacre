@@ -440,7 +440,8 @@ class Installer:
         self.root = Path(os.environ.get("NACRE_INSTALL_ROOT") or "/")
         hostname_file = self.root / "etc/hostname"
         self.values = {
-            "user": os.environ.get("USER", ""),
+            # USER is unset under podman exec, cron and su without a login.
+            "user": os.environ.get("USER") or pwd.getpwuid(os.getuid()).pw_name,
             "hostname": (
                 hostname_file.read_text().strip()
                 if hostname_file.is_file()
