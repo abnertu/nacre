@@ -1,26 +1,18 @@
+[bar]
 [bar.default]
-background_opacity = 0.29999999329447746
+background_opacity = 0.6999999843537807
 capsule = false
 capsule_border = "outline"
 capsule_radius = 10
 capsule_thickness = 0.78
-center = [
-    "clock-main",
-]
+center = ["clock-main"]
 enabled = true
-end = [
-    "group:g2",
-    "group:g1",
-    "group:g3",
-]
+end = ["group:g2", "group:g1", "group:g3"]
 margin_edge = 2
 margin_ends = 12
 position = "top"
 shadow = true
-start = [
-    "group:g4",
-    "group:g5",
-]
+start = ["group:g4", "group:g5"]
 thickness = 36
 
 [[bar.default.capsule_group]]
@@ -29,11 +21,7 @@ accordion_direction = "end"
 enabled = true
 fill = "surface_variant"
 id = "g1"
-members = [
-    "network",
-    "volume",
-    "battery",
-]
+members = ["network", "volume", "battery"]
 opacity = 0.0
 padding = 30.0
 radius = 10.0
@@ -45,11 +33,7 @@ accordion_direction = "end"
 enabled = true
 fill = "surface_variant"
 id = "g2"
-members = [
-    "audio_visualizer",
-    "cpu",
-    "ram",
-]
+members = ["audio_visualizer", "cpu", "ram"]
 opacity = 0.0
 padding = 6.0
 radius = 10.0
@@ -60,11 +44,7 @@ accordion_direction = "end"
 enabled = true
 fill = "surface_variant"
 id = "g3"
-members = [
-    "tray",
-    "control-center",
-    "session",
-]
+members = ["tray", "session"]
 opacity = 0.0
 padding = 6.0
 radius = 10.0
@@ -76,25 +56,20 @@ accordion_direction = "end"
 enabled = true
 fill = "surface_variant"
 id = "g4"
-members = [
-    "launcher",
-    "notifications",
-]
+members = ["control-center", "launcher", "notifications"]
 opacity = 0.0
 padding = 6.0
 radius = 10.0
+widget_spacing = 10
 
 [[bar.default.capsule_group]]
 accordion = false
 accordion_direction = "end"
 border = ""
 enabled = true
-fill = "surface"
+fill = "on_primary"
 id = "g5"
-members = [
-    "workspaces",
-    "taskbar",
-]
+members = ["workspaces", "taskbar"]
 opacity = 1.0
 padding = 10.0
 radius = 10.0
@@ -119,16 +94,14 @@ show_week_numbers = false
 [desktop_widgets]
 enabled = true
 schema_version = 2
-widget_order = [
-    "media_main",
-    "calendar_main",
-]
+widget_order = ["media_main", "calendar_main"]
 
 [desktop_widgets.grid]
 cell_size = 16
 major_interval = 4
 visible = true
 
+[desktop_widgets.widget]
 [desktop_widgets.widget.calendar_main]
 box_height = 400.0
 box_width = 380.0
@@ -173,6 +146,7 @@ layout = "vertical"
 shadow = true
 
 [dock]
+background_opacity = 0.6999999843537807
 enabled = true
 icon_size = 40
 reserve_space = false
@@ -180,7 +154,7 @@ show_dots = true
 smart_auto_hide = true
 
 [notification]
-background_opacity = 0.84
+background_opacity = 0.7999999821186066
 border = true
 enable_daemon = true
 layer = "top"
@@ -188,6 +162,9 @@ offset_x = 16
 position = "top_right"
 scale = 0.95
 show_app_name = true
+
+[osd]
+background_opacity = 0.9499999787658453
 
 [osd.kinds]
 keyboard_layout = false
@@ -229,7 +206,7 @@ transparency_mode = "glass"
 wallpaper_placement = "attached"
 
 [shell.shadow]
-alpha = 0.42
+alpha = 0.3999999910593033
 direction = "down"
 
 [theme]
@@ -241,26 +218,14 @@ source = "builtin"
 wallpaper_scheme = "m3-content"
 
 [theme.templates]
-builtin_ids = [
-    "btop",
-    "cava",
-    "ghostty",
-    "gtk3",
-    "gtk4",
-    "hyprland",
-    "kitty",
-    "qt",
-]
+builtin_ids = ["btop", "cava", "ghostty", "gtk3", "gtk4", "hyprland", "kitty", "qt"]
 community_ids = ["discord"]
 
 [wallpaper]
 edge_smoothness = 0.25
 enabled = true
 fill_mode = "crop"
-transition = [
-    "fade",
-    "zoom",
-]
+transition = ["fade", "zoom"]
 transition_duration = 900
 
 [wallpaper.default]
@@ -269,9 +234,11 @@ path = "/home/abnertu/Pictures/Wallpapers/arch-building-with-girl-5.png"
 [wallpaper.last]
 path = "/home/abnertu/Pictures/Wallpapers/arch-building-with-girl-5.png"
 
+[wallpaper.monitors]
 [wallpaper.monitors.HDMI-A-1]
 path = "/home/abnertu/Pictures/Wallpapers/arch-building-with-girl-5.png"
 
+[widget]
 [widget.audio_visualizer]
 color_2 = "tertiary"
 mirrored = false
@@ -292,7 +259,7 @@ type = "clock"
 
 [widget.control-center]
 glyph = "hyprland"
-icon_color = "tertiary"
+icon_color = "secondary"
 
 [widget.cpu]
 show_value = true
@@ -318,6 +285,9 @@ stat = "ram_pct"
 type = "sysmon"
 visualization = "none"
 
+[widget.session]
+icon_color = "error"
+
 [widget.taskbar]
 active_indicator_color = "primary"
 active_opacity = 1.0
@@ -326,11 +296,7 @@ icon_scale = 1.2000000000000002
 inactive_opacity = 0.78
 item_spacing = 5
 only_active_workspace = false
-pinned = [
-    "zen",
-    "kitty",
-    "thunar",
-]
+pinned = ["zen", "kitty", "thunar"]
 pinned_opacity = 0.55
 show_active_indicator = true
 show_all_outputs = false
