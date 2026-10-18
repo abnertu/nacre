@@ -4,7 +4,6 @@
   llama-prepare,
   aiManifest,
   adapterPython ? pkgs.python3,
-  progress ? import ../../lib/cli/progress { inherit pkgs adapterPython; },
   ...
 }:
 {
@@ -89,43 +88,20 @@
         touch "$out"
       '';
   llama-prepare-interface =
-    pkgs.runCommand "llama-prepare-interface"
-      {
-        PROGRESS_TEST_SHELL = ./../../lib/cli/progress/progress.sh;
-        PROGRESS_TEST_RENDERER = "${progress.renderer}/bin/progress-renderer";
-        nativeBuildInputs = [
-          pkgs.python3
-          pkgs.util-linux
-        ];
-      }
+    pkgs.runCommand "llama-prepare-interface" { nativeBuildInputs = [ adapterPython ]; }
       ''
         ${llama-prepare}/bin/llama-prepare --help | grep -Fxq \
           'usage: llama-prepare [--build-only | --model-only]'
         if ${llama-prepare}/bin/llama-prepare --model-only >out 2>err; then exit 1; fi
         grep -Fq 'run llama-prepare as root' err
-        python ${../../modules/ai/tests/test_prepare.py} ${../../modules/ai/prepare.sh}
+        python ${../../modules/ai/tests/test_prepare.py} ${../../modules/ai/prepare.py}
         touch "$out"
       '';
   arch-switch-tests =
-    pkgs.runCommand "arch-switch-tests"
-      {
-        nativeBuildInputs = with pkgs; [
-          python3
-          bash
-          coreutils
-          diffutils
-          findutils
-          gawk
-          gnugrep
-          gnused
-          util-linux
-        ];
-        PROGRESS_TEST_SHELL = ./../../lib/cli/progress/progress.sh;
-        PROGRESS_TEST_RENDERER = "${progress.renderer}/bin/progress-renderer";
-      }
+    pkgs.runCommand "arch-switch-tests" { nativeBuildInputs = [ adapterPython ]; }
       ''
-        python ${./tests}/test_arch_switch.py ${./.}/arch-switch.sh
-        python ${./tests}/test_optional_lifecycle.py ${./.}/arch-switch.sh
+        python ${./tests}/test_arch_switch.py ${./switch.py}
+        python ${./tests}/test_optional_lifecycle.py ${./switch.py}
         touch "$out"
       '';
 }

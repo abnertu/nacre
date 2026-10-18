@@ -21,7 +21,7 @@ pkgs.runCommand "source-lint"
   ''
     cd ${source}
     find . -name '*.nix' -not -path './files/*' -print0 | xargs -0 deadnix --fail
-    shellcheck -x scripts/*.sh lib/cli/nix.sh lib/cli/progress/progress.sh
+    shellcheck -x scripts/*.sh lib/cli/nix.sh
     find . -name '*.md' -not -path './files/*' -print0 |
       xargs -0 lychee --offline --no-progress --include-fragments
     touch "$out"

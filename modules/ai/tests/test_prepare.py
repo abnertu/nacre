@@ -1,10 +1,10 @@
 # pyright: standard
-"""Execute the preparation controller against an isolated model directory."""
+"""Run llama-prepare against an isolated model directory and fake hf."""
 
 import fcntl
 import hashlib
+import json
 import os
-import shlex
 import shutil
 import subprocess
 import sys
@@ -13,14 +13,6 @@ import unittest
 from pathlib import Path
 
 SOURCE = Path(sys.argv.pop()).resolve()
-
-
-def progress_preamble() -> str:
-    shell = os.environ.get("PROGRESS_TEST_SHELL")
-    renderer = os.environ.get("PROGRESS_TEST_RENDERER")
-    if not shell or not renderer:
-        raise unittest.SkipTest("set PROGRESS_TEST_SHELL and PROGRESS_TEST_RENDERER")
-    return f"source {shlex.quote(shell)}\nprogress_renderer={shlex.quote(renderer)}\nprogress_base64=$(command -v base64)\n"
 
 
 class PrepareTests(unittest.TestCase):
@@ -46,48 +38,49 @@ class PrepareTests(unittest.TestCase):
             "shift; printf 'pinned model\\n' >\"$1/$file\"\n"
         )
         hf.chmod(0o755)
-        text = SOURCE.read_text()
-        # The isolated run must never contend for the host lock.
-        self.assertIn("/run/lock/nacre-llama-prepare.lock", text)
-        text = text.replace(
-            "((EUID == 0)) || { report_error \"run llama-prepare as root (sudo nix --extra-experimental-features 'nix-command flakes' run .#llama-prepare)\"; exit 1; }",
-            "true",
-        ).replace("/run/lock/nacre-llama-prepare.lock", str(self.root / "prepare.lock"))
-        text = text.replace(
-            "mktemp -d /var/tmp/nacre-llama.XXXXXXXX",
-            f"mktemp -d {self.root}/work.XXXXXXXX",
-        )
-        text = text.replace(
-            "[[ -x /usr/bin/c++ && -x /opt/rocm/bin/hipcc && -f /usr/include/vulkan/vulkan.h ]] || {\n"
-            "    report_error 'native C++, ROCm, or Vulkan development toolchain is missing'; exit 1;\n"
-            "  }",
-            "true",
-        )
-        text = text.replace(" -o0 -g0", "")
-        text = text.replace('chown 0:0 "$receipt_stage"', "true")
         digest = hashlib.sha256(self.payload).hexdigest()
-        preamble = (
-            "set -euo pipefail\n"
-            + progress_preamble()
-            + f"""
-source_repository=unused
-source_revision={"0" * 40}
-grammar_threshold=20000
-install_prefix={self.root / "opt"}
-model_repositories=(example/model example/second-model)
-model_revisions=({"1" * 40} {"1" * 40})
-model_files=(model.gguf second-model.gguf)
-model_paths=({self.model} {self.second_model})
-model_sha256s=({digest} {digest})
-"""
-        )
-        self.script = self.root / "prepare"
-        self.script.write_text(preamble + text)
+        self.config = {
+            "source": {
+                "repository": "unused",
+                "revision": "0" * 40,
+                "grammarThreshold": 20000,
+                "installPrefix": str(self.root / "opt"),
+            },
+            "models": [
+                {
+                    "repository": f"example/{name}",
+                    "revision": "1" * 40,
+                    "file": f"{name}.gguf",
+                    "path": str(path),
+                    "sha256": digest,
+                }
+                for name, path in (
+                    ("model", self.model),
+                    ("second-model", self.second_model),
+                )
+            ],
+            # The isolated run never contends for the host lock or needs root.
+            "lock": str(self.root / "prepare.lock"),
+            "workBase": str(self.root),
+            "requireRoot": False,
+            "checkToolchain": False,
+            "rootOwnership": False,
+        }
+        self.write_config()
         self.env = os.environ | {"PATH": f"{fake_bin}:{os.environ['PATH']}"}
+
+    def write_config(self):
+        (self.root / "config.json").write_text(json.dumps(self.config))
 
     def invoke(self, mode="--model-only"):
         return subprocess.run(
-            ["bash", str(self.script), mode],
+            [
+                sys.executable,
+                str(SOURCE),
+                "--config",
+                str(self.root / "config.json"),
+                mode,
+            ],
             capture_output=True,
             text=True,
             env=self.env,
@@ -147,10 +140,9 @@ model_sha256s=({digest} {digest})
         self.assertEqual(target.read_text(), "keep\n")
 
     def test_failed_download_checksum_never_creates_final_target(self):
-        text = self.script.read_text().replace(
-            hashlib.sha256(self.payload).hexdigest(), "f" * 64
-        )
-        self.script.write_text(text)
+        for model in self.config["models"]:
+            model["sha256"] = "f" * 64
+        self.write_config()
         result = self.invoke()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("[failed] Verify model 1 of 2", result.stderr)

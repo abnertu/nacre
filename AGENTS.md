@@ -21,7 +21,7 @@ Each resource has exactly one owner:
 - Deployment code reads merged contributions from the evaluated `arch` option; a new feature adds its native names there instead of wiring them through `lib/mk-deployment.nix`.
 - Registries stay explicit. Package and service inventories live in their owning Nix source.
 - Each Arch adapter declares its manifest as a `TypedDict` (`schema.py`, or in the single-file adapter itself); its entry point validates the manifest's keys, and the `adapter-manifests` check validates the generated manifests, so Nix and Python cannot drift apart. Production Python is pyright strict; each test file opts down with `# pyright: standard`.
-- Static, public policy is Nix-generated. Python and Bash adapters do safe live-state reconciliation, validation and recovery only. Secrets, runtime receipts, registration tokens and mutable data stay outside derivations.
+- Static, public policy is Nix-generated. Python adapters and orchestration (`arch-switch`, `nacre`, `llama-prepare`) do safe live-state reconciliation, validation and recovery only; Bash is limited to thin entry points such as the deployment wrapper, home switch, bootstrap and the container test. Secrets, runtime receipts, registration tokens and mutable data stay outside derivations.
 - Host state keeps the `nix-config` namespace (`/var/lib/nix-config`, `60-nix-config.conf` drop-ins, `# BEGIN nix-config` blocks, receipts) so existing machines need no migration. New persistent identifiers use it too; `nacre` names only the project, its command and state without history.
 - Human accounts exist before deployment. Modules own service accounts, which get no home composition. Home Manager `stateVersion` stays fixed through routine updates.
 

@@ -19,7 +19,6 @@
   nixSettings ? { },
   powerpanel ? null,
   adapterPython ? pkgs.python3,
-  progress ? import ../../lib/cli/progress { inherit pkgs adapterPython; },
 }:
 let
   source =
@@ -82,38 +81,48 @@ let
         personalAgent.manifest;
   };
 in
-(pkgs.writeShellApplication {
-  name = "arch-switch";
-  runtimeInputs = with pkgs; [
-    coreutils
-    gnugrep
-  ];
-  text = ''
-    readonly adapter_python=${adapterPython}/bin/python3
-    readonly core_adapter=${source "core"}/adapter.py
-    readonly core_manifest=${manifests.core}
-    readonly system_adapter=${source "system"}/adapter.py
-    readonly system_manifest=${manifests.system}
-    readonly ai_adapter=${source "ai"}/adapter.py
-    readonly ai_manifest=${manifests.ai}
-    readonly personal_agent_adapter=${./personal-agent/adapter.py}
-    readonly personal_agent_manifest=${manifests.personalAgent}
-    readonly fs_root=""
-    readonly native_bin=/usr/bin
-    readonly lizardbyte_conf=${./files/pacman-lizardbyte.conf}
-    readonly curl_bin=${pkgs.curl}/bin/curl
-    readonly tar_bin=${pkgs.libarchive}/bin/bsdtar
-    readonly flock_bin=${pkgs.util-linux}/bin/flock
-    readonly expected_user=${lib.escapeShellArg username}
-    pacman_packages=(${lib.escapeShellArgs arch.pacman})
-    lizardbyte_package_names=(${lib.escapeShellArgs arch.lizardbyte})
-    lizardbyte_packages=(${lib.escapeShellArgs (map (name: "lizardbyte/${name}") arch.lizardbyte)})
-    aur_packages=(${lib.escapeShellArgs arch.aur})
-    user_services=(${lib.escapeShellArgs arch.userServices})
+(pkgs.runCommand "arch-switch"
+  {
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    meta.mainProgram = "arch-switch";
+    config = builtins.toJSON {
+      fsRoot = "";
+      nativeBin = "/usr/bin";
+      adapterPython = "${adapterPython}/bin/python3";
+      adapters = {
+        core = {
+          adapter = "${source "core"}/adapter.py";
+          manifest = manifests.core;
+        };
+        system = {
+          adapter = "${source "system"}/adapter.py";
+          manifest = manifests.system;
+        };
+        ai = {
+          adapter = "${source "ai"}/adapter.py";
+          manifest = manifests.ai;
+        };
+        personalAgent = {
+          adapter = "${./personal-agent/adapter.py}";
+          manifest = manifests.personalAgent;
+        };
+      };
+      lizardbyteConf = "${./files/pacman-lizardbyte.conf}";
+      curl = "${pkgs.curl}/bin/curl";
+      tar = "${pkgs.libarchive}/bin/bsdtar";
+      expectedUser = username;
+      inherit (arch) pacman lizardbyte aur;
+      userServices = arch.userServices;
+    };
+    passAsFile = [ "config" ];
+  }
   ''
-  + progress.shell
-  + builtins.readFile ./arch-switch.sh;
-})
+    mkdir -p "$out/bin" "$out/share/arch-switch"
+    cp "$configPath" "$out/share/arch-switch/config.json"
+    makeWrapper ${adapterPython}/bin/python3 "$out/bin/arch-switch" \
+      --add-flags "-I ${./switch.py} --config $out/share/arch-switch/config.json"
+  ''
+)
 // {
   inherit manifests;
 }

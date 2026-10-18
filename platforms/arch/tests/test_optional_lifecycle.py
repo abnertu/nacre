@@ -22,8 +22,9 @@ spec.loader.exec_module(base)
 class OptionalLifecycleTests(unittest.TestCase):
     state: dict[str, Any]
     root: Path
-    script: Path
     setUp = base.ArchSwitchTests.setUp
+    write_config = base.ArchSwitchTests.write_config
+    command = base.ArchSwitchTests.command
     save = base.ArchSwitchTests.save
     invoke = base.ArchSwitchTests.invoke
     commands = base.ArchSwitchTests.commands
@@ -51,7 +52,7 @@ class OptionalLifecycleTests(unittest.TestCase):
         master, slave = pty.openpty()
         try:
             result = subprocess.run(
-                ["bash", str(self.script)],
+                self.command(),
                 stdout=subprocess.PIPE,
                 stderr=slave,
                 env={

@@ -1,11 +1,9 @@
 # pyright: standard
-"""Exercise the actual shell orchestration without host access or privilege."""
+"""Exercise the actual orchestration without host access or privilege."""
 
 import fcntl
 import json
 import os
-import shlex
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,18 +15,6 @@ SOURCE = Path(sys.argv.pop()).resolve()
 FAKE = Path(__file__).with_name("native.py")
 CORE = ["python", "/fixture/core-adapter", "/fixture/core-manifest"]
 SYSTEM = ["python", "/fixture/system-adapter", "/fixture/system-manifest"]
-
-
-def progress_preamble() -> str:
-    shell = os.environ.get("PROGRESS_TEST_SHELL")
-    renderer = os.environ.get("PROGRESS_TEST_RENDERER")
-    if not shell or not renderer:
-        raise unittest.SkipTest("set PROGRESS_TEST_SHELL and PROGRESS_TEST_RENDERER")
-    return (
-        f"source {shlex.quote(shell)}\n"
-        f"progress_renderer={shlex.quote(renderer)}\n"
-        "progress_base64=$(command -v base64)\n"
-    )
 
 
 class ArchSwitchTests(unittest.TestCase):
@@ -59,46 +45,51 @@ class ArchSwitchTests(unittest.TestCase):
                 f"#!{sys.executable}\n" + FAKE.read_text().split("\n", 1)[1]
             )
             executable.chmod(0o755)
-        q = shlex.quote
-        self.script = self.root / "switch.sh"
-        self.script.write_text(
-            "set -euo pipefail\n"
-            + progress_preamble()
-            + "\n".join(
-                [
-                    f"fs_root={q(str(self.root))}",
-                    f"native_bin={q(str(self.root / 'bin'))}",
-                    "lizardbyte_conf=/fixture/lizardbyte.conf",
-                    f"curl_bin={q(str(self.root / 'bin/curl'))}",
-                    f"tar_bin={q(str(self.root / 'bin/bsdtar'))}",
-                    f"flock_bin={q(shutil.which('flock') or 'flock')}",
-                    "expected_user=tester",
-                    "pacman_packages=(base)",
-                    "aur_packages=(extra)",
-                    "lizardbyte_package_names=(sunshine)",
-                    "lizardbyte_packages=(lizardbyte/sunshine)",
-                    "adapter_python=/fixture/python",
-                    "core_adapter=/fixture/core-adapter",
-                    "core_manifest=/fixture/core-manifest",
-                    "system_adapter=/fixture/system-adapter",
-                    "system_manifest=/fixture/system-manifest",
-                    "ai_adapter=/fixture/ai-adapter",
-                    "ai_manifest=/fixture/ai-manifest",
-                    "personal_agent_adapter=/fixture/personal-agent-adapter",
-                    "personal_agent_manifest=/fixture/personal-agent-manifest",
-                    "user_services=(openrazer-daemon.service)",
-                ]
-            )
-            + "\n"
-            + SOURCE.read_text()
-        )
+        self.config = {
+            "fsRoot": str(self.root),
+            "nativeBin": str(self.root / "bin"),
+            "adapterPython": "/fixture/python",
+            "adapters": {
+                name: {
+                    "adapter": f"/fixture/{slug}-adapter",
+                    "manifest": f"/fixture/{slug}-manifest",
+                }
+                for name, slug in (
+                    ("core", "core"),
+                    ("system", "system"),
+                    ("ai", "ai"),
+                    ("personalAgent", "personal-agent"),
+                )
+            },
+            "lizardbyteConf": "/fixture/lizardbyte.conf",
+            "curl": str(self.root / "bin/curl"),
+            "tar": str(self.root / "bin/bsdtar"),
+            "expectedUser": "tester",
+            "pacman": ["base"],
+            "lizardbyte": ["sunshine"],
+            "aur": ["extra"],
+            "userServices": ["openrazer-daemon.service"],
+        }
+        self.write_config()
+
+    def write_config(self):
+        (self.root / "config.json").write_text(json.dumps(self.config))
+
+    def command(self, *args):
+        return [
+            sys.executable,
+            str(SOURCE),
+            "--config",
+            str(self.root / "config.json"),
+            *args,
+        ]
 
     def save(self):
         (self.root / "state.json").write_text(json.dumps(self.state))
 
     def invoke(self, *args, code=0):
         result = subprocess.run(
-            ["bash", str(self.script), *args],
+            self.command(*args),
             text=True,
             capture_output=True,
             env={**os.environ, "ARCH_TEST_ROOT": str(self.root)},
@@ -225,11 +216,8 @@ class ArchSwitchTests(unittest.TestCase):
     def test_multilib_package_requires_repository_before_update(self):
         self.state["no_multilib"] = True
         self.save()
-        self.script.write_text(
-            self.script.read_text().replace(
-                "pacman_packages=(base)", "pacman_packages=(base lib32-fixture)"
-            )
-        )
+        self.config["pacman"] = ["base", "lib32-fixture"]
+        self.write_config()
         result = self.invoke("--update", code=1)
         self.assertIn("[multilib]", result.stderr)
         self.assertFalse(
