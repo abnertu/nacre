@@ -22,7 +22,7 @@ Home Manager owns each application's configuration; Noctalia owns its colors. Th
 | Vesktop | `vesktop/themes/noctalia*.css`, `discord-system24.css` |
 | Hyprland | `hypr/noctalia.lua` (only in a local worktree; the pinned config keeps its committed theme) |
 
-The templates are selected in the Noctalia snapshot. Theme files are not in the repository: on a new machine they appear once Noctalia first runs. Running Kitty windows keep their colors after a change, because Noctalia's reload hook cannot touch the read-only `kitty.conf`; new windows use the new theme.
+The templates are selected in the Noctalia snapshot. Theme files are not in the repository: on a new machine they appear once Noctalia first runs. Noctalia's Kitty hook cannot touch the read-only `kitty.conf`, so the `kitty-theme-reload` user path unit watches the theme file and signals running Kitty windows to reload.
 
 ## Noctalia encrypted storage
 
