@@ -85,11 +85,18 @@ elif command == "pacman":
     if "--sysupgrade" in args:
         if state.get("upgrade_failure"):
             sys.exit(1)
-        state["missing"] = []
+        # Repository packages only: yay installs the AUR ones.
+        aur = json.loads((root / "config.json").read_text())["aur"]
+        state["missing"] = [p for p in state.get("missing", []) if p in aur]
         if state.get("kernel_upgrade"):
             shutil.rmtree(root / "usr/lib/modules")
         save()
-elif command in ("yay", "curl"):
+elif command == "yay":
+    if "--needed" in args:
+        installed = args[args.index("--") + 1 :]
+        state["missing"] = [p for p in state.get("missing", []) if p not in installed]
+        save()
+elif command == "curl":
     pass
 elif command == "bsdtar":
     print("sunshine-1/desc")

@@ -45,6 +45,7 @@ class Config(TypedDict):
     pacman: list[str]
     lizardbyte: list[str]
     aur: list[str]
+    hold: list[str]
     userServices: list[str]
 
 
@@ -151,17 +152,33 @@ class Switch:
                 75,
             )
 
-    def missing_packages(self) -> list[str]:
+    def installed(self) -> set[str]:
         # One query for every installed name, instead of one per package.
-        c = self.config
-        installed = set(
+        return set(
             self.native("pacman", "--query", "--quiet", capture=True).stdout.split()
         )
+
+    def missing_packages(self) -> list[str]:
+        c = self.config
+        installed = self.installed()
         return [
             package
             for package in (*c["pacman"], *c["lizardbyte"], *c["aur"])
             if package not in installed
         ]
+
+    def held_upgrade(self, names: list[str]) -> list[str]:
+        """Options and targets for an upgrade that keeps held packages.
+
+        Naming a target overrides --ignore, so installed held packages are left
+        out of the targets; missing ones still install.
+        """
+        hold = self.config["hold"]
+        if not hold:
+            return ["--", *names]
+        held = set(hold) & self.installed()
+        targets = [name for name in names if name.split("/")[-1] not in held]
+        return ["--ignore", ",".join(hold), "--", *targets]
 
     def require_multilib(self) -> None:
         for package in self.config["pacman"]:
@@ -192,8 +209,7 @@ class Switch:
             "--sysupgrade",
             "--print",
             "--needed",
-            "--",
-            *c["pacman"],
+            *self.held_upgrade(c["pacman"]),
             capture=True,
             check=False,
         )
@@ -410,15 +426,18 @@ class Switch:
                     "--sysupgrade",
                     "--needed",
                     "--noconfirm",
-                    "--",
-                    *c["pacman"],
-                    *(f"lizardbyte/{name}" for name in c["lizardbyte"]),
+                    *self.held_upgrade(
+                        [
+                            *c["pacman"],
+                            *(f"lizardbyte/{name}" for name in c["lizardbyte"]),
+                        ]
+                    ),
                 )
                 self.check_kernel()
-                if c["aur"]:
-                    self.native(
-                        "yay", "--sync", "--needed", "--noconfirm", "--", *c["aur"]
-                    )
+                aur = self.held_upgrade(c["aur"])
+                # Nothing after "--": no AUR package left to install or upgrade.
+                if aur[-1] != "--":
+                    self.native("yay", "--sync", "--needed", "--noconfirm", *aur)
         else:
             self.require("core", "repositories")
 

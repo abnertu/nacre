@@ -20,12 +20,14 @@ in
     pacman = names "Arch repository packages.";
     aur = names "AUR packages, installed through yay as the login user.";
     lizardbyte = names "Packages from the managed LizardByte repository.";
+    hold = names "Installed packages update must not upgrade.";
     groups = names "Groups the deployment user must belong to.";
     systemUnits = names "System units to enable and keep active.";
     userServices = names "Packaged user units to enable for the deployment user.";
   };
 
   config.arch = {
+    inherit (config.packages) hold;
     pacman = [
       "base-devel"
       "ca-certificates"

@@ -68,6 +68,7 @@ class ArchSwitchTests(unittest.TestCase):
             "pacman": ["base"],
             "lizardbyte": ["sunshine"],
             "aur": ["extra"],
+            "hold": [],
             "userServices": ["openrazer-daemon.service"],
         }
         self.write_config()
@@ -168,6 +169,53 @@ class ArchSwitchTests(unittest.TestCase):
         )
         self.assertLess(upgrade, aur)
         self.assertLess(aur, self.index(lambda call: call == [*SYSTEM, "converge"]))
+
+    def test_update_keeps_held_packages_but_installs_missing_ones(self):
+        self.config["pacman"] = ["base", "kitty"]
+        self.config["hold"] = ["kitty", "extra"]
+        self.write_config()
+        self.invoke("--update")
+        upgrades = [
+            call
+            for call in self.commands()
+            if call[0] == "pacman" and "--sysupgrade" in call
+        ]
+        self.assertEqual(len(upgrades), 2)  # resolution, then the upgrade
+        for call in upgrades:
+            self.assertEqual(call[call.index("--ignore") + 1], "kitty,extra")
+            self.assertNotIn("kitty", call[call.index("--") :])
+            self.assertIn("base", call[call.index("--") :])
+        self.assertFalse(
+            any(call[:3] == ["yay", "--sync", "--needed"] for call in self.commands())
+        )
+
+        (self.root / "commands.jsonl").unlink()
+        self.state["missing"] = ["kitty", "extra"]
+        self.save()
+        self.invoke("--update")
+        upgrade = self.commands()[
+            self.index(
+                lambda call: (
+                    call[0] == "pacman"
+                    and "--sysupgrade" in call
+                    and "--print" not in call
+                )
+            )
+        ]
+        self.assertIn("kitty", upgrade[upgrade.index("--") :])
+        self.assertIn(
+            [
+                "yay",
+                "--sync",
+                "--needed",
+                "--noconfirm",
+                "--ignore",
+                "kitty,extra",
+                "--",
+                "extra",
+            ],
+            self.commands(),
+        )
 
     def test_resolution_simulates_the_upgrade_and_reports_conflicts(self):
         self.invoke("--update")

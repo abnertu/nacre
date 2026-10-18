@@ -111,7 +111,12 @@ in
       curl = "${pkgs.curl}/bin/curl";
       tar = "${pkgs.libarchive}/bin/bsdtar";
       expectedUser = username;
-      inherit (arch) pacman lizardbyte aur;
+      inherit (arch)
+        pacman
+        lizardbyte
+        aur
+        hold
+        ;
       userServices = arch.userServices;
     };
     passAsFile = [ "config" ];

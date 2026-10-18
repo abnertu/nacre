@@ -40,9 +40,12 @@ Roles sit below host defaults, which sit below `configuration.nix`, so any value
 | Hardware and virtualization | `hardware`, `virtualization` |
 | Kernel modules and parameters | `boot.kernelModules`, `boot.kernel.sysctl` |
 | Nix daemon settings (`/etc/nix/nix.conf` managed block) | `nix.settings` |
+| Packages `update` must not upgrade | `packages.hold` |
 | Graphical session and user programs | `desktop`, `programs`, `users.users.<name>.home` |
 
 A top-level switch controls the resources it owns. Disabling an Arch feature withdraws management only: packages, services, registrations and application data stay. Home Manager switches to the new generation as usual.
+
+`packages.hold` keeps installed packages at their version during `update`, for example `packages.hold = [ "kitty" ];` while an upgrade is broken. It works like pacman's `--ignore` for both repository and AUR packages: missing held packages still install, a manual `pacman -Syu` ignores the hold, and an upgrade whose dependencies need a newer held package fails resolution. Remove the entry to resume upgrades.
 
 `boot.kernelModules` and `boot.kernel.sysctl` default to a container networking baseline (bridge modules, forwarding, BBR). Override one key, set it to `null` to withdraw it, or replace the module list with `lib.mkForce`.
 

@@ -96,6 +96,13 @@ in
   boot.kernel.sysctl = option (types.attrsOf (
     types.nullOr (types.either types.str types.int)
   )) { } "Kernel parameters applied at boot and at runtime; null withdraws a default.";
+  packages.hold = mkOption {
+    type = types.listOf (types.strMatching "[a-z0-9@._+-]+");
+    default = [ ];
+    apply = lib.unique;
+    example = [ "kitty" ];
+    description = "Installed packages that update leaves at their current version, as with pacman's --ignore; missing ones still install.";
+  };
   nix.settings = mkOption {
     type = types.attrsOf (
       types.oneOf [
