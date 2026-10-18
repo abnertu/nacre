@@ -105,6 +105,10 @@ as_user() {
   podman exec -u "$user" -w "$home" -e XDG_RUNTIME_DIR=/run/user/1000 -e NO_COLOR=1 \
     "$name" "$@"
 }
+# As as_user, with the caller's stdin.
+as_user_in() {
+  podman exec -i -u "$user" -w "$home" "$name" "$@"
+}
 deploy() {
   local log=$1
   shift
@@ -155,6 +159,37 @@ step 'Purge withdraws managed state and keeps pacman usable'
 deploy purge.log --purge || { show purge.log; fail 'purge failed'; }
 podman exec "$name" pacman -Q >/dev/null || fail 'pacman is unusable after purge'
 if podman exec "$name" test -e /var/lib/nix-config/arch; then fail 'purge kept pending state'; fi
+
+step 'nacre install deploys a new minimal machine from the template'
+# The files Nix sees in this checkout, as the machine flake's nacre input.
+podman exec "$name" mkdir -p /tmp/nacre-src
+git -C "$source_root" ls-files -z --cached |
+  tar -C "$source_root" --null -T - -c |
+  podman exec -i "$name" tar -C /tmp/nacre-src -x
+machine=$home/.config/nacre
+# A user flake from the template, pointed at that source, plus the overrides
+# a rootless container needs; install then renders configuration.nix itself.
+as_user mkdir -p "$machine"
+sed 's#github:gin31259461/nacre#path:/tmp/nacre-src#' "$source_root/templates/machine/flake.nix" |
+  sed 's#\./configuration\.nix#./configuration.nix ./container.nix#' |
+  as_user_in tee "$machine/flake.nix" >/dev/null
+as_user_in tee "$machine/container.nix" <"$source_root/checks/container/configuration.nix" >/dev/null
+podman exec "$name" bash -c 'mkdir -p /boot && touch /boot/initramfs-linux.img'
+nacre() {
+  as_user nix --extra-experimental-features 'nix-command flakes' \
+    run path:/tmp/nacre-src#nacre -- "$@"
+}
+nacre install --yes --role minimal --timezone UTC --locale en_US.UTF-8 \
+  >"$work/install.log" 2>&1 || { show install.log; fail 'nacre install failed'; }
+as_user grep -Fq 'role = "minimal";' "$machine/configuration.nix" ||
+  fail 'install did not write the minimal role'
+nacre status >"$work/status.log" 2>&1 || { show status.log; fail 'nacre status failed'; }
+if grep -q 'not recorded' "$work/status.log"; then
+  show status.log
+  fail 'install did not record its switch'
+fi
+# Exits 2 unless install recorded the start of its update.
+nacre changes >"$work/changes.log" 2>&1 || { show changes.log; fail 'nacre changes failed'; }
 
 step 'Store paths are unmodified'
 podman exec "$name" nix-store --verify --check-contents >"$work/verify.log" 2>&1 ||
