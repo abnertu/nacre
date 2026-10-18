@@ -35,7 +35,9 @@ let
 in
 {
   systemd.user = {
-    startServices = "suggest";
+    # Start new units, restart changed ones and stop removed ones; unchanged
+    # units keep running.
+    startServices = "sd-switch";
 
     # Noctalia's Kitty hook cannot touch the read-only kitty.conf, so running
     # Kitty windows reload here when Noctalia rewrites their theme.

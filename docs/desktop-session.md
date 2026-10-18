@@ -6,6 +6,7 @@ UWSM starts Hyprland and owns the graphical session. Arch provides native binari
 - Vicinae starts in a degraded mode if the watcher is late.
 - Vesktop's compatibility flags live in its own service.
 - Sunshine captures through Wayland `wlr`.
+- Activation starts new user units, restarts changed ones and stops removed ones; unchanged units keep running.
 - The dev profile uses `pass` through `programs.password-store`, with GPG and the Git credential helper.
 
 ## Themes
