@@ -1,8 +1,8 @@
-"""nacre: install, plan, switch and inspect a Nacre deployment.
+"""nacre: install, plan, switch and inspect a Nacre machine.
 
-Packaging substitutes the deployment name and version. The command knows the
-deployment's name but not its contents, so the home generation that installs
-it does not depend on the deployment.
+Every machine flake exposes its deployment as #deployment, so the command
+works with any of them and the home generation that installs it does not
+depend on the deployment. Packaging substitutes the version and templates.
 """
 
 from __future__ import annotations
@@ -17,7 +17,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import NoReturn
 
-DEPLOYMENT = "@deployment@"
+# The machine flake template: flake.nix and configuration.nix.
+TEMPLATES = Path("@templates@")
 VERSION = "@version@"
 
 USAGE = """\
@@ -75,6 +76,15 @@ def revision(flake: Path) -> str:
         check=False,
     )
     return result.stdout.strip() if result.returncode == 0 else "unknown"
+
+
+def query(*argv: str) -> str | None:
+    """A read-only probe's output, or None when it fails or is not installed."""
+    try:
+        result = subprocess.run(argv, capture_output=True, text=True, check=False)
+    except OSError:
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def find_flake(explicit: str | None) -> Path | None:
@@ -139,7 +149,7 @@ class Nacre:
                 "--print-out-paths",
                 *self.log_format,
                 *self.nix_args,
-                self.target(DEPLOYMENT),
+                self.target("deployment"),
             ],
             stdout=subprocess.PIPE,
             text=True,
@@ -148,8 +158,10 @@ class Nacre:
         if built.returncode != 0:
             return built.returncode
         artifact = built.stdout.strip()
+        # The deployment's only program is named after the machine.
+        (program,) = Path(artifact, "bin").iterdir()
         status = subprocess.run(
-            [f"{artifact}/bin/{DEPLOYMENT}", *deployment_args], check=False
+            [str(program), *deployment_args], check=False
         ).returncode
         if status == 0 and mode in ("switch", "update"):
             record = state_home() / "nacre/last-switch"
@@ -241,12 +253,6 @@ class Installer:
         self.nacre = nacre
         self.root = Path(os.environ.get("NACRE_INSTALL_ROOT") or "/")
         hostname_file = self.root / "etc/hostname"
-        timezone = subprocess.run(
-            ["timedatectl", "show", "--property=Timezone", "--value"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
         self.values = {
             "user": os.environ.get("USER", ""),
             "hostname": (
@@ -255,7 +261,8 @@ class Installer:
                 else os.uname().nodename
             ),
             "role": "workstation",
-            "timezone": timezone.stdout.strip() if timezone.returncode == 0 else "UTC",
+            "timezone": query("timedatectl", "show", "--property=Timezone", "--value")
+            or "UTC",
             "locale": os.environ.get("LANG", "en_US.UTF-8").replace(".utf8", ".UTF-8"),
         }
         self.yes = self.force = False
@@ -281,12 +288,24 @@ class Installer:
                 if answer:
                     self.values[key] = answer
         content = self.render()
-        target = self.nacre.flake / "configuration.nix"
-        if target.exists() and not self.force and self.uncommitted():
+        flake = self.nacre.flake
+        target = flake / "configuration.nix"
+        created = not (flake / "flake.nix").exists()
+        if not created and target.exists() and not self.force and self.uncommitted():
             raise Refusal(
                 "configuration.nix has uncommitted changes; commit them or pass --force"
             )
+        if created:
+            # A new machine flake that follows Nacre; Git tracks it so Nix sees it.
+            flake.mkdir(parents=True, exist_ok=True)
+            (flake / "flake.nix").write_text((TEMPLATES / "flake.nix").read_text())
         target.write_text(content + "\n")
+        if created:
+            for args in (
+                ["init", "--quiet"],
+                ["add", "flake.nix", "configuration.nix"],
+            ):
+                subprocess.run(["git", "-C", str(flake), *args], check=True)
         print(f"Wrote {target}:\n\n{content}\n", file=sys.stderr)
         status = self.nacre.deploy("plan")
         if status != 0:
@@ -350,7 +369,7 @@ class Installer:
         )
         if not images:
             raise Refusal("no initramfs image under /boot")
-        template = (self.nacre.flake / "templates/configuration.nix").read_text()
+        template = (TEMPLATES / "configuration.nix").read_text()
         replacements = {
             "@role@": v["role"],
             "@hostname@": v["hostname"],
@@ -367,19 +386,11 @@ class Installer:
 
     @staticmethod
     def getent(database: str, key: str) -> str | None:
-        result = subprocess.run(
-            ["getent", database, key], capture_output=True, text=True, check=False
-        )
-        return result.stdout.strip() if result.returncode == 0 else None
+        return query("getent", database, key)
 
     @staticmethod
     def amd_graphics() -> bool:
-        try:
-            listing = subprocess.run(
-                ["lspci"], capture_output=True, text=True, check=False
-            ).stdout
-        except OSError:
-            return False
+        listing = query("lspci") or ""
         return any(
             re.search(r"VGA|3D|Display", line) and re.search(r"AMD|ATI", line, re.I)
             for line in listing.splitlines()
@@ -411,6 +422,9 @@ def run(argv: list[str]) -> int:
     if not argv:
         raise Usage
     command, args = argv[0], argv[1:]
+    if command == "install":
+        config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+        return Nacre(flake or config / "nacre", verbose).install(args)
     if flake is None or not (flake / "flake.nix").is_file():
         raise Refusal("no checkout found; pass --flake PATH or set NACRE_FLAKE")
     nacre = Nacre(flake, verbose)
@@ -421,15 +435,13 @@ def run(argv: list[str]) -> int:
     if command == "check" and not args:
         nacre.nix("flake", "check", str(flake))
     if command == "build" and not args:
-        nacre.nix("build", "--no-link", nacre.target(DEPLOYMENT))
+        nacre.nix("build", "--no-link", nacre.target("deployment"))
     if command == "status" and not args:
         return nacre.status()
     if command == "generations" and not args:
         return nacre.list_generations()
     if command == "rollback" and len(args) <= 1:
         return nacre.rollback(args[0] if args else None)
-    if command == "install":
-        return nacre.install(args)
     if command == "ai" and args[:1] == ["prepare"] and len(args) <= 2:
         modes = {
             "": [],
@@ -467,6 +479,9 @@ def main() -> int:
     except Refusal as error:
         print(f"nacre: {error}", file=sys.stderr)
         return 2
+    except FileNotFoundError as error:
+        print(f"nacre: command not found: {error.filename}", file=sys.stderr)
+        return 127
     except KeyboardInterrupt:
         return 130
 

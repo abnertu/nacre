@@ -10,7 +10,8 @@ Each resource has exactly one owner:
 
 | Path | Owns |
 | --- | --- |
-| `lib/` | Evaluation, normalization (`lib/eval-configuration.nix`) and deployment composition |
+| `lib/` | Evaluation, normalization (`lib/eval-configuration.nix`), deployment composition and machine flake outputs (`lib/mk-flake.nix`: fixed names such as `#deployment`) |
+| `templates/machine/` | The flake and configuration `nacre install` writes for a new machine |
 | `roles/` | Baseline compositions at priority 1100, below host defaults |
 | `hosts/` | Identity and baselines, always via `lib.mkDefault` |
 | `platforms/<distro>/` | Native realization and its contribution interface (`platforms/arch/module.nix`); distro-specific code stays here so other distros can sit beside `arch/` |

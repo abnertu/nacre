@@ -34,11 +34,12 @@ Nix evaluates a typed configuration into one fixed deployment artifact. Arch ada
 On a new machine ([install guide](docs/install.md)):
 
 ```bash
-git clone https://github.com/gin31259461/nacre ~/.config/nacre
-cd ~/.config/nacre
-./scripts/bootstrap.sh
-nix run .#nacre -- install
+git clone https://github.com/gin31259461/nacre /tmp/nacre
+/tmp/nacre/scripts/bootstrap.sh
+nix run github:gin31259461/nacre#nacre -- install
 ```
+
+`install` creates your machine's own flake in `~/.config/nacre`, which follows Nacre as an input: upgrading Nacre is `nix flake update nacre`, and your configuration never mixes with its code.
 
 Afterwards, day to day ([deployment guide](docs/deployment.md)):
 
@@ -56,7 +57,7 @@ nacre purge               # remove managed Arch state, skip Home Manager
 
 ## Configuration
 
-[configuration.nix](configuration.nix) is the single entry point. A role sets the baseline, a host can refine it with `lib.mkDefault`, and plain definitions in `configuration.nix` win. This repository's own machine is [hosts/arch](hosts/arch/default.nix), a full example of a host.
+A machine's `configuration.nix` is its single entry point. A role sets the baseline, a host can refine it with `lib.mkDefault`, and plain definitions in `configuration.nix` win. This repository's own [configuration.nix](configuration.nix) and [hosts/arch](hosts/arch/default.nix) are its maintainer's machine, a full example.
 
 ```nix
 role = "workstation";

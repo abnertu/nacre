@@ -10,7 +10,6 @@ import unittest
 from pathlib import Path
 
 NACRE = sys.argv.pop()
-TEMPLATE = Path(sys.argv.pop())
 
 
 class NacreTests(unittest.TestCase):
@@ -61,9 +60,9 @@ class NacreTests(unittest.TestCase):
         nacre.mkdir()
         (nacre / "flake.nix").write_text("{}")
         self.run_nacre("build")
-        self.assertIn(f"{nacre}#fixture-deployment", self.recorded()[-1])
+        self.assertIn(f"{nacre}#deployment", self.recorded()[-1])
         self.run_nacre("build", NACRE_FLAKE=str(self.flake))
-        self.assertIn(f"{self.flake}#fixture-deployment", self.recorded()[-1])
+        self.assertIn(f"{self.flake}#deployment", self.recorded()[-1])
         result = self.run_nacre("--flake", str(self.root), "build")
         self.assertEqual(result.returncode, 2)
         self.assertIn("no checkout found", result.stderr)
@@ -126,8 +125,6 @@ class NacreTests(unittest.TestCase):
         self.assertTrue(self.recorded()[-1].endswith("-- reconcile frontend"))
 
     def prepare_install(self, wheel="alice"):
-        (self.flake / "templates").mkdir()
-        (self.flake / "templates/configuration.nix").write_text(TEMPLATE.read_text())
         (self.flake / "configuration.nix").write_text("# shipped example\n")
         git = [
             "git",
@@ -184,6 +181,19 @@ class NacreTests(unittest.TestCase):
             ["deploy --plan", "deploy --update"],
         )
 
+    def test_install_into_an_empty_directory_creates_a_machine_flake(self):
+        env = self.prepare_install()
+        machine = self.root / "machine-flake"
+        result = self.run_nacre("--flake", str(machine), "install", "--yes", **env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("nacre.lib.mkFlake", (machine / "flake.nix").read_text())
+        self.assertIn("users.users.alice", (machine / "configuration.nix").read_text())
+        tracked = subprocess.run(
+            ["git", "-C", str(machine), "ls-files"], capture_output=True, text=True
+        ).stdout.split()
+        self.assertEqual(sorted(tracked), ["configuration.nix", "flake.nix"])
+        self.assertIn(f"{machine}#deployment", "\n".join(self.recorded()))
+
     def test_install_without_yes_only_plans_when_not_interactive(self):
         env = self.prepare_install()
         self.assertEqual(self.run_nacre("install", **env).returncode, 0)
@@ -225,7 +235,6 @@ class NacreTests(unittest.TestCase):
 
     def tearDown_install(self):
         shutil.rmtree(self.flake / ".git", ignore_errors=True)
-        shutil.rmtree(self.flake / "templates", ignore_errors=True)
         shutil.rmtree(self.root / "machine", ignore_errors=True)
         self.calls.unlink(missing_ok=True)
 

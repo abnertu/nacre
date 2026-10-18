@@ -48,7 +48,7 @@ jobs:
 
       - name: Build deployment artifacts without activation
         run: |
-          nix build --no-link --no-update-lock-file .#arch-workstation .#arch-switch
+          nix build --no-link --no-update-lock-file .#deployment .#arch-switch
           if [[ "$(nix eval --json --no-update-lock-file .#lib.runnerctlEnabled)" == "true" ]]; then
             nix build --no-link --no-update-lock-file .#runnerctl
           fi

@@ -48,7 +48,10 @@
   outputs =
     inputs:
     let
+      mkFlake = import ./lib/mk-flake.nix { inherit inputs; };
       mkDeployment = import ./lib/mk-deployment.nix;
+      # The maintainer's machine: Nacre's reference configuration and CI subject.
+      machine = mkFlake { modules = [ ./configuration.nix ]; };
       d = mkDeployment { inherit inputs; };
       inherit (d) lib pkgs system;
       # Disables hardware and kernel features a rootless container cannot provide.
@@ -60,14 +63,20 @@
         ];
       };
     in
-    {
-      homeConfigurations = d.homes;
-      # This is a queryable normalized configuration, not a NixOS system.
-      lib.configurations.arch = d.configuration.config;
-      lib.runnerctlEnabled = d.runners.packages != { };
-      lib.container = {
-        username = container.host.deployment.username;
-        inherit (container.deploymentUser) homeDirectory;
+    lib.recursiveUpdate machine {
+      lib = {
+        inherit mkFlake;
+        container = {
+          username = container.host.deployment.username;
+          inherit (container.deploymentUser) homeDirectory;
+        };
+      };
+
+      packages.${system}.container-deployment = container.deployment;
+      apps.${system}.just = {
+        type = "app";
+        program = "${pkgs.just}/bin/just";
+        meta.description = "Run development recipes before Home Manager is active";
       };
 
       devShells.${system}.default = pkgs.mkShell {
@@ -113,61 +122,6 @@
         user = d.deploymentUser;
       })
       // d.runners.checks;
-
-      packages.${system} = {
-        inherit (d)
-          arch-switch
-          home-switch
-          llama-prepare
-          nacre
-          ;
-        ${d.deploymentName} = d.deployment;
-        container-deployment = container.deployment;
-        default = d.arch-switch;
-      }
-      // lib.optionalAttrs d.noctaliaEnabled { inherit (d) noctalia-config; }
-      // d.runners.packages;
-
-      apps.${system} = {
-        nacre = {
-          type = "app";
-          program = "${d.nacre}/bin/nacre";
-          meta.description = "Plan, switch and inspect the Nacre deployment";
-        };
-        llama-prepare = {
-          type = "app";
-          program = "${d.llama-prepare}/bin/llama-prepare";
-          meta.description = "Explicitly prepare the pinned llama.cpp build and model";
-        };
-        arch-switch = {
-          type = "app";
-          program = "${d.arch-switch}/bin/arch-switch";
-          meta.description = "Converge Arch-native workstation policy";
-        };
-        ${d.deploymentName} = {
-          type = "app";
-          program = "${d.deployment}/bin/${d.deploymentName}";
-          meta.description = "Build and activate ${d.deploymentName}";
-        };
-        home-switch = {
-          type = "app";
-          program = "${d.home-switch}/bin/home-switch";
-          meta.description = "Activate ${d.homeConfigurationName} through Home Manager";
-        };
-        just = {
-          type = "app";
-          program = "${pkgs.just}/bin/just";
-          meta.description = "Run project commands before Home Manager is active";
-        };
-      }
-      // lib.optionalAttrs d.noctaliaEnabled {
-        noctalia-config = {
-          type = "app";
-          program = "${d.noctalia-config}/bin/noctalia-config";
-          meta.description = "Capture or deploy reviewed Noctalia preferences";
-        };
-      }
-      // d.runners.apps;
 
       formatter.${system} = pkgs.nixfmt;
     };

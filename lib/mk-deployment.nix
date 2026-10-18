@@ -32,7 +32,7 @@ let
     host.users.${deployment.username} or (throw "unknown deployment user: ${deployment.username}");
   deploymentName = "${host.name}-${host.role}";
   homeConfigurationName = "${deployment.username}@${host.name}";
-  nacre = import ./cli/nacre { inherit lib pkgs deploymentName; };
+  nacre = import ./cli/nacre { inherit lib pkgs; };
   nixAdapter = inputs.nix-adapter.packages.${system}.nix-adapter;
   adapterPython = inputs.nix-adapter.packages.${system}.adapterPython;
   runners = import ../modules/gitlab-runner {

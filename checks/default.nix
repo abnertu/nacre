@@ -22,10 +22,7 @@
       '';
   nacre-cli =
     let
-      nacre = import ../lib/cli/nacre {
-        inherit lib pkgs;
-        deploymentName = "fixture-deployment";
-      };
+      nacre = import ../lib/cli/nacre { inherit lib pkgs; };
     in
     pkgs.runCommand "nacre-cli"
       {
@@ -36,7 +33,7 @@
         ];
       }
       ''
-        python ${../lib/cli/nacre/tests/test_nacre.py} ${../templates/configuration.nix} ${nacre}/bin/nacre
+        python ${../lib/cli/nacre/tests/test_nacre.py} ${nacre}/bin/nacre
         touch "$out"
       '';
   deployment-ordering =

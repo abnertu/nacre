@@ -99,7 +99,7 @@ class RecipeTests(unittest.TestCase):
         for recipe, args, target, mode in (
             ("check", [], None, None),
             ("check-fast", [], ".#checks.x86_64-linux.source-format", None),
-            ("build", [], ".#arch-workstation", None),
+            ("build", [], ".#deployment", None),
             ("check-arch", [], ".#arch-switch", "--check"),
         ):
             with self.subTest(recipe=recipe, args=args):

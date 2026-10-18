@@ -1,6 +1,6 @@
 # Configuration
 
-`configuration.nix` overrides the selected host. The imported `hosts/arch` sets defaults with `lib.mkDefault`, so plain definitions in `configuration.nix` win; import order does not matter. Unknown options, wrong types and invalid combinations fail at evaluation.
+A machine's flake passes its modules to `nacre.lib.mkFlake`; `nacre install` writes one with a single `configuration.nix`. In Nacre's own repository, `configuration.nix` overrides the selected host. The imported `hosts/arch` sets defaults with `lib.mkDefault`, so plain definitions in `configuration.nix` win; import order does not matter. Unknown options, wrong types and invalid combinations fail at evaluation.
 
 ```nix
 { ... }:
@@ -28,7 +28,7 @@ nix eval --json .#lib.configurations.arch.networking.firewall
 | `minimal` | Core system, shell and development tools; no graphical session |
 | `workstation` (default) | `minimal` plus the Hyprland desktop, Sunshine, Vesktop and Vicinae |
 
-Roles sit below host defaults, which sit below `configuration.nix`, so any value a role sets can be overridden. The deployment is named `<hostname>-<role>`, for example `arch-workstation`.
+Roles sit below host defaults, which sit below `configuration.nix`, so any value a role sets can be overridden. The deployment is named `<hostname>-<role>`, for example `arch-workstation`, and is also available as `#deployment`.
 
 ## Where to change things
 

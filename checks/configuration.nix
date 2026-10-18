@@ -75,7 +75,7 @@ let
             "generic"
             ''"/boot/initramfs-linux.img"''
           ]
-          (builtins.readFile ../templates/configuration.nix)
+          (builtins.readFile ../templates/machine/configuration.nix)
       ))
     ];
   };

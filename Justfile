@@ -31,7 +31,7 @@ check-arch:
     nix_exec run .#arch-switch -- --check
 
 # Build a deployment without activation.
-build deployment="arch-workstation":
+build deployment="deployment":
     #!/usr/bin/env bash
     set -euo pipefail
     source {{ quote(justfile_directory() + "/lib/cli/nix.sh") }}

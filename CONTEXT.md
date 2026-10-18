@@ -11,7 +11,7 @@ Nacre layers a typed configuration onto an existing Arch Linux install. Nix buil
 | Home | `profiles/`, `homes/`, home modules | User packages, static files, user services |
 | External runtime | The operator and per-feature preparation commands | Secrets, mutable data, native builds, model downloads |
 
-`configuration.nix` imports a host. Role baselines use priority 1100 and host baselines `lib.mkDefault` (1000), so hosts refine roles and plain definitions win regardless of import order. `lib/eval-configuration.nix` evaluates the explicit feature registry (`modules/default.nix`) with the platform module, checks cross-field assertions and normalizes the result. Feature modules contribute native packages, groups and units to the internal `arch` option, which `lib/mk-deployment.nix` hands to the Arch platform. Every package, account, file and service has one owner.
+`lib/mk-flake.nix` turns a machine's modules into its flake outputs under fixed names (`#deployment`, `#nacre`, `lib.configuration`), so machine flakes follow Nacre as an input and one `nacre` command serves all of them. Nacre's own `configuration.nix` imports a host. Role baselines use priority 1100 and host baselines `lib.mkDefault` (1000), so hosts refine roles and plain definitions win regardless of import order. `lib/eval-configuration.nix` evaluates the explicit feature registry (`modules/default.nix`) with the platform module, checks cross-field assertions and normalizes the result. Feature modules contribute native packages, groups and units to the internal `arch` option, which `lib/mk-deployment.nix` hands to the Arch platform. Every package, account, file and service has one owner.
 
 ## Static policy and live convergence
 
