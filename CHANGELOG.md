@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0 (2026-10-18)
+
+### Features
+
+- **cli**: Add doctor and changes
+
+### Fixes
+
+- **desktop**: Stop Kitty from opening every window maximized
+- **cli**: Find the installing account without USER
+
+### Refactoring
+
+- Drop the transitional nix.conf (breaking)
+
 ## 0.1.0
 
 First release under the Nacre name, after the project grew out of a personal Nix configuration.
