@@ -24,6 +24,9 @@ Lost state here cannot be recovered or invalidates existing data.
 | Tailscale node identity | `/var/lib/tailscale/` | Log in again; the node joins as a new identity |
 | AI binaries and models | llama.cpp install and model paths (see the AI module) | `nacre ai prepare` rebuilds and redownloads several GB |
 | Tool logins | e.g. `~/.codex/`, OneDrive refresh tokens | Log in again |
+| Input method learning | `~/.local/share/fcitx5/` | Chewing relearns phrases and their order |
+
+Noctalia GUI changes reach the repository only through a capture: before reinstalling, resolve any `nacre doctor` warning with [`nacre noctalia capture`](noctalia-config.md#capture) and commit.
 
 The repository's own configuration, the Nix store, Home Manager generations and pending markers in `/var/lib/nix-config/arch/` need no backup.
 
