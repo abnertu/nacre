@@ -83,7 +83,9 @@ class NacreTests(unittest.TestCase):
                 self.assertEqual(state.exists(), command == "switch")
         state.unlink()
         result = self.run_nacre("--verbose", "update", DEPLOY_STATUS="3")
+        # doctor reports after an update; the update's status stays the result.
         self.assertEqual(result.returncode, 3)
+        self.assertRegex(result.stdout, r"(?m)^(ok|warn) +pending ")
         self.assertEqual(self.recorded()[-1], "deploy --update --verbose")
         self.assertFalse(state.exists())
 

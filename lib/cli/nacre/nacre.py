@@ -198,6 +198,12 @@ class Nacre:
             record = state_home() / "nacre/last-switch"
             record.parent.mkdir(parents=True, exist_ok=True)
             record.write_text(f"{now()} {revision(self.flake)} {artifact}\n")
+        if mode == "update":
+            # An update is when kernels, units and replaced files change; its
+            # own exit status stays the result.
+            print("\nAfter the update:", file=sys.stderr)
+            sys.stderr.flush()
+            self.doctor()
         return status
 
     def generations(self) -> list[int]:
