@@ -12,7 +12,7 @@
     channel = 36;
     address = "192.0.2.1/24";
   };
-  deployment.username = "abnertu";
+  deployment.username = "fixture";
   hardware.initramfs.images = [ "/boot/initramfs-linux.img" ];
   services.personalAgent.enable = lib.mkDefault true;
   services.powerpanel.enable = lib.mkDefault true;
@@ -24,7 +24,7 @@
       contextSize = 4096;
     };
   };
-  users.users.abnertu = {
+  users.users.fixture = {
     description = "Fixture login";
     homeDirectory = "/home/fixture";
     stateVersion = "26.05";

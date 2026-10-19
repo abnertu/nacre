@@ -28,7 +28,7 @@ let
     console.enable = false;
     time.enable = false;
     i18n.enable = false;
-    users.users.abnertu.modules.noctalia-config.enable = false;
+    users.users.fixture.modules.noctalia-config.enable = false;
     hardware.graphics = "generic";
     hardware.openrazer.enable = false;
   };
@@ -40,7 +40,7 @@ let
     (
       { lib, ... }:
       {
-        users.users.abnertu = {
+        users.users.fixture = {
           modules.hyprland.enable = false;
           modules.noctalia-storage.enable = false;
           homeModules = lib.mkForce [ ];
@@ -48,7 +48,7 @@ let
       }
     )
   ];
-  home = fixtures.home [ disabledModule ] "abnertu";
+  home = fixtures.home [ disabledModule ] "fixture";
   # What `nacre install` writes for a new machine, without this host's defaults.
   freshInstall = import ../lib/mk-deployment.nix {
     inherit inputs;
@@ -88,15 +88,15 @@ let
       networking.hostname.name = "overridden";
       time.timeZone = "UTC";
       networking.firewall.rules = lib.mkForce [ ];
-      users.users.abnertu.home = {
+      users.users.fixture.home = {
         programs.git.enable = false;
         home.packages = [ pkgs.hello ];
       };
     }
   );
   override = evaluate [ overrideModule ];
-  headlessHome = fixtures.home [ { desktop.enable = false; } ] "abnertu";
-  overriddenHome = (fixtures.deploy [ overrideModule ]).homes."abnertu@overridden";
+  headlessHome = fixtures.home [ { desktop.enable = false; } ] "fixture";
+  overriddenHome = (fixtures.deploy [ overrideModule ]).homes."fixture@overridden";
   enablePaths =
     path: value:
     if builtins.isAttrs value then
@@ -124,7 +124,7 @@ let
             path == [
               "users"
               "users"
-              "abnertu"
+              "fixture"
               "profiles"
               "workstation"
               "enable"
@@ -198,7 +198,7 @@ assert minimalRole.deploymentName == "fixture-minimal";
 assert !minimalRole.configuration.config.desktop.enable;
 assert !(builtins.elem "hyprland" minimalRole.configuration.config.arch.pacman);
 assert builtins.elem "hyprland" base.config.arch.pacman;
-assert !(minimalRole.homes."abnertu@fixture".config.home.file ? ".zprofile");
+assert !(minimalRole.homes."fixture@fixture".config.home.file ? ".zprofile");
 assert !roleBelowHost.config.desktop.enable;
 assert builtins.length merged.host.systemSettings.firewall.rules == 2;
 assert base.config.programs.ai.enable && base.config.virtualization.kvm.gui.enable;
@@ -245,7 +245,7 @@ assert lib.all (name: !(builtins.hasAttr name home.config.systemd.user.services)
 ];
 assert home.config.systemd.user.services.noctalia.Unit.Wants == [ ];
 assert !(builtins.hasAttr "noctalia/config.toml" home.config.xdg.configFile);
-assert lib.all (homeDirectory: !(valid { users.users.abnertu = { inherit homeDirectory; }; })) [
+assert lib.all (homeDirectory: !(valid { users.users.fixture = { inherit homeDirectory; }; })) [
   "/home/"
   "/home/../outside"
   "/home/user/../other"
@@ -260,9 +260,9 @@ assert valid {
   };
 };
 assert valid {
-  users.users.abnertu.development = {
-    neovimPath = "/home/abnertu/src/neovim";
-    hyprlandPath = "/home/abnertu/src/hyprland";
+  users.users.fixture.development = {
+    neovimPath = "/home/fixture/src/neovim";
+    hyprlandPath = "/home/fixture/src/hyprland";
   };
 };
 assert lib.all (name: !(builtins.elem name packages.pacman)) [
@@ -274,12 +274,12 @@ assert (import ../modules/gitlab-runner { inherit lib pkgs; }).packages == { };
 assert lib.all (module: !(valid module)) [
   { typo = true; }
   { deployment.username = lib.mkForce "missing"; }
-  { users.users.abnertu.admin = lib.mkForce false; }
-  { users.users.abnertu.description = 42; }
-  { users.users.abnertu.modules.unknown.enable = true; }
-  { users.users.abnertu.development.neovimPath = "relative/path"; }
-  { users.users.abnertu.development.hyprlandPath = 123; }
-  { users.users.abnertu.development.unknown = "invalid"; }
+  { users.users.fixture.admin = lib.mkForce false; }
+  { users.users.fixture.description = 42; }
+  { users.users.fixture.modules.unknown.enable = true; }
+  { users.users.fixture.development.neovimPath = "relative/path"; }
+  { users.users.fixture.development.hyprlandPath = 123; }
+  { users.users.fixture.development.unknown = "invalid"; }
   {
     users.users.Bad = {
       description = "Invalid name";
@@ -308,14 +308,14 @@ assert lib.all (module: !(valid module)) [
       }
     ];
   }
-  { users.users.abnertu.profiles.unknown.enable = true; }
+  { users.users.fixture.profiles.unknown.enable = true; }
 ];
 pkgs.runCommand "configuration-interface" { } ''
   test -x ${minimal.arch-switch}/bin/arch-switch
-  test -x ${minimalRole.homes."abnertu@fixture".activationPackage}/activate
+  test -x ${minimalRole.homes."fixture@fixture".activationPackage}/activate
   test -x ${freshInstall.deployment}/bin/box-workstation
   test -x ${freshInstall.homes."alice@box".activationPackage}/activate
-  test -x ${minimal.homes."abnertu@fixture".activationPackage}/activate
+  test -x ${minimal.homes."fixture@fixture".activationPackage}/activate
   test -x ${headlessHome.activationPackage}/activate
   test -x ${overriddenHome.activationPackage}/activate
   test -x ${home.activationPackage}/activate

@@ -154,8 +154,8 @@ let
     kvm.gui.enable = true;
   };
   fixtures = import ./lib.nix { inherit inputs lib; };
-  home = fixtures.home [ ] "abnertu";
-  homeDisabled = fixtures.home [ { programs.ai.enable = false; } ] "abnertu";
+  home = fixtures.home [ ] "fixture";
+  homeDisabled = fixtures.home [ { programs.ai.enable = false; } ] "fixture";
   skillRegistry = import ../modules/ai/skills.nix {
     inherit lib;
     skillSources = {

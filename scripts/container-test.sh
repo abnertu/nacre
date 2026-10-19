@@ -59,13 +59,14 @@ trap 'annotate "command failed (exit $?) at line $LINENO during: $current_step"'
 step 'Build the container deployment'
 deployment=$(nix build --no-link --print-out-paths "$source_root#container-deployment")
 # shellcheck disable=SC2016 # the single-quoted text is a Nix expression
-read -r user home <<<"$(nix eval --raw "$source_root#lib.container" \
-  --apply 'c: "${c.username} ${c.homeDirectory}"')"
+read -r user home hostname <<<"$(nix eval --raw "$source_root#lib.container" \
+  --apply 'c: "${c.username} ${c.homeDirectory} ${c.hostname}"')"
 binary=$(find "$deployment/bin" -mindepth 1 -maxdepth 1 -printf '%f\n' | head -n1)
 
 step 'Start the systemd container'
 podman rm -f "$name" >/dev/null 2>&1 || true
-podman run -d --name "$name" --hostname arch --systemd=always --privileged \
+# Podman bind-mounts /etc/hostname, so the deployment can only confirm it.
+podman run -d --name "$name" --hostname "$hostname" --systemd=always --privileged \
   -v nacre-container-pacman:/var/cache/pacman/pkg \
   -v nacre-container-yay:/var/cache/nacre-yay \
   "$image" /usr/lib/systemd/systemd >/dev/null

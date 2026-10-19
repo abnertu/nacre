@@ -74,6 +74,7 @@
         inherit mkFlake;
         container = {
           username = container.host.deployment.username;
+          hostname = container.host.name;
           inherit (container.deploymentUser) homeDirectory;
         };
       };
