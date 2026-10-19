@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.1 (2026-10-19)
+
+### Fixes
+
+- **noctalia-config**: Deploy with nacre's input overrides and checkout
+
+### Refactoring
+
+- **profiles**: Tidy the shell, Git and package baselines
+
 ## 0.6.0 (2026-10-19)
 
 ### Features
