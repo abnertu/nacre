@@ -11,9 +11,9 @@ Nacre layers onto an existing Arch Linux install; it does not partition disks or
 ## Steps
 
 ```bash
-git clone https://github.com/gin31259461/nacre /tmp/nacre
+git clone https://github.com/abnertu/nacre /tmp/nacre
 /tmp/nacre/scripts/bootstrap.sh                      # multilib, base packages, Nix and its daemon
-nix run github:gin31259461/nacre#nacre -- install
+nix run github:abnertu/nacre#nacre -- install
 ```
 
 `install` asks for the user, hostname, role, time zone and locale, offering this machine's current values. It detects AMD graphics and the initramfs images under `/boot`, then creates your machine's flake in `~/.config/nacre`:
@@ -27,7 +27,7 @@ It then shows `nacre plan` and runs `nacre update` once you confirm. Pass `--fla
 For an unattended install, pass every value and `--yes`:
 
 ```bash
-nix run github:gin31259461/nacre#nacre -- install --user alice --hostname box \
+nix run github:abnertu/nacre#nacre -- install --user alice --hostname box \
   --role minimal --timezone Europe/Berlin --locale en_US.UTF-8 --yes
 ```
 

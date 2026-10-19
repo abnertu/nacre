@@ -1,6 +1,6 @@
 # Nacre
 
-[![Check](https://img.shields.io/github/actions/workflow/status/gin31259461/nacre/check.yml?branch=main&label=check&logo=githubactions&logoColor=white)](https://github.com/gin31259461/nacre/actions/workflows/check.yml)
+[![Check](https://img.shields.io/github/actions/workflow/status/abnertu/nacre/check.yml?branch=main&label=check&logo=githubactions&logoColor=white)](https://github.com/abnertu/nacre/actions/workflows/check.yml)
 [![Arch Linux](https://img.shields.io/badge/Arch_Linux-1793D1?logo=archlinux&logoColor=white)](https://archlinux.org/)
 [![Hyprland](https://img.shields.io/badge/Hyprland-58E1FF?logo=hyprland&logoColor=black)](https://hypr.land/)
 [![Nix Flakes](https://img.shields.io/badge/Nix_Flakes-5277C3?logo=nixos&logoColor=white)](https://nixos.org/)
@@ -34,9 +34,9 @@ Nix evaluates a typed configuration into one fixed deployment artifact. Arch ada
 On a new machine ([install guide](docs/install.md)):
 
 ```bash
-git clone https://github.com/gin31259461/nacre /tmp/nacre
+git clone https://github.com/abnertu/nacre /tmp/nacre
 /tmp/nacre/scripts/bootstrap.sh
-nix run github:gin31259461/nacre#nacre -- install
+nix run github:abnertu/nacre#nacre -- install
 ```
 
 `install` creates your machine's own flake in `~/.config/nacre`, which follows Nacre as an input: upgrading Nacre is `nix flake update nacre`, and your configuration never mixes with its code.

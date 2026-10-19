@@ -29,17 +29,17 @@
     };
 
     personal-agent = {
-      url = "github:gin31259461/personal-agent";
+      url = "github:abnertu/personal-agent";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     nix-adapter = {
-      url = "github:gin31259461/nix-adapter";
+      url = "github:abnertu/nix-adapter";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     gitlab-runner = {
-      url = "github:gin31259461/gitlab-runner";
+      url = "github:abnertu/gitlab-runner";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.nix-adapter.follows = "nix-adapter";
     };

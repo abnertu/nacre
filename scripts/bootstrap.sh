@@ -88,5 +88,5 @@ fi
 
 printf '\n==> Bootstrap completed successfully!\n'
 printf 'Next steps:\n'
-printf '  New machine:      nix run github:gin31259461/nacre#nacre -- install\n'
+printf '  New machine:      nix run github:abnertu/nacre#nacre -- install\n'
 printf '  Existing config:  nix run .#nacre -- plan, then update\n'

@@ -170,7 +170,7 @@ machine=$home/.config/nacre
 # A user flake from the template, pointed at that source, plus the overrides
 # a rootless container needs; install then renders configuration.nix itself.
 as_user mkdir -p "$machine"
-sed 's#github:gin31259461/nacre#path:/tmp/nacre-src#' "$source_root/templates/machine/flake.nix" |
+sed 's#github:abnertu/nacre#path:/tmp/nacre-src#' "$source_root/templates/machine/flake.nix" |
   sed 's#\./configuration\.nix#./configuration.nix ./container.nix#' |
   as_user_in tee "$machine/flake.nix" >/dev/null
 as_user_in tee "$machine/container.nix" <"$source_root/checks/container/configuration.nix" >/dev/null

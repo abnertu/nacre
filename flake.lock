@@ -12,13 +12,13 @@
       "locked": {
         "lastModified": 1792290782,
         "narHash": "sha256-4QWcvdrTFfWNnaenvL4DoMAe+NfQs68foJQ9ZGFSMvc=",
-        "owner": "gin31259461",
+        "owner": "abnertu",
         "repo": "gitlab-runner",
         "rev": "388da4f9eb53468ca2275cfd6cfd94566cdefd92",
         "type": "github"
       },
       "original": {
-        "owner": "gin31259461",
+        "owner": "abnertu",
         "repo": "gitlab-runner",
         "type": "github"
       }
@@ -85,13 +85,13 @@
       "locked": {
         "lastModified": 1792268790,
         "narHash": "sha256-A4KKfR9UOF9/RIcBTc7m+Rh6xRx80nuP2vTxmz+5UUM=",
-        "owner": "gin31259461",
+        "owner": "abnertu",
         "repo": "nix-adapter",
         "rev": "1912f0e600db3463da86c4ecf680f9dc447d7ebe",
         "type": "github"
       },
       "original": {
-        "owner": "gin31259461",
+        "owner": "abnertu",
         "repo": "nix-adapter",
         "type": "github"
       }
@@ -140,13 +140,13 @@
       "locked": {
         "lastModified": 1791269982,
         "narHash": "sha256-T+S29ZO5B+36nD3aTv9jtcaSztQaTOgqxjQcafWHQhM=",
-        "owner": "gin31259461",
+        "owner": "abnertu",
         "repo": "personal-agent",
         "rev": "43c58eb7891c370ab2a4630a6d29c6bb7dd3c919",
         "type": "github"
       },
       "original": {
-        "owner": "gin31259461",
+        "owner": "abnertu",
         "repo": "personal-agent",
         "type": "github"
       }
