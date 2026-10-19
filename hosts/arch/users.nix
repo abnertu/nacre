@@ -12,6 +12,9 @@
       ]
       ++ lib.optional (config.hardware.openrazer.enable && config.desktop.enable) "openrazer"
     );
-    homeModules = lib.mkDefault [ ../../homes/abnertu/home.nix ];
+    homeModules = lib.mkDefault [
+      ../../homes/abnertu/home.nix
+      ../../homes/abnertu/dotfiles.nix
+    ];
   };
 }
