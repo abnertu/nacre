@@ -67,6 +67,22 @@
     ./runners/frontend.toml
     ./runners/dotnet.toml
   ];
+  packages.extra = lib.mapAttrs (_: lib.mkDefault) {
+    pacman = [
+      "freerdp"
+      "ghostty"
+      "gimp"
+      "obs-studio"
+      "obsidian"
+      "qalculate-gtk"
+      "vlc"
+    ];
+    aur = [
+      "obs-pipewire-audio-capture"
+      "onedrive-abraunegg"
+      "onlyoffice-bin"
+    ];
+  };
   services.personalAgent.enable = lib.mkDefault true;
   services.powerpanel.enable = lib.mkDefault true;
 }

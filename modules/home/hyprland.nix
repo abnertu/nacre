@@ -24,7 +24,8 @@ in
       }
     else
       {
-        source = inputs.hypr-config;
+        source =
+          if user.sources.hyprland or null != null then user.sources.hyprland else inputs.hypr-config;
         recursive = true;
       };
 

@@ -40,6 +40,7 @@ Roles sit below host defaults, which sit below `configuration.nix`, so any value
 | Hardware and virtualization | `hardware`, `virtualization` |
 | Kernel modules and parameters | `boot.kernelModules`, `boot.kernel.sysctl` |
 | Nix daemon settings (`/etc/nix/nix.conf` managed block) | `nix.settings` |
+| Additional repository and AUR packages | `packages.extra.pacman`, `packages.extra.aur` |
 | Packages `update` must not upgrade | `packages.hold` |
 | Graphical session and user programs | `desktop`, `programs`, `users.users.<name>.home` |
 

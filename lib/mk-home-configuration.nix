@@ -24,6 +24,10 @@ let
     registry: kind: name:
     if builtins.hasAttr name registry then registry.${name} else throw "unknown ${kind}: ${name}";
   userNormalized = user // {
+    sources = {
+      neovim = user.sources.neovim or null;
+      hyprland = user.sources.hyprland or null;
+    };
     development = {
       neovimPath = user.development.neovimPath or null;
       hyprlandPath = user.development.hyprlandPath or null;

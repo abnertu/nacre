@@ -59,6 +59,19 @@ let
       profiles = switches (builtins.attrNames (import ../profiles));
       modules = switches (builtins.attrNames (import ../modules/home));
       homeModules = option (types.listOf types.path) [ ] "Explicit user Home Manager module paths.";
+      # Coerced to a store path string: normalization walks values, and a flake
+      # input or derivation is a recursive attribute set.
+      sources = section (
+        lib.genAttrs [ "neovim" "hyprland" ] (
+          name:
+          mkOption {
+            type = types.nullOr types.path;
+            default = null;
+            apply = source: if source == null then null else "${source}";
+            description = "${name} config source projected into ~/.config, such as a flake input; null uses Nacre's pinned input.";
+          }
+        )
+      );
       development = section {
         neovimPath =
           option (types.nullOr absolute) null
@@ -102,6 +115,20 @@ in
     apply = lib.unique;
     example = [ "kitty" ];
     description = "Installed packages that update leaves at their current version, as with pacman's --ignore; missing ones still install.";
+  };
+  packages.extra = {
+    pacman = mkOption {
+      type = types.listOf (types.strMatching "[a-z0-9@._+-]+");
+      default = [ ];
+      example = [ "obsidian" ];
+      description = "Additional Arch repository packages for this machine.";
+    };
+    aur = mkOption {
+      type = types.listOf (types.strMatching "[a-z0-9@._+-]+");
+      default = [ ];
+      example = [ "onlyoffice-bin" ];
+      description = "Additional AUR packages for this machine, installed through yay as the login user.";
+    };
   };
   nix.settings = mkOption {
     type = types.attrsOf (

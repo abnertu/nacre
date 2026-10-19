@@ -23,7 +23,7 @@ in
       }
     else
       {
-        source = inputs.nvim-config;
+        source = if user.sources.neovim or null != null then user.sources.neovim else inputs.nvim-config;
       };
 
   home.packages = with pkgs; [

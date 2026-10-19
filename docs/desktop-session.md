@@ -51,6 +51,19 @@ The watcher PID should belong to Noctalia. Restarting the shell should not requi
 
 Neovim and Hyprland configuration default to pinned flake inputs (`nvim-config`, `hypr-config`) that Home Manager projects into `~/.config/nvim` and `~/.config/hypr`, after checking it will not overwrite a Git worktree or a backup directory.
 
+To use your own published configuration, add it as an input of the machine flake and pass it in `flake.nix`:
+
+```nix
+outputs = { nacre, ... }@inputs: nacre.lib.mkFlake {
+  modules = [
+    ./configuration.nix
+    { users.users.alice.sources.hyprland = inputs.my-hypr; }
+  ];
+};
+```
+
+`sources.neovim` does the same for Neovim.
+
 To edit a local worktree without rebuilding, set absolute paths in `configuration.nix`:
 
 ```nix

@@ -115,6 +115,27 @@ in
     assert devHome.config.xdg.configFile.hypr.source != inputs.hypr-config;
     assert devHome.config.xdg.configFile.nvim.source != inputs.nvim-config;
     pkgs.writeText "home-development-mode" "passed";
+  home-config-sources =
+    let
+      hypr = pkgs.writeTextDir "hyprland.lua" "";
+      nvim = pkgs.writeTextDir "init.lua" "";
+      sourcedHome = fixtures.home [
+        {
+          users.users.tester = fixtures.login {
+            homeDirectory = "/home/tester";
+            profiles = [ "dev" ];
+            modules = [ "hyprland" ];
+            sources = {
+              hyprland = hypr;
+              neovim = nvim;
+            };
+          };
+        }
+      ] "tester";
+    in
+    assert sourcedHome.config.xdg.configFile.hypr.source == "${hypr}";
+    assert sourcedHome.config.xdg.configFile.nvim.source == "${nvim}";
+    pkgs.writeText "home-config-sources" "passed";
   arch-graphical-session = pkgs.runCommand "arch-graphical-session-check" { } ''
     units=${home.activationPackage}/home-files/.config/systemd/user
     profile=${home.config.home.path}

@@ -22,10 +22,11 @@ rec {
       profiles ? [ ],
       modules ? [ ],
       development ? { },
+      sources ? { },
     }:
     {
       description = "Fixture login";
-      inherit homeDirectory development;
+      inherit homeDirectory development sources;
       stateVersion = "26.05";
       profiles = lib.genAttrs (builtins.attrNames (import ../profiles)) (name: {
         enable = builtins.elem name profiles;
