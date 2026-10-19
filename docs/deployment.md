@@ -45,6 +45,8 @@ nacre --verbose switch    # full diagnostics
 nacre purge               # remove managed Arch state, skip home
 ```
 
+`--override-input INPUT REF` passes a flake input override to every Nix evaluation, so a machine flake can deploy an unpublished Nacre checkout: `nacre --override-input nacre path:$HOME/codebase/nacre switch`. Commit and release the change, then `nix flake update nacre` to adopt it.
+
 - **status** shows the checkout revision, the last switch made through `nacre`, the active home generation and any pending markers.
 - **doctor** reports what needs attention and changes nothing: a checkout ahead of the last switch, pending markers, a running kernel without installed modules, failed units, home units enabled under an active target that never started, Noctalia GUI changes not yet captured, and `.bak`, `.backup`, `.orig` or `.old` files beside managed home files. It exits 1 when anything is reported, and `update` runs it at the end without changing the update's exit status.
 - **changes [--since TIME]** lists the packages upgraded, downgraded, installed, reinstalled or removed since the last `nacre update` started, read from `/var/log/pacman.log`. Start here when something behaves differently after an update. `--since` takes an ISO date or time.

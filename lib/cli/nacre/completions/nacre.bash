@@ -9,6 +9,7 @@ _nacre() {
   for ((i = 1; i < COMP_CWORD; i++)); do
     case ${COMP_WORDS[i]} in
       --flake) ((i++)) ;;
+      --override-input) ((i += 2)) ;;
       -*) ;;
       *) if [[ -z $command ]]; then command=${COMP_WORDS[i]}; else args+=("${COMP_WORDS[i]}"); fi ;;
     esac
@@ -20,7 +21,7 @@ _nacre() {
     return
   fi
   if [[ -z $command ]]; then
-    [[ $cur == -* ]] && commands='--flake --verbose --help --version'
+    [[ $cur == -* ]] && commands='--flake --override-input --verbose --help --version'
     mapfile -t COMPREPLY < <(compgen -W "$commands" -- "$cur")
     return
   fi

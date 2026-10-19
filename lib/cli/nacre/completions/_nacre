@@ -33,6 +33,7 @@ _nacre() {
 
   _arguments -C \
     '--flake[machine flake checkout]:checkout:_files -/' \
+    '*--override-input[override a flake input]:input: :reference:_files -/' \
     '--verbose[pass --verbose to Nix, Home Manager and adapters]' \
     '(- *)--help[show usage]' \
     '(- *)--version[show the version]' \

@@ -90,6 +90,16 @@ class NacreTests(unittest.TestCase):
         self.assertEqual(self.recorded()[-1], "deploy --update --verbose")
         self.assertFalse(state.exists())
 
+    def test_input_overrides_reach_every_nix_call(self):
+        override = ("--override-input", "nacre", "path:/src/nacre")
+        self.assertEqual(self.run_nacre(*override, "switch").returncode, 0)
+        self.assertEqual(self.run_nacre(*override, "check").returncode, 0)
+        nix_calls = [call for call in self.recorded() if call.startswith("nix ")]
+        self.assertEqual(len(nix_calls), 2)
+        for call in nix_calls:
+            self.assertIn(" ".join(override), call)
+        self.assertEqual(self.run_nacre("--override-input", "nacre").returncode, 2)
+
     def test_failed_build_never_deploys(self):
         result = self.run_nacre("switch", NIX_STATUS="1")
         self.assertNotEqual(result.returncode, 0)

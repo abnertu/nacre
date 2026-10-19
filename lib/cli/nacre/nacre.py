@@ -22,7 +22,7 @@ TEMPLATES = Path("@templates@")
 VERSION = "@version@"
 
 USAGE = """\
-usage: nacre [--flake PATH] [--verbose] <command> [arguments]
+usage: nacre [--flake PATH] [--override-input INPUT REF]... [--verbose] <command> [arguments]
 
 Setup
   install [OPTIONS]        write configuration.nix for this machine, then plan and update
@@ -52,6 +52,8 @@ Features
   noctalia ACTION [ARGS]   ACTION: capture, deploy
 
 The checkout is --flake, else $NACRE_FLAKE, else ~/.config/nacre or ~/.config/nix.
+--override-input reaches every Nix evaluation, for example to try a local
+Nacre checkout: nacre --override-input nacre path:$HOME/codebase/nacre switch
 """
 
 # Tests point this at a temporary root.
@@ -123,7 +125,7 @@ def find_flake(explicit: str | None) -> Path | None:
 
 
 class Nacre:
-    def __init__(self, flake: Path, verbose: bool):
+    def __init__(self, flake: Path, verbose: bool, overrides: Sequence[str] = ()):
         self.flake = flake
         self.verbose = verbose
         plain = (
@@ -139,6 +141,7 @@ class Nacre:
             "--show-trace",
             "--print-build-logs",
             *(["--verbose"] if verbose else []),
+            *overrides,
         ]
         self.profile = state_home() / "nix/profiles/home-manager"
 
@@ -624,12 +627,17 @@ class Installer:
 def run(argv: list[str]) -> int:
     explicit = os.environ.get("NACRE_FLAKE")
     verbose = version = False
+    overrides: list[str] = []
     while argv and argv[0].startswith("-"):
         option = argv.pop(0)
         if option == "--flake":
             if not argv:
                 raise Usage
             explicit = argv.pop(0)
+        elif option == "--override-input":
+            if len(argv) < 2:
+                raise Usage
+            overrides += [option, argv.pop(0), argv.pop(0)]
         elif option == "--verbose":
             verbose = True
         elif option in ("--help", "-h"):
@@ -648,10 +656,10 @@ def run(argv: list[str]) -> int:
     command, args = argv[0], argv[1:]
     if command == "install":
         config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
-        return Nacre(flake or config / "nacre", verbose).install(args)
+        return Nacre(flake or config / "nacre", verbose, overrides).install(args)
     if flake is None or not (flake / "flake.nix").is_file():
         raise Refusal("no checkout found; pass --flake PATH or set NACRE_FLAKE")
-    nacre = Nacre(flake, verbose)
+    nacre = Nacre(flake, verbose, overrides)
     if command in ("plan", "switch", "update", "purge"):
         if args:
             raise Usage
