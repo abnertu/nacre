@@ -100,6 +100,15 @@ class NacreTests(unittest.TestCase):
             self.assertIn(" ".join(override), call)
         self.assertEqual(self.run_nacre("--override-input", "nacre").returncode, 2)
 
+    def test_noctalia_uses_the_checkout_and_input_overrides(self):
+        override = ("--override-input", "nacre", "path:/src/nacre")
+        self.assertEqual(self.run_nacre(*override, "noctalia", "deploy").returncode, 0)
+        tail = self.recorded()[-1].split(" -- ", 1)[1]
+        self.assertEqual(tail, f"deploy --repo {self.flake} {' '.join(override)}")
+        self.run_nacre(*override, "noctalia", "capture", "--repo", "/elsewhere")
+        tail = self.recorded()[-1].split(" -- ", 1)[1]
+        self.assertEqual(tail, "capture --repo /elsewhere")
+
     def test_failed_build_never_deploys(self):
         result = self.run_nacre("switch", NIX_STATUS="1")
         self.assertNotEqual(result.returncode, 0)

@@ -323,6 +323,13 @@ class SyncTests(unittest.TestCase):
         self.assertFalse(any(c[:2] == ["/usr/bin/nix", "run"] for c in self.commands))
         self.assertFalse(Path(builds[0][builds[0].index("--out-link") + 1]).exists())
 
+    def test_input_overrides_reach_the_home_build(self):
+        self.instance.overrides = ["--override-input", "nacre", "path:/src/nacre"]
+        self.instance.deploy()
+        (build,) = [c for c in self.commands if c[:2] == ["/usr/bin/nix", "build"]]
+        position = build.index("--override-input")
+        self.assertEqual(build[position : position + 3], self.instance.overrides)
+
     def test_capture_redacts_unknown_section_names(self):
         self.exported["private-account-name"] = {}
         output = io.StringIO()

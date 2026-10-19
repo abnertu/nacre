@@ -12,7 +12,7 @@ import stat
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
@@ -201,6 +201,7 @@ class Sync:
         state: Path,
         control: Path,
         run: Runner = execute,
+        overrides: Sequence[str] = (),
     ):
         require(bool(re.fullmatch(r"[a-z_][a-z0-9_-]*", user)), "Invalid login user")
         self.repo, self.run = repo, run
@@ -209,6 +210,8 @@ class Sync:
         self.control = control
         self.home_configuration = home_configuration
         self.pending = control / "pending.json"
+        # --override-input pairs for the home build, as nacre passes them.
+        self.overrides = list(overrides)
 
     def validate(self, data: Settings) -> None:
         with tempfile.TemporaryDirectory(prefix="noctalia-validate-") as directory:
@@ -459,6 +462,7 @@ class Sync:
                     "--out-link",
                     str(artifact),
                     "--no-update-lock-file",
+                    *self.overrides,
                     str(self.repo)
                     + '#homeConfigurations."'
                     + self.home_configuration
@@ -526,6 +530,14 @@ def main() -> int:
     )
     parser.add_argument("--replace-overrides", action="store_true")
     parser.add_argument("--recover", action="store_true")
+    parser.add_argument(
+        "--override-input",
+        nargs=2,
+        action="append",
+        default=[],
+        metavar=("INPUT", "REF"),
+        help="deploy only: pass a flake input override to the home build",
+    )
     args = parser.parse_args()
     home = Path.home()
     config_root = Path(
@@ -549,6 +561,11 @@ def main() -> int:
         config_root / "noctalia",
         state_root / "noctalia",
         control,
+        overrides=[
+            word
+            for name, ref in args.override_input
+            for word in ("--override-input", name, ref)
+        ],
     )
     try:
         require(

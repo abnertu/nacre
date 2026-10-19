@@ -41,7 +41,7 @@ nacre noctalia deploy --dry-run
 nacre noctalia deploy
 ```
 
-Deploy builds and activates the selected Home Manager configuration, then verifies the managed Noctalia sections; it does not run Arch convergence. It stops when a GUI override conflicts. To replace the overrides it owns, stop Noctalia first:
+Deploy builds and activates the selected Home Manager configuration, then verifies the managed Noctalia sections; it does not run Arch convergence. `nacre` passes the machine flake as `--repo`, and `nacre --override-input … noctalia deploy` builds the home with the same overrides as `switch`. It stops when a GUI override conflicts. To replace the overrides it owns, stop Noctalia first:
 
 ```bash
 systemctl --user stop noctalia.service

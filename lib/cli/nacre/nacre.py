@@ -142,6 +142,7 @@ class Nacre:
             *(["--verbose"] if verbose else []),
             *overrides,
         ]
+        self.overrides = list(overrides)
         self.profile = state_home() / "nix/profiles/home-manager"
 
     def target(self, attribute: str) -> str:
@@ -688,7 +689,11 @@ def run(argv: list[str]) -> int:
             raise Usage
         nacre.nix_root("NO_COLOR", "run", nacre.target("llama-prepare"), *modes[mode])
     if command == "noctalia" and args[:1] in (["capture"], ["deploy"]):
-        nacre.nix("run", nacre.target("noctalia-config"), "--", *args)
+        # The snapshot lives in this checkout; a deploy builds the home with
+        # the same input overrides.
+        repo = [] if "--repo" in args else ["--repo", str(flake)]
+        extra = nacre.overrides if args[0] == "deploy" else []
+        nacre.nix("run", nacre.target("noctalia-config"), "--", *args, *repo, *extra)
     raise Usage
 
 
