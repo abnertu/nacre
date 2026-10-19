@@ -4,7 +4,6 @@
 
   home.packages = with pkgs; [
     git-credential-manager
-    gnupg
     nodejs
     nix-output-monitor
   ];

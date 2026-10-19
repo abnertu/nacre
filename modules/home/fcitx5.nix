@@ -7,6 +7,7 @@
   config,
   lib,
   pkgs,
+  capabilities,
   ...
 }:
 let
@@ -51,22 +52,32 @@ in
     };
   };
 
-  config = lib.mkIf (cfg.inputMethods != [ ]) {
-    assertions = [
-      {
-        assertion = lib.hasPrefix "keyboard-" (builtins.head cfg.inputMethods);
-        message = "workstation.fcitx5.inputMethods must start with a keyboard layout such as keyboard-us.";
-      }
-    ];
-    xdg.configFile.fcitx5.source = pkgs.linkFarm "fcitx5-config" [
-      {
-        name = "config";
-        path = pkgs.writeText "fcitx5-config" (ini cfg.globalOptions);
-      }
-      {
-        name = "profile";
-        path = pkgs.writeText "fcitx5-profile" (ini profile);
-      }
-    ];
-  };
+  config = lib.mkMerge [
+    # The desktop installs fcitx5; Qt and XWayland applications find it through
+    # these variables whether or not its settings are managed.
+    (lib.mkIf capabilities.desktop.enable {
+      home.sessionVariables = {
+        QT_IM_MODULE = "fcitx";
+        XMODIFIERS = "@im=fcitx";
+      };
+    })
+    (lib.mkIf (cfg.inputMethods != [ ]) {
+      assertions = [
+        {
+          assertion = lib.hasPrefix "keyboard-" (builtins.head cfg.inputMethods);
+          message = "workstation.fcitx5.inputMethods must start with a keyboard layout such as keyboard-us.";
+        }
+      ];
+      xdg.configFile.fcitx5.source = pkgs.linkFarm "fcitx5-config" [
+        {
+          name = "config";
+          path = pkgs.writeText "fcitx5-config" (ini cfg.globalOptions);
+        }
+        {
+          name = "profile";
+          path = pkgs.writeText "fcitx5-profile" (ini profile);
+        }
+      ];
+    })
+  ];
 }

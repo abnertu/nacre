@@ -7,20 +7,14 @@
 {
   imports = [ ../../modules/home/shell-files.nix ];
 
-  home.sessionPath = [
-    "$HOME/.local/bin"
-    "$HOME/go/bin"
-    "$HOME/.luarocks/bin"
-  ];
+  home.sessionPath = [ "$HOME/.local/bin" ];
 
   home.packages = with pkgs; [
     bat
     bc
     btop
-    cava
     chafa
     curl
-    eza
     fastfetch
     fd
     gum
@@ -46,15 +40,8 @@
     git = {
       enable = lib.mkDefault true;
       settings = {
-        core = {
-          autocrlf = lib.mkDefault false;
-          filemode = lib.mkDefault false;
-          fsmonitor = lib.mkDefault false;
-          ignorecase = lib.mkDefault true;
-          longpaths = lib.mkDefault true;
-          quotePath = lib.mkDefault false;
-          symlinks = lib.mkDefault true;
-        };
+        # Show non-ASCII file names as they are.
+        core.quotePath = lib.mkDefault false;
         diff.algorithm = lib.mkDefault "histogram";
         fetch.prune = lib.mkDefault true;
         init.defaultBranch = lib.mkDefault "main";
@@ -70,13 +57,11 @@
       enableCompletion = lib.mkDefault true;
       syntaxHighlighting.enable = lib.mkDefault true;
       history = {
-        expireDuplicatesFirst = lib.mkDefault true;
         ignoreAllDups = lib.mkDefault true;
-        ignoreDups = lib.mkDefault true;
         ignoreSpace = lib.mkDefault true;
-        save = lib.mkDefault 10000;
+        save = lib.mkDefault 50000;
         share = lib.mkDefault true;
-        size = lib.mkDefault 10000;
+        size = lib.mkDefault 50000;
       };
       shellAliases = {
         l = lib.mkDefault "lsd -l";
@@ -89,11 +74,20 @@
         enable = lib.mkDefault true;
         plugins = [ "git" ];
       };
-      initContent = lib.mkOrder 1000 ''
-        source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme
-        [[ -r ${config.home.homeDirectory}/.p10k.zsh ]] && source ${config.home.homeDirectory}/.p10k.zsh
-        bindkey '^K' autosuggest-accept
-      '';
+      initContent = lib.mkMerge [
+        # Powerlevel10k's instant prompt must come first in .zshrc: the prompt
+        # appears at once while the rest of the configuration loads.
+        (lib.mkOrder 500 ''
+          if [[ -r "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh" ]]; then
+            source "''${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-''${(%):-%n}.zsh"
+          fi
+        '')
+        (lib.mkOrder 1000 ''
+          source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme
+          [[ -r ${config.home.homeDirectory}/.p10k.zsh ]] && source ${config.home.homeDirectory}/.p10k.zsh
+          bindkey '^K' autosuggest-accept
+        '')
+      ];
     };
   };
 }

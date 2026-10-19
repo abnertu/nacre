@@ -1,12 +1,12 @@
-# Default configuration for the base profile's terminal tools; btop and cava
-# select the theme Noctalia writes when the desktop runs. Sources are defaults:
+# Default configuration for the base profile's terminal tools; btop selects
+# the theme Noctalia writes when the desktop runs. Sources are defaults:
 # a machine's home module replaces one with its own.
 { lib, ... }:
 let
   sourceRoot = ../../files/home;
 in
 {
-  xdg.configFile = lib.genAttrs [ "btop" "cava" "fastfetch" ] (name: {
+  xdg.configFile = lib.genAttrs [ "btop" "fastfetch" ] (name: {
     source = lib.mkDefault (sourceRoot + "/.config/${name}");
     recursive = lib.mkDefault true;
   });
