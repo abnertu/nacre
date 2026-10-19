@@ -14,11 +14,10 @@ Read [configuration](configuration.md), [system settings](system-settings.md) an
 On a fresh Arch install without Nix or just, run Nacre's bootstrap. It enables `[multilib]`, installs prerequisites, configures Nix and starts `nix-daemon.service`:
 
 ```bash
-git clone https://github.com/abnertu/nacre /tmp/nacre
-/tmp/nacre/scripts/bootstrap.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/abnertu/nacre/main/scripts/bootstrap.sh)
 ```
 
-Then create the machine flake with `nix run github:abnertu/nacre#nacre -- install` ([install guide](install.md)), or clone an existing one to `~/.config/nacre`.
+Without a machine flake it offers to create one ([install guide](install.md)); to restore an existing machine, clone its flake to `~/.config/nacre` first, and the bootstrap points you at `nix run .#nacre -- plan`.
 
 The bootstrap changes the host; read the script first.
 
@@ -72,11 +71,11 @@ nacre purge               # remove managed Arch state, skip home
 - **purge** withdraws, in order:
   - AI: the Tailscale Serve route, the Caddy site, the `llama-swap` unit and config.
   - System settings: timesyncd, journald, logind and fstrim timer drop-ins.
-  - Core: managed system units, kernel files, the LizardByte repository, the Personal Agent unit, the Nix configuration block and pending state.
+  - Core: managed system units, kernel files, the LizardByte repository, the units of [extensions](configuration.md#machine-extensions), the Nix configuration block and pending state.
 
-  It keeps packages, accounts, Runner registrations, mutable data, prepared AI binaries and models, and the current locale, timezone, hostname, console, firewall rules and hotspot settings. The initramfs module block also stays, since withdrawing it needs a boot image rebuild. Files of disabled features are no longer managed and purge leaves them alone. Purge does not activate Home Manager.
+  It keeps packages, accounts, registrations, mutable data, prepared AI binaries and models, and the current locale, timezone, hostname, console, firewall rules and hotspot settings. The initramfs module block also stays, since withdrawing it needs a boot image rebuild. Files of disabled features are no longer managed and purge leaves them alone. Purge does not activate Home Manager.
 
-A run preflights core state and optional modules, upgrades packages (with `update`), converges native files and services, then activates the home. The two stages share no rollback: if home activation fails, the Arch changes remain. Runners and [AI preparation](ai.md) are outside this flow.
+A run preflights core state and optional modules, upgrades packages (with `update`), converges native files and services, then activates the home. The two stages share no rollback: if home activation fails, the Arch changes remain. [AI preparation](ai.md) is outside this flow.
 
 An optional module is skipped as `not ready` only if it was never prepared; a skipped module's files and services are untouched. Invalid receipts, checksum drift, ownership conflicts, missing declared core hardware, native command failures and state changing after preflight all stop the run.
 

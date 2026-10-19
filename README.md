@@ -21,7 +21,7 @@ Nix evaluates a typed configuration into one fixed deployment artifact. Arch ada
 - **Hyprland desktop** started by UWSM, with the Noctalia shell and one startup owner per application.
 - **Typed configuration**: unknown options, wrong types and invalid combinations fail at evaluation.
 - **Safe deployment**: preflight before any change; routine runs install nothing, only `update` syncs pacman and AUR.
-- **Optional modules**: local AI (llama.cpp + llama-swap), virtualization, GitLab Runner, Personal Agent, Wi-Fi hotspot.
+- **Optional modules**: local AI (llama.cpp + llama-swap), virtualization, Wi-Fi hotspot, UPS, and [extensions](docs/configuration.md#machine-extensions) a machine adds.
 - **Secrets stay out**: credentials, keys and mutable data never enter Git or the Nix store.
 
 ## Requirements
@@ -34,10 +34,10 @@ Nix evaluates a typed configuration into one fixed deployment artifact. Arch ada
 On a new machine ([install guide](docs/install.md)):
 
 ```bash
-git clone https://github.com/abnertu/nacre /tmp/nacre
-/tmp/nacre/scripts/bootstrap.sh
-nix run github:abnertu/nacre#nacre -- install
+bash <(curl -fsSL https://raw.githubusercontent.com/abnertu/nacre/main/scripts/bootstrap.sh)
 ```
+
+The bootstrap installs Nix and the native prerequisites, then offers to run `nacre install`.
 
 `install` creates your machine's own flake in `~/.config/nacre`, which follows Nacre as an input: upgrading Nacre is `nix flake update nacre`, and your configuration never mixes with its code.
 
@@ -53,7 +53,7 @@ nacre --verbose switch    # full Nix, Home Manager and adapter diagnostics
 nacre purge               # remove managed Arch state, skip Home Manager
 ```
 
-`nacre --help` lists every command, including `status`, `doctor`, `changes`, `generations`, `rollback` and the AI, Runner and Noctalia operations.
+`nacre --help` lists every command, including `status`, `doctor`, `changes`, `generations`, `rollback` and the AI and Noctalia operations.
 
 ## Configuration
 
@@ -85,8 +85,6 @@ See the [configuration guide](docs/configuration.md).
 | [Noctalia config](docs/noctalia-config.md) | Capturing and deploying reviewed UI preferences |
 | [Hotspot](docs/hotspot.md) | Adopting an existing NetworkManager AP |
 | [Local AI](docs/ai.md) | Model preparation, loopback services, agent skills ([benchmarks](docs/ai-benchmarks.md)) |
-| [GitLab Runner](docs/runners.md) | Separate reconcile, registration and verification |
-| [Personal Agent](docs/personal-agent.md) | External runtime config and the native service |
 | [Backup](docs/backup.md) | State outside the repository and restore order |
 
 [CONTEXT.md](CONTEXT.md) explains the composition model; [CHANGELOG.md](CHANGELOG.md) lists releases.

@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Standalone bootstrap script for fresh Arch Linux machines.
+# Standalone bootstrap script for fresh Arch Linux machines, runnable straight
+# from GitHub:
+#   bash <(curl -fsSL https://raw.githubusercontent.com/abnertu/nacre/main/scripts/bootstrap.sh)
 # Prepares native dependencies (nix, just, yay, base-devel), configures
-# /etc/nix/nix.conf, starts nix-daemon, and validates user wheel membership.
+# /etc/nix/nix.conf, starts nix-daemon, validates wheel membership, then
+# offers to create this machine's flake with nacre install.
 
 set -euo pipefail
 
@@ -15,6 +18,8 @@ Prepare a fresh Arch Linux system for Nacre:
   3. Enables and starts nix-daemon.service.
   4. Adds the current login user to the wheel group.
   5. Installs yay (AUR helper) from yay-bin if not already present.
+Then, on a terminal and without ~/.config/nacre, it offers to run
+`nacre install` to create this machine's flake.
 EOF
 }
 
@@ -69,8 +74,10 @@ sudo systemctl enable --now nix-daemon.service
 
 # 4. User group membership
 printf '==> 4/5 Ensuring user belongs to wheel...\n'
+joined_wheel=0
 if ! id -nG "$login_user" | tr ' ' '\n' | grep -Fxq wheel; then
   sudo gpasswd -a "$login_user" wheel
+  joined_wheel=1
   printf 'Note: %s added to wheel. You may need to log out or run "exec su -l %s" for new group membership to take effect.\n' "$login_user" "$login_user"
 fi
 
@@ -87,6 +94,17 @@ else
 fi
 
 printf '\n==> Bootstrap completed successfully!\n'
-printf 'Next steps:\n'
-printf '  New machine:      nix run github:abnertu/nacre#nacre -- install\n'
-printf '  Existing config:  nix run .#nacre -- plan, then update\n'
+install=(nix run github:abnertu/nacre#nacre -- install)
+config_home=${XDG_CONFIG_HOME:-$HOME/.config}
+if [[ -e $config_home/nacre/flake.nix ]]; then
+  printf 'Existing machine flake: cd %s/nacre && nix run .#nacre -- plan, then update\n' "$config_home"
+elif ((joined_wheel)) || [[ ! -t 0 || ! -t 1 ]]; then
+  # Deployment needs wheel in this session, and install asks questions.
+  printf 'Next, in a new login session: %s\n' "${install[*]}"
+else
+  read -rp "Create this machine's flake now with nacre install? [Y/n] " answer
+  if [[ ${answer:-y} == [Yy]* ]]; then
+    exec "${install[@]}"
+  fi
+  printf 'Later: %s\n' "${install[*]}"
+fi

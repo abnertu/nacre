@@ -11,8 +11,12 @@ Nacre layers onto an existing Arch Linux install; it does not partition disks or
 ## Steps
 
 ```bash
-git clone https://github.com/abnertu/nacre /tmp/nacre
-/tmp/nacre/scripts/bootstrap.sh                      # multilib, base packages, Nix and its daemon
+bash <(curl -fsSL https://raw.githubusercontent.com/abnertu/nacre/main/scripts/bootstrap.sh)
+```
+
+The [bootstrap](../scripts/bootstrap.sh) enables `[multilib]`, installs the base packages, Nix and yay, and starts the Nix daemon; it changes the host, so read it first (`curl -fsSL https://raw.githubusercontent.com/abnertu/nacre/main/scripts/bootstrap.sh | less`). On a terminal it then offers to run `nacre install`. If it added you to `wheel`, log in again and run install yourself:
+
+```bash
 nix run github:abnertu/nacre#nacre -- install
 ```
 
@@ -37,4 +41,4 @@ Without `--yes` and without a terminal, it stops after the plan. In an existing 
 
 The home generation installs `nacre`, so later runs are `nacre plan` and `nacre switch`. Upgrade Nacre itself with `nix flake update nacre` in `~/.config/nacre`, review `nacre plan`, then switch; your configuration never merges with Nacre's code.
 
-The generated file is a starting point: add hardware, features and home settings as described in [configuration](configuration.md), and enable opt-in features such as the [hotspot](hotspot.md), [local AI](ai.md), [Runners](runners.md) or the [Personal Agent](personal-agent.md) when you need them. The [fixture machine](../checks/fixtures/configuration.nix) enables every feature and serves as a full example.
+The generated file is a starting point: add hardware, features and home settings as described in [configuration](configuration.md), and enable opt-in features such as the [hotspot](hotspot.md) or [local AI](ai.md) when you need them. The [fixture machine](../checks/fixtures/configuration.nix) enables every feature and serves as a full example.
