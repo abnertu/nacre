@@ -52,13 +52,19 @@
       mkDeployment = import ./lib/mk-deployment.nix;
       # The maintainer's machine: Nacre's reference configuration and CI subject.
       machine = mkFlake { modules = [ ./configuration.nix ]; };
-      d = mkDeployment { inherit inputs; };
+      # Checks and the container test use the fixture machine, which enables
+      # every feature, so they never depend on the maintainer's configuration.
+      fixture = ./checks/fixtures/configuration.nix;
+      d = mkDeployment {
+        inherit inputs;
+        modules = [ fixture ];
+      };
       inherit (d) lib pkgs system;
       # Disables hardware and kernel features a rootless container cannot provide.
       container = mkDeployment {
         inherit inputs;
         modules = [
-          ./configuration.nix
+          fixture
           ./checks/container/configuration.nix
         ];
       };

@@ -248,6 +248,16 @@ assert
     claude.skills.enable = false;
     codex.localProfile.enable = false;
   }).homeModule.home.file == { };
+assert
+  let
+    extra = archFor {
+      packages.extra = {
+        pacman = [ "fixture-repo-app" ];
+        aur = [ "fixture-aur-app" ];
+      };
+    };
+  in
+  builtins.elem "fixture-repo-app" extra.pacman && builtins.elem "fixture-aur-app" extra.aur;
 assert builtins.elem "qemu-desktop" (virtualization { }).pacman;
 assert !(builtins.elem "kvm" (virtualization { enable = false; }).groups);
 assert builtins.elem "qemu-desktop" v.pacman && builtins.elem "podman" v.pacman;
