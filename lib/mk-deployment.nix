@@ -1,8 +1,8 @@
-# Compose one complete deployment from configuration modules. The flake builds
-# the operator's configuration with this; tests add overriding modules.
+# Compose one complete deployment from configuration modules. Machine flakes
+# reach it through mkFlake; checks pass the fixture plus overriding modules.
 {
   inputs,
-  modules ? [ ../configuration.nix ],
+  modules,
 }:
 let
   inherit (inputs) nixpkgs;

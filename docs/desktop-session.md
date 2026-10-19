@@ -67,9 +67,9 @@ outputs = { nacre, ... }@inputs: nacre.lib.mkFlake {
 To edit a local worktree without rebuilding, set absolute paths in `configuration.nix`:
 
 ```nix
-users.users.abnertu.development = {
-  neovimPath = "/home/abnertu/path/to/nvim-config";
-  hyprlandPath = "/home/abnertu/path/to/hypr-config";
+users.users.alice.development = {
+  neovimPath = "/home/alice/path/to/nvim-config";
+  hyprlandPath = "/home/alice/path/to/hypr-config";
 };
 ```
 

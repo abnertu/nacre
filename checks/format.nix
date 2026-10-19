@@ -3,12 +3,9 @@ let
   source = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
-      ../configuration.nix
       ../flake.nix
       ../pyproject.toml
       ../lib
-      ../hosts
-      ../homes
       ../profiles
       ../platforms
       ../modules

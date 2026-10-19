@@ -1,6 +1,6 @@
 # AGENTS Instructions
 
-Nacre: an operator-controlled Nix layer over existing Arch Linux + Hyprland machines; `hosts/arch` is the maintainer's own machine. Nix evaluates typed policy into a fixed deployment artifact, Arch adapters reconcile live state, then the prebuilt Home Manager generation activates. Read [CONTEXT.md](CONTEXT.md) before changing composition, and the feature's guide in [`docs/`](docs/) before editing that feature.
+Nacre: an operator-controlled Nix layer over existing Arch Linux + Hyprland machines. Each machine is its own flake that calls `nacre.lib.mkFlake`; this repository holds no real machine, and `checks/fixtures` is the reference machine that enables every feature. Nix evaluates typed policy into a fixed deployment artifact, Arch adapters reconcile live state, then the prebuilt Home Manager generation activates. Read [CONTEXT.md](CONTEXT.md) before changing composition, and the feature's guide in [`docs/`](docs/) before editing that feature.
 
 **Never read or print credentials, private keys, password stores, Runner tokens, Noctalia keys or mutable application data.** Keep them out of Git, derivations, command arguments and unredacted logs; tests use synthetic fixtures.
 
@@ -12,11 +12,11 @@ Each resource has exactly one owner:
 | --- | --- |
 | `lib/` | Evaluation, normalization (`lib/eval-configuration.nix`), deployment composition and machine flake outputs (`lib/mk-flake.nix`: fixed names such as `#deployment`) |
 | `templates/machine/` | The flake and configuration `nacre install` writes for a new machine |
-| `roles/` | Baseline compositions at priority 1100, below host defaults |
-| `hosts/` | Identity and baselines, always via `lib.mkDefault` |
+| `roles/` | Baseline compositions at priority 1100, below a machine's `lib.mkDefault` baselines |
 | `platforms/<distro>/` | Native realization and its contribution interface (`platforms/arch/module.nix`); distro-specific code stays here so other distros can sit beside `arch/` |
 | `modules/` | Feature modules: each `module.nix` declares its options and contributes its own `arch.*` packages, groups and units (registry: `modules/default.nix`) |
-| `profiles/`, `homes/` | Home Manager composition |
+| `profiles/` | Shared Home Manager composition; personal dotfiles belong to machine flakes |
+| `checks/fixtures/` | The fixture machine behind checks, the container test and this flake's machine outputs |
 
 - Shared options live in `lib/configuration-options.nix`, feature options in their `module.nix`. Express single-value rules as option types and cross-field rules as entries in `lib/configuration-assertions.nix` (or a feature `interface.nix` for derived values). Precedence comes from `lib.mkDefault` baselines versus ordinary user definitions, never import order.
 - Deployment code reads merged contributions from the evaluated `arch` option; a new feature adds its native names there instead of wiring them through `lib/mk-deployment.nix`.
@@ -62,10 +62,10 @@ Format Nix with `nixfmt <files>` (or `find . -name '*.nix' -print0 | xargs -0 ni
 just check-fast
 just check
 just build
-nix build --no-link --show-trace --print-build-logs \
-  '.#homeConfigurations."abnertu@arch".activationPackage'
 git diff --check
 ```
+
+To verify a change against a real machine, build or plan from its machine flake with `nacre --override-input nacre path:<this checkout>`; never commit that override.
 
 These build without activating. For deployment or adapter changes, also run `just container-test` when podman is available: it deploys into a disposable container, never the host. Deployment, preparation, registration, package installation and service operations change live state and need the user's go-ahead. For documentation-only edits, run `nix build .#checks.x86_64-linux.source-lint` (relative links and anchors) and `git diff --check`.
 

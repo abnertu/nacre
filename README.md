@@ -57,7 +57,7 @@ nacre purge               # remove managed Arch state, skip Home Manager
 
 ## Configuration
 
-A machine's `configuration.nix` is its single entry point. A role sets the baseline, a host can refine it with `lib.mkDefault`, and plain definitions in `configuration.nix` win. This repository's own [configuration.nix](configuration.nix) and [hosts/arch](hosts/arch/default.nix) are its maintainer's machine, a full example.
+A machine's `configuration.nix` is its single entry point. A role sets the baseline, the machine can refine it with `lib.mkDefault`, and plain definitions in `configuration.nix` win. The [fixture machine](checks/fixtures/configuration.nix) enables every feature and serves as a full example.
 
 ```nix
 role = "workstation";
@@ -68,7 +68,7 @@ users.users.alice.home.programs.git.settings.init.defaultBranch = "main";
 Inspect a resolved value without activating:
 
 ```bash
-nix eval .#lib.configurations.arch.networking.hostname.name
+nix eval .#lib.configuration.networking.hostname.name
 ```
 
 See the [configuration guide](docs/configuration.md).

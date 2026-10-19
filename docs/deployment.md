@@ -1,6 +1,6 @@
 # Deployment and recovery
 
-Run from this checkout as the deployment user on `x86_64-linux` Arch. Prerequisites:
+Run from the machine flake's checkout (`~/.config/nacre`, which `nacre` finds by default) as the deployment user on `x86_64-linux` Arch. Prerequisites:
 
 - the account exists and is in `wheel`
 - native Nix, `yay` and the required commands are installed
@@ -11,13 +11,14 @@ Read [configuration](configuration.md), [system settings](system-settings.md) an
 
 ## Bootstrap
 
-On a fresh Arch install without Nix or just, run the bootstrap after cloning. It enables `[multilib]`, installs prerequisites, configures Nix and starts `nix-daemon.service`:
+On a fresh Arch install without Nix or just, run Nacre's bootstrap. It enables `[multilib]`, installs prerequisites, configures Nix and starts `nix-daemon.service`:
 
 ```bash
-git clone https://github.com/abnertu/nacre.git ~/.config/nacre
-cd ~/.config/nacre
-./scripts/bootstrap.sh
+git clone https://github.com/abnertu/nacre /tmp/nacre
+/tmp/nacre/scripts/bootstrap.sh
 ```
+
+Then create the machine flake with `nix run github:abnertu/nacre#nacre -- install` ([install guide](install.md)), or clone an existing one to `~/.config/nacre`.
 
 The bootstrap changes the host; read the script first.
 
@@ -32,6 +33,20 @@ mv ~/.config/nix ~/.config/nacre
 ```
 
 A checkout updated to 0.2.0 before that deployment needs `--extra-experimental-features 'nix-command flakes'` on its first `nix run .#nacre`. `nacre` still finds a checkout at either location.
+
+## Moving a machine out of a Nacre checkout
+
+Before 0.5.0 a machine could live inside a clone of Nacre: its `configuration.nix`, `hosts/` and `homes/`, plus the dotfiles the `workstation` profile projected from `files/home` (kitty, ghostty, cava, btop, fastfetch and others). 0.5.0 removes all of them. Move them into a machine flake:
+
+```bash
+mkdir ~/machine && cd ~/machine && git init
+cp ~/.config/nacre/templates/machine/flake.nix .
+cp -r ~/.config/nacre/{configuration.nix,hosts,homes} .   # before updating that clone
+git add -A
+nacre --flake ~/machine plan                               # only a new home generation
+```
+
+Restore the dotfiles you used from `git show v0.4.0:files/home/...` into the flake and project them from a home module ([configuration](configuration.md#users-and-homes)); applications that left the workstation baseline go into `packages.extra`. Then replace `~/.config/nacre` with the new flake and run `nacre switch`.
 
 ## Commands
 

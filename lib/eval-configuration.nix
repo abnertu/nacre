@@ -1,6 +1,6 @@
 {
   lib,
-  modules ? [ ../configuration.nix ],
+  modules,
 }:
 let
   evaluated = lib.evalModules {

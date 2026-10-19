@@ -1,11 +1,11 @@
 # Configuration
 
-A machine's flake passes its modules to `nacre.lib.mkFlake`; `nacre install` writes one with a single `configuration.nix`. In Nacre's own repository, `configuration.nix` overrides the selected host. The imported `hosts/arch` sets defaults with `lib.mkDefault`, so plain definitions in `configuration.nix` win; import order does not matter. Unknown options, wrong types and invalid combinations fail at evaluation.
+A machine's flake passes its modules to `nacre.lib.mkFlake`; `nacre install` writes one with a single `configuration.nix`. A machine may split itself into imported files that set baselines with `lib.mkDefault`, so plain definitions in `configuration.nix` win; import order does not matter. Unknown options, wrong types and invalid combinations fail at evaluation.
 
 ```nix
 { ... }:
 {
-  imports = [ ./hosts/arch ];
+  imports = [ ./hosts/box ];
   networking.firewall.enable = false;
   services.fstrim.enable = false;
   time.timeZone = "UTC";
@@ -15,8 +15,8 @@ A machine's flake passes its modules to `nacre.lib.mkFlake`; `nacre install` wri
 Inspect resolved values before building or activating:
 
 ```bash
-nix eval .#lib.configurations.arch.networking.hostname.name
-nix eval --json .#lib.configurations.arch.networking.firewall
+nix eval .#lib.configuration.networking.hostname.name
+nix eval --json .#lib.configuration.networking.firewall
 ```
 
 ## Roles
@@ -28,7 +28,7 @@ nix eval --json .#lib.configurations.arch.networking.firewall
 | `minimal` | Core system, shell and development tools; no graphical session |
 | `workstation` (default) | `minimal` plus the Hyprland desktop, Sunshine, Vesktop and Vicinae |
 
-Roles sit below host defaults, which sit below `configuration.nix`, so any value a role sets can be overridden. The deployment is named `<hostname>-<role>`, for example `arch-workstation`, and is also available as `#deployment`.
+Roles sit below the machine's `lib.mkDefault` baselines, which sit below plain definitions, so any value a role sets can be overridden. The deployment is named `<hostname>-<role>`, for example `arch-workstation`, and is also available as `#deployment`.
 
 ## Where to change things
 
@@ -54,6 +54,25 @@ AI models are selected under `programs.ai.llama.models.<inventory-key>`; read th
 
 ## Users and homes
 
-The host selects an existing login account with `deployment.username`; the account must exist before deployment. To switch users, change both the selected account and its declared identity, starting from [host users](../hosts/arch/users.nix). Shared home behavior belongs in `profiles/` or home modules, per-machine differences in `homes/` or the host. Service accounts belong to their modules and get no home. Keep Home Manager's `stateVersion` fixed through routine updates.
+The machine selects an existing login account with `deployment.username`; the account must exist before deployment. To switch users, change both the selected account and its entry in `users.users`. Service accounts belong to their modules and get no home. Keep Home Manager's `stateVersion` fixed through routine updates.
 
-After changes, run `just check-fast`, `just check` and `just build`.
+Nacre's profiles supply the shared home: shell, development tools and desktop theming. Personal settings and dotfiles come from the machine flake's own Home Manager modules:
+
+```nix
+users.users.alice.homeModules = [ ./homes/alice/home.nix ];
+```
+
+```nix
+# homes/alice/home.nix
+{
+  programs.git.settings.user.name = "Alice";
+  xdg.configFile.kitty = {
+    source = ./files/kitty;
+    recursive = true;
+  };
+}
+```
+
+Nacre's defaults use `lib.mkDefault`, so plain definitions in these modules win. Keep the Noctalia snapshot at `homes/<user>/noctalia/config.toml`, where `noctalia-config` and `nacre doctor` look for it.
+
+After changes, run `nacre build` and `nacre plan`.

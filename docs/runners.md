@@ -1,6 +1,6 @@
 # GitLab Runner
 
-Each Runner instance is a TOML file named after its environment: `hosts/arch/runners/frontend.toml` declares the `frontend` instance, run by the `gitlab-runner-frontend` account. Shared GitLab and network settings live in `common.toml`, which instance files reference with `extends`. `services.gitlabRunner.configFiles` lists the managed files; adding or removing a file adds or removes an instance. The format is described in the [runnerctl README](https://github.com/abnertu/gitlab-runner#configure).
+Each Runner instance is a TOML file named after its environment: `runners/frontend.toml` in the machine flake declares the `frontend` instance, run by the `gitlab-runner-frontend` account. Shared GitLab and network settings live in `common.toml`, which instance files reference with `extends`. `services.gitlabRunner.configFiles` lists the managed files; adding or removing a file adds or removes an instance. The format is described in the [runnerctl README](https://github.com/abnertu/gitlab-runner#configure).
 
 Each instance has its own service account, sub-UID/GID range, rootless Podman, manager container, user service and GitLab registration. `runnerctl` validates the file set, renders templates, configuration and user units, and owns account and runtime convergence, registration and token merging. It does not need Nix; this repository pins its version and passes the files. Tokens never enter Git or the store.
 

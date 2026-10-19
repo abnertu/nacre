@@ -50,11 +50,12 @@
     let
       mkFlake = import ./lib/mk-flake.nix { inherit inputs; };
       mkDeployment = import ./lib/mk-deployment.nix;
-      # The maintainer's machine: Nacre's reference configuration and CI subject.
-      machine = mkFlake { modules = [ ./configuration.nix ]; };
       # Checks and the container test use the fixture machine, which enables
-      # every feature, so they never depend on the maintainer's configuration.
+      # every feature, so they never depend on any real machine's configuration.
       fixture = ./checks/fixtures/configuration.nix;
+      # The fixture also supplies this flake's machine outputs (#nacre,
+      # #deployment): the shape every machine flake has, and what CI builds.
+      machine = mkFlake { modules = [ fixture ]; };
       d = mkDeployment {
         inherit inputs;
         modules = [ fixture ];
