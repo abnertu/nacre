@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 (2026-10-19)
+
+### Features
+
+- **config**: Let machines add packages and config sources (breaking)
+- **cli**: Pass --override-input to every Nix evaluation
+
+### Fixes
+
+- **system**: Converge UTC on a machine without /etc/localtime
+
+### Refactoring
+
+- **ai**: Remove Antigravity and the Obsidian vault skill (breaking)
+- **home**: Move personal dotfiles out of the workstation profile (breaking)
+- Remove the maintainer's machine from Nacre (breaking)
+
 ## 0.4.0 (2026-10-18)
 
 ### Features
