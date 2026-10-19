@@ -117,7 +117,8 @@ class BenchmarkTests(unittest.TestCase):
             "print('partial before timeout', flush=True)\n"
             "print('e' * 131072, file=sys.stderr, flush=True)\ntime.sleep(10)\n"
         )
-        self.assertEqual(self.cli("--timeout", "0.25"), 1)
+        # Long enough for the child to start on a slow runner; it sleeps for 10.
+        self.assertEqual(self.cli("--timeout", "3"), 1)
         row = json.loads(self.output.read_text())["rows"][0]
         self.assertIn("timed out", row["error"])
         self.assertIn("partial before timeout", row["stdout"])
