@@ -106,6 +106,10 @@ class Fake(FakeNative):
                 raise AssertionError(args)
         elif cmd == "timedatectl":
             if rest[0] == "set-timezone":
+                # timedated changes nothing when the zone already matches; a
+                # missing /etc/localtime already reads as UTC.
+                if rest[1] == self.zone:
+                    return FakeProcess(stdout=out, returncode=code)
                 self.zone = rest[1]
                 path = self.files.path("/etc/localtime", symlink_leaf=True)
                 path.unlink(missing_ok=True)
@@ -406,6 +410,19 @@ class SystemTests(unittest.TestCase):
         self.files.path("/usr/share/zoneinfo/Asia/Taipei").unlink()
         with self.assertRaises(Conflict):
             self.system.converge()
+
+    def test_utc_without_localtime_converges(self):
+        self.d["timeZone"] = "UTC"
+        self.write("/usr/share/zoneinfo/UTC", "fixture")
+        (self.root / "etc").mkdir(exist_ok=True)
+        self.system.converge()
+        self.assertEqual(
+            os.readlink(self.files.path("/etc/localtime", symlink_leaf=True)),
+            "../usr/share/zoneinfo/UTC",
+        )
+        self.native.calls.clear()
+        self.system.converge()
+        self.assertFalse(any("set-timezone" in call for call in self.native.calls))
 
     def test_timezone_failure_retains_marker(self):
         self.timezone()

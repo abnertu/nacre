@@ -293,6 +293,10 @@ class System(BaseAdapter[SystemManifest]):
             ):
                 f.mark("timezone")
                 set_timezone(zone, runner=self.native)
+                if not target.is_symlink() and not target.exists():
+                    # timedated changes nothing when the zone already matches,
+                    # and a missing /etc/localtime already reads as UTC.
+                    target.symlink_to(".." + expected)
                 self.actions += 1
                 if (
                     self.localtime() != zone
