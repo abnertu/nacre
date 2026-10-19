@@ -113,7 +113,7 @@ in
     type = types.listOf (types.strMatching "[a-z0-9@._+-]+");
     default = [ ];
     apply = lib.unique;
-    example = [ "kitty" ];
+    example = [ "ghostty" ];
     description = "Installed packages that update leaves at their current version, as with pacman's --ignore; missing ones still install.";
   };
   packages.extra = {

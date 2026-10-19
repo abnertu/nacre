@@ -1,0 +1,6 @@
+{
+    "discordBranch": "stable",
+    "minimizeToTray": true,
+    "autoStartMinimized": true,
+    "arRPC": true
+}

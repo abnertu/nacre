@@ -1,0 +1,7 @@
+[input]
+method = pipewire
+source = auto
+
+# Noctalia writes themes/noctalia from the wallpaper palette.
+[color]
+theme = "noctalia"

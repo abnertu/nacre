@@ -15,7 +15,6 @@ Home Manager owns each application's configuration; Noctalia owns its colors. Th
 
 | Application | Theme file Noctalia writes |
 | --- | --- |
-| Kitty | `kitty/themes/noctalia.conf` |
 | Ghostty | `ghostty/themes/noctalia` |
 | GTK 3 / 4 | `gtk-3.0/noctalia.css`, `gtk-4.0/noctalia.css` |
 | Qt (qt5ct / qt6ct, Fusion style) | `qt5ct/colors/noctalia.conf`, `qt6ct/colors/noctalia.conf` |
@@ -23,7 +22,7 @@ Home Manager owns each application's configuration; Noctalia owns its colors. Th
 | Vesktop | `vesktop/themes/noctalia*.css`, `discord-system24.css` |
 | Hyprland | `hypr/noctalia.lua` (only in a local worktree; the pinned config keeps its committed theme) |
 
-The templates are selected in the Noctalia snapshot. Theme files are not in the repository: on a new machine they appear once Noctalia first runs. Noctalia's Kitty hook cannot touch the read-only `kitty.conf`, so the `kitty-theme-reload` user path unit watches the theme file and signals running Kitty windows to reload.
+The templates are selected in the Noctalia snapshot. Theme files are not in the repository: on a new machine they appear once Noctalia first runs. Nacre's default Ghostty, btop and cava configurations already select the Noctalia theme, so Noctalia's hooks leave the read-only files alone and only reload running programs. A replacement configuration must select it too.
 
 ## Application settings
 

@@ -39,23 +39,7 @@ in
     # units keep running.
     startServices = "sd-switch";
 
-    # Noctalia's Kitty hook cannot touch the read-only kitty.conf, so running
-    # Kitty windows reload here when Noctalia rewrites their theme.
-    paths.kitty-theme-reload = {
-      Unit.Description = "Watch the Noctalia Kitty theme";
-      Path.PathChanged = "%h/.config/kitty/themes/noctalia.conf";
-      Install.WantedBy = [ "graphical-session.target" ];
-    };
-
     services = {
-      kitty-theme-reload = {
-        Unit.Description = "Reload running Kitty windows after a theme change";
-        # No running Kitty is not a failure.
-        Service = {
-          Type = "oneshot";
-          ExecStart = "-${bin "pkill"} --signal USR1 --exact kitty";
-        };
-      };
       hyprpolkitagent = lib.mkIf (capabilities.desktop.hyprpolkitagent.enable) {
         Unit = graphicalUnit // {
           Description = "Hyprland Polkit authentication agent";
@@ -163,7 +147,7 @@ in
     "vicinae/nix-managed.json" = lib.mkIf capabilities.programs.vicinae.enable {
       text = builtins.toJSON {
         providers.applications.entrypoints = {
-          kitty.preferences.defaultAction = "launch";
+          "com.mitchellh.ghostty".preferences.defaultAction = "launch";
           vesktop.preferences.defaultAction = "launch";
         };
       };

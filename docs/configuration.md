@@ -46,7 +46,7 @@ Roles sit below the machine's `lib.mkDefault` baselines, which sit below plain d
 
 A top-level switch controls the resources it owns. Disabling an Arch feature withdraws management only: packages, services, registrations and application data stay. Home Manager switches to the new generation as usual.
 
-`packages.hold` keeps installed packages at their version during `update`, for example `packages.hold = [ "kitty" ];` while an upgrade is broken. It works like pacman's `--ignore` for both repository and AUR packages: missing held packages still install, a manual `pacman -Syu` ignores the hold, and an upgrade whose dependencies need a newer held package fails resolution. Remove the entry to resume upgrades.
+`packages.hold` keeps installed packages at their version during `update`, for example `packages.hold = [ "ghostty" ];` while an upgrade is broken. It works like pacman's `--ignore` for both repository and AUR packages: missing held packages still install, a manual `pacman -Syu` ignores the hold, and an upgrade whose dependencies need a newer held package fails resolution. Remove the entry to resume upgrades.
 
 `boot.kernelModules` and `boot.kernel.sysctl` default to a container networking baseline (bridge modules, forwarding, BBR). Override one key, set it to `null` to withdraw it, or replace the module list with `lib.mkForce`.
 
@@ -56,7 +56,7 @@ AI models are selected under `programs.ai.llama.models.<inventory-key>`; read th
 
 The machine selects an existing login account with `deployment.username`; the account must exist before deployment. To switch users, change both the selected account and its entry in `users.users`. Service accounts belong to their modules and get no home. Keep Home Manager's `stateVersion` fixed through routine updates.
 
-Nacre's profiles supply the shared home: shell, development tools and desktop theming. Personal settings and dotfiles come from the machine flake's own Home Manager modules:
+Nacre's profiles supply the shared home: shell, development tools, desktop theming and default configurations for Ghostty, btop, cava, fastfetch, swappy, Vesktop and the Powerlevel10k prompt (`files/home`). Personal settings and dotfiles come from the machine flake's own Home Manager modules, which can also replace a default:
 
 ```nix
 users.users.alice.homeModules = [ ./homes/alice/home.nix ];
@@ -66,8 +66,8 @@ users.users.alice.homeModules = [ ./homes/alice/home.nix ];
 # homes/alice/home.nix
 {
   programs.git.settings.user.name = "Alice";
-  xdg.configFile.kitty = {
-    source = ./files/kitty;
+  xdg.configFile.ghostty = {
+    source = ./files/ghostty;
     recursive = true;
   };
 }

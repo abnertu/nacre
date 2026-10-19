@@ -1,0 +1,30 @@
+# Nacre's default terminal. Noctalia writes themes/noctalia and its hook
+# reloads every running window, since this file already selects that theme.
+theme = noctalia
+
+font-family = FiraCode Nerd Font
+font-size = 14
+adjust-cell-height = 10%
+
+# Hyprland tiles, decorates and sets terminal opacity.
+window-decoration = none
+window-padding-x = 6
+window-padding-y = 4
+window-padding-balance = true
+window-save-state = never
+resize-overlay = never
+
+cursor-style = bar
+mouse-hide-while-typing = true
+confirm-close-surface = false
+
+# One process serves every window, so new windows open at once. It lingers
+# briefly after the last window closes for the next one.
+gtk-single-instance = true
+quit-after-last-window-closed = true
+quit-after-last-window-closed-delay = 5m
+
+# sudo keeps the terminfo entry; ssh carries it to hosts that lack it.
+shell-integration-features = cursor,sudo,title,ssh-env,ssh-terminfo
+# Theme changes reload the config often; skip the toasts.
+app-notifications = false

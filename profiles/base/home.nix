@@ -5,6 +5,8 @@
   ...
 }:
 {
+  imports = [ ../../modules/home/shell-files.nix ];
+
   home.sessionPath = [
     "$HOME/.local/bin"
     "$HOME/go/bin"
