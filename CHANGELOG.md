@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 (2026-10-19)
+
+### Features
+
+- **home**: Ship default tool configurations and make Ghostty the terminal (breaking)
+- **arch**: Let machine flakes add adapters; drop Personal Agent and GitLab Runner (breaking)
+- **bootstrap**: Run from curl and continue into nacre install
+
 ## 0.5.0 (2026-10-19)
 
 ### Features
