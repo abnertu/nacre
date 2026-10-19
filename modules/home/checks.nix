@@ -92,9 +92,7 @@ in
       || home.config.xdg.configFile.hypr.recursive
       || ((user.development.hyprlandPath or null) != null);
     assert builtins.all (
-      name:
-      (!pkgs.lib.hasPrefix ".agents/skills/" name && !pkgs.lib.hasPrefix ".gemini/config/skills/" name)
-      || !home.config.home.file.${name}.recursive
+      name: !pkgs.lib.hasPrefix ".agents/skills/" name || !home.config.home.file.${name}.recursive
     ) (builtins.attrNames home.config.home.file);
     pkgs.writeText "home-projection-interface" "passed";
   home-development-mode =

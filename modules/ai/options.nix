@@ -127,12 +127,6 @@ in
   };
   # Graphical: installed only with the desktop.
   claudeDesktop.enable = enable "Claude Desktop";
-  agy = {
-    enable = enable "Antigravity (agy)";
-    pkg.enable = enable "the Antigravity CLI package (antigravity-cli)";
-    package.enable = enable "the Antigravity CLI package (antigravity-cli)";
-    skills.enable = enable "the Antigravity / Gemini skills";
-  };
   llama = {
     enable = lib.mkEnableOption "llama.cpp on a local GPU";
     maxLoadedModels = lib.mkOption {

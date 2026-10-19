@@ -100,11 +100,7 @@ in
       let
         claudeSkillsEnabled = config.claude.enable && config.claude.skills.enable;
         skills =
-          if
-            config.skillsPresets.enable
-            || (config.agy.enable && config.agy.skills.enable)
-            || claudeSkillsEnabled
-          then
+          if config.skillsPresets.enable || claudeSkillsEnabled then
             import ./skills.nix {
               inherit lib skillSources;
             }
@@ -112,31 +108,20 @@ in
             null;
         agentSkills =
           if config.skillsPresets.enable then
-            assert skills.validateCustom skills.agentCustomRoots;
-            lib.mapAttrs' (name: source: lib.nameValuePair ".agents/skills/${name}" { inherit source; }) (
-              skills.agentCustomRoots // skills.selected
-            )
-          else
-            { };
-        geminiSkills =
-          if skills != null && config.agy.enable && config.agy.skills.enable then
-            assert skills.validateCustom skills.geminiCustomRoots;
             lib.mapAttrs' (
-              name: source: lib.nameValuePair ".gemini/config/skills/${name}" { inherit source; }
-            ) (skills.geminiCustomRoots // skills.selected)
+              name: source: lib.nameValuePair ".agents/skills/${name}" { inherit source; }
+            ) skills.selected
           else
             { };
         claudeSkills =
           if claudeSkillsEnabled then
-            assert skills.validateCustom skills.agentCustomRoots;
-            lib.mapAttrs' (name: source: lib.nameValuePair ".claude/skills/${name}" { inherit source; }) (
-              skills.agentCustomRoots // skills.selected
-            )
+            lib.mapAttrs' (
+              name: source: lib.nameValuePair ".claude/skills/${name}" { inherit source; }
+            ) skills.selected
           else
             { };
       in
       agentSkills
-      // geminiSkills
       // claudeSkills
       // lib.optionalAttrs codexLocalProfileEnabled {
         ".codex/llama-cpp.config.toml" = {

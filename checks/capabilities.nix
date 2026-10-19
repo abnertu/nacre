@@ -43,7 +43,6 @@ let
     raw:
     builtins.sort builtins.lessThan (
       lib.intersectLists [
-        "antigravity-cli"
         "claude-code"
         "claude-desktop"
         "openai-codex-bin"
@@ -175,14 +174,9 @@ let
   missingSkillSource = builtins.tryEval (builtins.deepSeq missingSkillRegistry.selected true);
   agentSkillsOnly = ai {
     enable = true;
-    agy.enable = false;
+    claude.skills.enable = false;
   };
   claudeSkillsOnly = ai {
-    enable = true;
-    skillsPresets.enable = false;
-    agy.enable = false;
-  };
-  geminiSkillsOnly = ai {
     enable = true;
     skillsPresets.enable = false;
   };
@@ -193,7 +187,6 @@ let
       raw = lib.recursiveUpdate aiDefaults {
         enable = true;
         skillsPresets.enable = false;
-        agy.skills.enable = false;
         claude.skills.enable = false;
         codex.localProfile.enable = false;
       };
@@ -201,13 +194,9 @@ let
   };
   upstreamSkill = builtins.head (builtins.attrNames skillRegistry.roots);
   skills = lib.filterAttrs (name: _: lib.hasPrefix ".agents/skills/" name) home.config.home.file;
-  geminiSkills = lib.filterAttrs (
-    name: _: lib.hasPrefix ".gemini/config/skills/" name
-  ) home.config.home.file;
 in
 assert
   aiAur { enable = true; } == [
-    "antigravity-cli"
     "claude-code"
     "claude-desktop"
     "openai-codex-bin"
@@ -220,22 +209,12 @@ assert !(home.config.home.file ? ".codex/config.toml");
 assert lib.all (
   name: home.config.home.file.".agents/skills/${name}".source == skillRegistry.roots.${name}
 ) (builtins.attrNames skillRegistry.roots);
-assert lib.all (
-  name:
-  home.config.home.file.".agents/skills/${name}".source == skillRegistry.agentCustomRoots.${name}
-  &&
-    home.config.home.file.".gemini/config/skills/${name}".source
-    == skillRegistry.geminiCustomRoots.${name}
-) skillRegistry.custom;
 assert !unknownSkillSelection.success;
 assert !missingSkillSource.success;
 assert agentSkillsOnly.homeModule.home.file ? ".agents/skills/${upstreamSkill}";
-assert !(agentSkillsOnly.homeModule.home.file ? ".gemini/config/skills/${upstreamSkill}");
+assert !(agentSkillsOnly.homeModule.home.file ? ".claude/skills/${upstreamSkill}");
 assert claudeSkillsOnly.homeModule.home.file ? ".claude/skills/${upstreamSkill}";
-assert claudeSkillsOnly.homeModule.home.file ? ".claude/skills/obsidian-vault";
 assert !(claudeSkillsOnly.homeModule.home.file ? ".agents/skills/${upstreamSkill}");
-assert geminiSkillsOnly.homeModule.home.file ? ".gemini/config/skills/${upstreamSkill}";
-assert !(geminiSkillsOnly.homeModule.home.file ? ".agents/skills/${upstreamSkill}");
 assert skillsDisabledWithoutSources.homeModule.home.file == { };
 assert !(codexProfileOff.homeModule.home.file ? ".codex/llama-cpp.config.toml");
 assert !(codexOff.homeModule.home.file ? ".codex/llama-cpp.config.toml");
@@ -243,14 +222,6 @@ assert !(llamaOff.homeModule.home.file ? ".codex/llama-cpp.config.toml");
 assert
   aiAur {
     enable = true;
-    codex.enable = false;
-    claude.enable = false;
-    claudeDesktop.enable = false;
-  } == [ "antigravity-cli" ];
-assert
-  aiAur {
-    enable = true;
-    agy.pkg.enable = false;
     claude.enable = false;
     claudeDesktop.enable = false;
   } == [ "openai-codex-bin" ];
@@ -258,7 +229,6 @@ assert
   aiAur {
     enable = true;
     codex.enable = false;
-    agy.pkg.enable = false;
   } == [
     "claude-code"
     "claude-desktop"
@@ -275,7 +245,6 @@ assert
   (ai {
     enable = true;
     skillsPresets.enable = false;
-    agy.skills.enable = false;
     claude.skills.enable = false;
     codex.localProfile.enable = false;
   }).homeModule.home.file == { };
@@ -337,7 +306,7 @@ assert lib.all (module: !(validConfig module)) [
 assert !(validAi { enable = "true"; }) && !(validAi { typo = true; });
 assert !(validAi { codex.enabel = true; });
 assert !(validAi { codex.localProfile.enable = "true"; });
-assert !(validAi { agy.enabel = true; });
+assert !(validAi { claude.enabel = true; });
 assert !(validAi { llama.proxy.httpsPort = 0; });
 assert !(validAi { llama.model.microBatchSize = 4096; });
 assert !(validAi { llama.model.name = "unknown"; });
@@ -462,13 +431,8 @@ assert !(builtins.elem "llama-cpp" baseline.pacman) && !(builtins.elem "caddy" b
 assert
   lib.filterAttrs (name: _: lib.hasPrefix ".agents/skills/" name) homeDisabled.config.home.file
   == { };
-assert
-  lib.filterAttrs (name: _: lib.hasPrefix ".gemini/config/skills/" name) homeDisabled.config.home.file
-  == { };
 assert skills != { };
 assert lib.all (file: !file.recursive) (builtins.attrValues skills);
-assert geminiSkills != { };
-assert lib.all (file: !file.recursive) (builtins.attrValues geminiSkills);
 pkgs.runCommand "capabilities-check" { nativeBuildInputs = [ pkgs.python3 ]; } ''
     python3 - ${selectedModelsArch.manifest} \
       ${codexProfileText "codex-default" codexProfile} \

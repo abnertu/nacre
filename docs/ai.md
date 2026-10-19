@@ -54,7 +54,6 @@ With `programs.ai.enable`, the AI module installs these AUR packages, each with 
 | Claude Code (`claude-code`) | `programs.ai.claude.enable` |
 | Claude Desktop (`claude-desktop`, only with the desktop) | `programs.ai.claudeDesktop.enable` |
 | Codex (`openai-codex-bin`) | `programs.ai.codex.enable` |
-| Antigravity CLI (`antigravity-cli`) | `programs.ai.agy.pkg.enable` |
 
 New packages arrive with `nacre update`; until then a routine switch stops with exit code 3.
 
@@ -64,12 +63,11 @@ Home Manager installs explicitly selected skills, including all of Matt Pocock's
 
 - `~/.agents/skills` follows `programs.ai.enable` and `programs.ai.skillsPresets.enable`;
 - `~/.claude/skills` follows `programs.ai.claude.enable` and `programs.ai.claude.skills.enable`;
-- `~/.gemini/config/skills` follows `programs.ai.agy.enable` and `programs.ai.agy.skills.enable`;
 - none depends on llama.cpp preparation.
 
 A skill installed both here and as a Claude Code plugin (such as `mattpocock-skills`) appears twice; keep one source.
 
-Sources and the selection live in [`modules/ai/skills.nix`](../modules/ai/skills.nix). The `matt-pocock-skills` and `vercel-skills` inputs are pinned in `flake.lock`; custom skills stay in this repository. Deployment uses the prebuilt sources from the activation package: no `npx`, no download at activation, no Skills CLI lock file.
+Sources and the selection live in [`modules/ai/skills.nix`](../modules/ai/skills.nix). The `matt-pocock-skills` and `vercel-skills` inputs are pinned in `flake.lock`. Deployment uses the prebuilt sources from the activation package: no `npx`, no download at activation, no Skills CLI lock file.
 
 Update skill sources after reviewing upstream changes:
 
@@ -79,7 +77,7 @@ just check
 just build
 ```
 
-Then deploy and commit the lock change; revert the lock to roll back. `nacre update` handles native packages only and never advances skills. A selected upstream path that disappears or lacks `SKILL.md` fails evaluation, so updates never drop a skill silently. Fork an upstream skill into a custom one before modifying it; `npx skills update` would fight the managed links.
+Then deploy and commit the lock change; revert the lock to roll back. `nacre update` handles native packages only and never advances skills. A selected upstream path that disappears or lacks `SKILL.md` fails evaluation, so updates never drop a skill silently. Skill directories are read-only links; `npx skills update` would fight them.
 
 ## Codex local profile
 

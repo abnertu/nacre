@@ -37,16 +37,11 @@ let
     "writing-shape" = "skills/in-progress/writing-shape";
     "writing-for-agents" = "skills/productivity/writing-for-agents";
   };
-  custom = [
-    "obsidian-vault"
-  ];
   sourceFor = name: path: if name == "find-skills" then vercel + "/${path}" else matt + "/${path}";
   registry = upstream // {
     "find-skills" = "skills/find-skills";
   };
   roots = lib.mapAttrs (name: path: sourceFor name path) registry;
-  agentCustomRoots = lib.genAttrs custom (name: ../../files/home/.agents/skills + "/${name}");
-  geminiCustomRoots = lib.genAttrs custom (name: ../../files/home/.gemini/config/skills + "/${name}");
   allNames = builtins.attrNames roots;
   resolveSource =
     name: source:
@@ -64,24 +59,9 @@ let
     else
       resolveSource name (if name == "find-skills" then vercel else matt);
 in
-assert lib.assertMsg (lib.all (
-  name: !(builtins.elem name allNames)
-) custom) "AI skill registry overlaps retained custom skills";
 {
-  inherit custom registry roots;
+  inherit registry roots;
   inherit resolve resolveSource;
-  inherit agentCustomRoots geminiCustomRoots;
-  validateCustom =
-    roots':
-    lib.all (
-      name:
-      let
-        source = roots'.${name};
-      in
-      lib.assertMsg (builtins.pathExists (
-        source + "/SKILL.md"
-      )) "retained custom AI skill '${name}' is missing SKILL.md at ${toString source}/SKILL.md"
-    ) custom;
   selected = builtins.listToAttrs (
     map (name: {
       inherit name;
