@@ -91,35 +91,50 @@ class OptionalLifecycleTests(unittest.TestCase):
         self.assertTrue(adapter_calls)
         self.assertTrue(all(call[-1] == "--verbose" for call in adapter_calls))
 
-    def test_unprepared_personal_agent_is_skipped(self):
-        self.state["personal_agent_not_ready"] = True
-        self.save()
-        result = self.invoke()
-        self.assertIn("SKIP optional module personal-agent:", result.stderr)
-        calls = [
-            call
-            for call in self.commands()
-            if call[:2] == ["python", "/fixture/personal-agent-adapter"]
-        ]
-        self.assertEqual(
-            calls,
-            [
+    def extension_phases(self):
+        prefix = ["python", "/fixture/extension-adapter", "/fixture/extension-manifest"]
+        return [call[3] for call in self.commands() if call[:3] == prefix]
+
+    def test_extension_waits_for_its_required_module_and_preparation(self):
+        for key, phases, reason in (
+            ("ai_not_ready", [], "ai is not ready"),
+            ("extension_not_ready", ["preflight"], "fixture service is not prepared"),
+        ):
+            with self.subTest(key=key):
+                (self.root / "commands.jsonl").unlink(missing_ok=True)
+                self.state = {"groups": ["wheel"], key: True}
+                self.save()
+                result = self.invoke()
+                self.assertIn(
+                    f"SKIP optional module fixture-service: {reason}", result.stderr
+                )
+                self.assertEqual(self.extension_phases(), phases)
+
+    def test_ready_extension_plans_and_converges_after_ai(self):
+        self.invoke("--plan")
+        self.assertEqual(self.extension_phases(), ["preflight", "plan"])
+        (self.root / "commands.jsonl").unlink()
+        self.invoke()
+        self.assertEqual(self.extension_phases(), ["preflight", "converge"])
+        calls = self.commands()
+        self.assertLess(
+            calls.index(
+                ["python", "/fixture/ai-adapter", "/fixture/ai-manifest", "converge"]
+            ),
+            calls.index(
                 [
                     "python",
-                    "/fixture/personal-agent-adapter",
-                    "/fixture/personal-agent-manifest",
-                    "preflight",
+                    "/fixture/extension-adapter",
+                    "/fixture/extension-manifest",
+                    "converge",
                 ]
-            ],
+            ),
         )
 
     def test_ready_module_cannot_become_a_skip_during_convergence(self):
         for key, label in (
             ("ai_converge_not_ready", "AI preparation changed after preflight"),
-            (
-                "personal_agent_converge_not_ready",
-                "Personal Agent configuration changed after preflight",
-            ),
+            ("extension_converge_not_ready", "fixture-service changed after preflight"),
         ):
             with self.subTest(key=key):
                 self.state[key] = True

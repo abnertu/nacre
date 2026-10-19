@@ -48,7 +48,6 @@ Source
 
 Features
   ai prepare [build|model] prepare the pinned llama.cpp build and models
-  runner ACTION NAME       ACTION: prepare, register, verify, status
   noctalia ACTION [ARGS]   ACTION: capture, deploy
 
 The checkout is --flake, else $NACRE_FLAKE, else ~/.config/nacre or ~/.config/nix.
@@ -688,19 +687,6 @@ def run(argv: list[str]) -> int:
         if mode not in modes:
             raise Usage
         nacre.nix_root("NO_COLOR", "run", nacre.target("llama-prepare"), *modes[mode])
-    if command == "runner" and len(args) == 2:
-        actions = {"prepare": "reconcile", "register": "register"}
-        actions |= {"verify": "verify", "status": "status"}
-        if args[0] not in actions:
-            raise Usage
-        preserve = "NO_COLOR"
-        if args[0] == "register":
-            if not os.environ.get("GITLAB_RUNNER_TOKEN"):
-                raise Refusal("GITLAB_RUNNER_TOKEN is required to register")
-            preserve = "GITLAB_RUNNER_TOKEN,NO_COLOR"
-        nacre.nix_root(
-            preserve, "run", nacre.target("runnerctl"), "--", actions[args[0]], args[1]
-        )
     if command == "noctalia" and args[:1] in (["capture"], ["deploy"]):
         nacre.nix("run", nacre.target("noctalia-config"), "--", *args)
     raise Usage

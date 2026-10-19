@@ -195,7 +195,6 @@ in
     fstrim.enable = enable "the native no-catch-up TRIM timer";
     powerProfilesDaemon.enable = enable "power-profiles-daemon";
     tailscale.enable = enable "Tailscale";
-    personalAgent.enable = lib.mkEnableOption "the Personal Agent system service";
   };
   # Off by default; the workstation role enables them.
   programs = lib.genAttrs [ "sunshine" "vesktop" "vicinae" ] (name: {

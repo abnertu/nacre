@@ -24,6 +24,55 @@ in
     groups = names "Groups the deployment user must belong to.";
     systemUnits = names "System units to enable and keep active.";
     userServices = names "Packaged user units to enable for the deployment user.";
+    extensions = mkOption {
+      default = { };
+      description = ''
+        Optional privileged adapters that a machine flake adds, such as a
+        service of its own. arch-switch runs each one like a built-in optional
+        module: preflight, convergence, plan and purge, skipped as not ready
+        until its preparation has completed.
+      '';
+      type = types.attrsOf (
+        types.submodule {
+          options = {
+            label = mkOption {
+              type = types.str;
+              description = "Name shown in progress and skip messages.";
+            };
+            adapter = mkOption {
+              type = types.path;
+              description = "Python adapter run as `adapter MANIFEST PHASE`; it exits 20 while not prepared.";
+            };
+            manifest = mkOption {
+              type = types.attrsOf types.anything;
+              description = "Manifest passed to the adapter as JSON.";
+            };
+            requires = mkOption {
+              type = types.listOf (types.enum [ "ai" ]);
+              default = [ ];
+              description = "Built-in optional modules that must be ready first.";
+            };
+            notReady = mkOption {
+              type = types.str;
+              default = "preparation has not completed";
+              description = "Skip reason while the adapter reports not ready.";
+            };
+            ownedUnits = mkOption {
+              type = types.listOf (
+                types.submodule {
+                  options = {
+                    unit = mkOption { type = types.str; };
+                    path = mkOption { type = types.str; };
+                  };
+                }
+              );
+              default = [ ];
+              description = "System units in /etc/systemd/system that purge retires.";
+            };
+          };
+        }
+      );
+    };
   };
 
   config.arch = {

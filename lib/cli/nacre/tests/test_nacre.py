@@ -127,17 +127,6 @@ class NacreTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("no home generation", result.stderr)
 
-    def test_runner_registration_requires_a_token(self):
-        result = self.run_nacre("runner", "register", "frontend")
-        self.assertEqual(result.returncode, 2)
-        self.assertEqual(self.recorded(), [])
-        self.run_nacre("runner", "register", "frontend", GITLAB_RUNNER_TOKEN="x")
-        call = self.recorded()[-1]
-        self.assertIn("--preserve-env=GITLAB_RUNNER_TOKEN,NO_COLOR", call)
-        self.assertTrue(call.endswith("-- register frontend"))
-        self.run_nacre("runner", "prepare", "frontend")
-        self.assertTrue(self.recorded()[-1].endswith("-- reconcile frontend"))
-
     def test_changes_lists_package_events_since_the_last_update(self):
         log = self.root / "var/log/pacman.log"
         log.parent.mkdir(parents=True)

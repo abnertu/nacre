@@ -36,7 +36,7 @@ Roles sit below the machine's `lib.mkDefault` baselines, which sit below plain d
 | --- | --- |
 | Network, hotspot, firewall, hostname | `networking` |
 | Locale, timezone, console | `i18n`, `time`, `console` |
-| Native services, AI, Runners, Personal Agent | `services`, `programs.ai` |
+| Native services, AI | `services`, `programs.ai` |
 | Hardware and virtualization | `hardware`, `virtualization` |
 | Kernel modules and parameters | `boot.kernelModules`, `boot.kernel.sysctl` |
 | Nix daemon settings (`/etc/nix/nix.conf` managed block) | `nix.settings` |
@@ -76,3 +76,36 @@ users.users.alice.homeModules = [ ./homes/alice/home.nix ];
 Nacre's defaults use `lib.mkDefault`, so plain definitions in these modules win. Keep the Noctalia snapshot at `homes/<user>/noctalia/config.toml`, where `noctalia-config` and `nacre doctor` look for it.
 
 After changes, run `nacre build` and `nacre plan`.
+
+## Machine extensions
+
+A machine flake can add features Nacre does not ship: its own modules for packages and units, and privileged adapters that run like Nacre's optional modules. A module may contribute to `arch.pacman`, `arch.aur`, `arch.groups`, `arch.systemUnits` and `arch.userServices`, and register an adapter under `arch.extensions`:
+
+```nix
+# modules/my-service.nix in the machine flake: the flake passes its input
+{ my-service }:
+{ config, lib, ... }:
+{
+  options.services.myService.enable = lib.mkEnableOption "my service";
+  config = lib.mkIf config.services.myService.enable {
+    arch.pacman = [ "podman" ];
+    arch.extensions.my-service = {
+      label = "my-service";
+      adapter = ./adapter.py;           # run as: adapter MANIFEST PHASE
+      manifest.executable = "${my-service.packages.x86_64-linux.default}/bin/my-service";
+      requires = [ "ai" ];              # skipped until local AI is prepared
+      notReady = "run my-service-setup first";
+      ownedUnits = [ { unit = "my-service.service"; path = "/etc/systemd/system/my-service.service"; } ];
+    };
+  };
+}
+```
+
+The adapter receives the manifest as a JSON file and a phase (`preflight`, `plan`, `converge`), runs as root, and exits 20 while its preparation has never completed; [nix-adapter](https://github.com/abnertu/nix-adapter) provides the base classes Nacre's own adapters use. Extensions converge after Nacre's optional modules; purge retires their `ownedUnits`. A flake input the module needs (a package, for example) reaches it from `flake.nix`, which can also publish the machine's own packages, apps and checks:
+
+```nix
+outputs = { nacre, my-service, ... }: nacre.lib.mkFlake {
+  modules = [ ./configuration.nix (import ./modules/my-service.nix { inherit my-service; }) ];
+  extraOutputs.checks.x86_64-linux.my-service = ...;
+};
+```

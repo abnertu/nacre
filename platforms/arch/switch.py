@@ -33,11 +33,21 @@ class Adapter(TypedDict):
     manifest: str
 
 
+class Extension(TypedDict):
+    """A machine-provided optional adapter: platforms/arch/module.nix."""
+
+    name: str
+    label: str
+    requires: list[str]
+    notReady: str
+
+
 class Config(TypedDict):
     fsRoot: str
     nativeBin: str
     adapterPython: str
     adapters: dict[str, Adapter]
+    extensions: list[Extension]
     lizardbyteConf: str
     curl: str
     tar: str
@@ -143,6 +153,19 @@ class Switch:
             raise Failure(f"{description} changed after preflight; deployment stopped")
         if status != 0:
             raise Failure("", status)
+
+    def extensions_preflight(self, ready: dict[str, bool]) -> list[str]:
+        """Preflight each extension whose requirements are ready; return the ready ones."""
+        prepared: list[str] = []
+        for extension in self.config["extensions"]:
+            missing = [name for name in extension["requires"] if not ready[name]]
+            if missing:
+                self.skip(extension["label"], f"{', '.join(missing)} is not ready")
+            elif self.optional_preflight(
+                extension["name"], extension["label"], extension["notReady"]
+            ):
+                prepared.append(extension["name"])
+        return prepared
 
     def check_kernel(self) -> None:
         if not (self.root / "usr/lib/modules" / self.kernel).is_dir():
@@ -340,20 +363,15 @@ class Switch:
                 )
             self.require("core", "plan")
             self.require("system", "plan")
-            if self.optional_preflight(
+            ai_ready = self.optional_preflight(
                 "ai",
                 "ai",
                 "llama.cpp build/model is not prepared; run 'nacre ai prepare'",
-            ):
+            )
+            if ai_ready:
                 self.require("ai", "plan")
-                if self.optional_preflight(
-                    "personalAgent",
-                    "personal-agent",
-                    "runtime configuration is not prepared",
-                ):
-                    self.require("personalAgent", "plan")
-            else:
-                self.skip("personal-agent", "local inference is not ready")
+            for name in self.extensions_preflight({"ai": ai_ready}):
+                self.require(name, "plan")
             for service in self.config["userServices"]:
                 if not self.user_service_enabled(service):
                     self.plan_line("~", f"enable user service {service}")
@@ -401,15 +419,7 @@ class Switch:
                 "ai",
                 "llama.cpp build/model is not prepared; run 'nacre ai prepare'",
             )
-            agent_ready = False
-            if not ai_ready:
-                self.skip("personal-agent", "local inference is not ready")
-            else:
-                agent_ready = self.optional_preflight(
-                    "personalAgent",
-                    "personal-agent",
-                    "runtime configuration is not prepared",
-                )
+            extensions = self.extensions_preflight({"ai": ai_ready})
 
         self.native("sudo", "-v")
         if update:
@@ -448,8 +458,9 @@ class Switch:
         with step("Converge optional modules"):
             if ai_ready:
                 self.optional_converge("ai", "AI preparation")
-            if agent_ready:
-                self.optional_converge("personalAgent", "Personal Agent configuration")
+            labels = {e["name"]: e["label"] for e in c["extensions"]}
+            for name in extensions:
+                self.optional_converge(name, labels[name])
 
         with step("Finish runtime convergence"):
             self.require("core", "finish")

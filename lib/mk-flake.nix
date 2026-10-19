@@ -1,10 +1,14 @@
 # Flake outputs for one machine. Nacre's own flake applies this to its
-# configuration; a machine's flake calls
+# fixture; a machine's flake calls
 #   nacre.lib.mkFlake { modules = [ ./configuration.nix ]; }
 # Every machine exposes the same attribute names, so one nacre command works
-# with any of them.
+# with any of them. extraOutputs adds the machine's own packages, apps and
+# checks; Nacre's names win on a clash.
 { inputs }:
-{ modules }:
+{
+  modules,
+  extraOutputs ? { },
+}:
 let
   d = import ./mk-deployment.nix { inherit inputs modules; };
   inherit (d) lib system;
@@ -14,14 +18,13 @@ let
     meta = { inherit description; };
   };
 in
-{
+lib.recursiveUpdate extraOutputs {
   homeConfigurations = d.homes;
   # A queryable normalized configuration, not a NixOS system.
   lib = {
     configuration = d.configuration.config;
     configurations.${d.host.name} = d.configuration.config;
     inherit (d) deploymentName;
-    runnerctlEnabled = d.runners.packages != { };
   };
 
   packages.${system} = {
@@ -35,8 +38,7 @@ in
     ${d.deploymentName} = d.deployment;
     default = d.nacre;
   }
-  // lib.optionalAttrs d.noctaliaEnabled { inherit (d) noctalia-config; }
-  // d.runners.packages;
+  // lib.optionalAttrs d.noctaliaEnabled { inherit (d) noctalia-config; };
 
   apps.${system} = {
     nacre = app d.nacre "Install, plan, switch and inspect this machine";
@@ -48,6 +50,5 @@ in
   }
   // lib.optionalAttrs d.noctaliaEnabled {
     noctalia-config = app d.noctalia-config "Capture or deploy reviewed Noctalia preferences";
-  }
-  // d.runners.apps;
+  };
 }

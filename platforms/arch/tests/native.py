@@ -31,10 +31,7 @@ ADAPTERS = {
     "/fixture/core-adapter": ("/fixture/core-manifest", None),
     "/fixture/system-adapter": ("/fixture/system-manifest", None),
     "/fixture/ai-adapter": ("/fixture/ai-manifest", "ai"),
-    "/fixture/personal-agent-adapter": (
-        "/fixture/personal-agent-manifest",
-        "personal_agent",
-    ),
+    "/fixture/extension-adapter": ("/fixture/extension-manifest", "extension"),
 }
 
 if command == "python":

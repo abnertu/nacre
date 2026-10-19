@@ -32,8 +32,6 @@ let
       inherit lib;
       modules = [
         ./fixtures/configuration.nix
-        # Runners also need podman; keep feature contributions separable.
-        { services.gitlabRunner.enable = false; }
         extra
       ];
     };

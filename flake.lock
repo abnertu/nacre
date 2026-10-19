@@ -1,28 +1,5 @@
 {
   "nodes": {
-    "gitlab-runner": {
-      "inputs": {
-        "nix-adapter": [
-          "nix-adapter"
-        ],
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1792290782,
-        "narHash": "sha256-4QWcvdrTFfWNnaenvL4DoMAe+NfQs68foJQ9ZGFSMvc=",
-        "owner": "abnertu",
-        "repo": "gitlab-runner",
-        "rev": "388da4f9eb53468ca2275cfd6cfd94566cdefd92",
-        "type": "github"
-      },
-      "original": {
-        "owner": "abnertu",
-        "repo": "gitlab-runner",
-        "type": "github"
-      }
-    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -128,115 +105,15 @@
         "type": "github"
       }
     },
-    "personal-agent": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "pyproject-build-systems": "pyproject-build-systems",
-        "pyproject-nix": "pyproject-nix",
-        "uv2nix": "uv2nix"
-      },
-      "locked": {
-        "lastModified": 1791269982,
-        "narHash": "sha256-T+S29ZO5B+36nD3aTv9jtcaSztQaTOgqxjQcafWHQhM=",
-        "owner": "abnertu",
-        "repo": "personal-agent",
-        "rev": "43c58eb7891c370ab2a4630a6d29c6bb7dd3c919",
-        "type": "github"
-      },
-      "original": {
-        "owner": "abnertu",
-        "repo": "personal-agent",
-        "type": "github"
-      }
-    },
-    "pyproject-build-systems": {
-      "inputs": {
-        "nixpkgs": [
-          "personal-agent",
-          "nixpkgs"
-        ],
-        "pyproject-nix": [
-          "personal-agent",
-          "pyproject-nix"
-        ],
-        "uv2nix": [
-          "personal-agent",
-          "uv2nix"
-        ]
-      },
-      "locked": {
-        "lastModified": 1789356010,
-        "narHash": "sha256-Oj0KSZSEaGeYMXFFc2u7eb9Pqw0zcpU8/wJFLRRuD5c=",
-        "owner": "pyproject-nix",
-        "repo": "build-system-pkgs",
-        "rev": "e97f24221b3e1b9a6b492a7137b499031be6f078",
-        "type": "github"
-      },
-      "original": {
-        "owner": "pyproject-nix",
-        "repo": "build-system-pkgs",
-        "type": "github"
-      }
-    },
-    "pyproject-nix": {
-      "inputs": {
-        "nixpkgs": [
-          "personal-agent",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1788394333,
-        "narHash": "sha256-xYOP0Xym1eVGUaHFx+eJEaycFGoiCbst3fZf0xFHP78=",
-        "owner": "pyproject-nix",
-        "repo": "pyproject.nix",
-        "rev": "6a8a7881d75b6f98967e7b8069f4ead331384301",
-        "type": "github"
-      },
-      "original": {
-        "owner": "pyproject-nix",
-        "repo": "pyproject.nix",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
-        "gitlab-runner": "gitlab-runner",
         "home-manager": "home-manager",
         "hypr-config": "hypr-config",
         "matt-pocock-skills": "matt-pocock-skills",
         "nix-adapter": "nix-adapter",
         "nixpkgs": "nixpkgs",
         "nvim-config": "nvim-config",
-        "personal-agent": "personal-agent",
         "vercel-skills": "vercel-skills"
-      }
-    },
-    "uv2nix": {
-      "inputs": {
-        "nixpkgs": [
-          "personal-agent",
-          "nixpkgs"
-        ],
-        "pyproject-nix": [
-          "personal-agent",
-          "pyproject-nix"
-        ]
-      },
-      "locked": {
-        "lastModified": 1789383061,
-        "narHash": "sha256-+DkygIVr/+RtXnsjd07BzFFB0ihwmjjLuYh1fyc/bCg=",
-        "owner": "pyproject-nix",
-        "repo": "uv2nix",
-        "rev": "079be4e68c529c4cbc44dbf1afc692e4b30695b3",
-        "type": "github"
-      },
-      "original": {
-        "owner": "pyproject-nix",
-        "repo": "uv2nix",
-        "type": "github"
       }
     },
     "vercel-skills": {

@@ -10,10 +10,6 @@
   systemSettings,
   aiConfig ? null,
   aiArtifacts ? null,
-  personalAgentPackage ? null,
-  personalAgentConfig ? {
-    enable = false;
-  },
   sysctl ? { },
   kernelModules ? [ ],
   nixSettings ? { },
@@ -44,6 +40,7 @@ let
       nixSettings
       powerpanel
       ;
+    ownedUnits = lib.concatMap (extension: extension.ownedUnits) (builtins.attrValues arch.extensions);
   };
   # Without llama.cpp the AI adapter manages nothing; it gets the unmanaged manifest.
   ai =
@@ -56,15 +53,6 @@ let
         artifacts = aiArtifacts;
         tailscale = capabilities.tailscale;
       };
-  personalAgent =
-    if personalAgentPackage == null then
-      null
-    else
-      import ./personal-agent {
-        inherit pkgs;
-        package = personalAgentPackage;
-        config = personalAgentConfig;
-      };
   # One manifest per adapter; checks validate them against the Python schemas.
   manifests = {
     core = core.manifestFile;
@@ -74,12 +62,10 @@ let
         pkgs.writeText "unmanaged-ai.json" (builtins.toJSON { llama = false; })
       else
         ai.manifest;
-    personalAgent =
-      if personalAgent == null then
-        pkgs.writeText "unmanaged-personal-agent.json" (builtins.toJSON { enabled = false; })
-      else
-        personalAgent.manifest;
-  };
+  }
+  // lib.mapAttrs (
+    name: extension: pkgs.writeText "arch-${name}.json" (builtins.toJSON extension.manifest)
+  ) arch.extensions;
 in
 (pkgs.runCommand "arch-switch"
   {
@@ -102,11 +88,16 @@ in
           adapter = "${source "ai"}/adapter.py";
           manifest = manifests.ai;
         };
-        personalAgent = {
-          adapter = "${./personal-agent/adapter.py}";
-          manifest = manifests.personalAgent;
-        };
-      };
+      }
+      // lib.mapAttrs (name: extension: {
+        adapter = "${extension.adapter}";
+        manifest = manifests.${name};
+      }) arch.extensions;
+      # Machine-provided optional adapters, run after the built-in ones.
+      extensions = lib.mapAttrsToList (name: extension: {
+        inherit name;
+        inherit (extension) label requires notReady;
+      }) arch.extensions;
       lizardbyteConf = "${./files/pacman-lizardbyte.conf}";
       curl = "${pkgs.curl}/bin/curl";
       tar = "${pkgs.libarchive}/bin/bsdtar";

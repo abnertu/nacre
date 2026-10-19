@@ -12,6 +12,7 @@
   kernelModules ? [ ],
   nixSettings ? { },
   powerpanel ? null,
+  ownedUnits ? [ ],
 }:
 let
   files = ../files;
@@ -132,13 +133,8 @@ let
     purge = {
       # Initramfs modules stay: withdrawing them would require new boot images.
       blocks = [ nixBlock ];
-      # Purge also retires units that a disabled module may have left behind.
-      ownedUnits = [
-        {
-          unit = "personal-agent.service";
-          path = "/etc/systemd/system/personal-agent.service";
-        }
-      ];
+      # Units of machine-provided extensions, retired after their adapters purge.
+      inherit ownedUnits;
     };
   };
 in

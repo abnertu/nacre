@@ -2,7 +2,7 @@
 
 Nacre: an operator-controlled Nix layer over existing Arch Linux + Hyprland machines. Each machine is its own flake that calls `nacre.lib.mkFlake`; this repository holds no real machine, and `checks/fixtures` is the reference machine that enables every feature. Nix evaluates typed policy into a fixed deployment artifact, Arch adapters reconcile live state, then the prebuilt Home Manager generation activates. Read [CONTEXT.md](CONTEXT.md) before changing composition, and the feature's guide in [`docs/`](docs/) before editing that feature.
 
-**Never read or print credentials, private keys, password stores, Runner tokens, Noctalia keys or mutable application data.** Keep them out of Git, derivations, command arguments and unredacted logs; tests use synthetic fixtures.
+**Never read or print credentials, private keys, password stores, registration tokens, Noctalia keys or mutable application data.** Keep them out of Git, derivations, command arguments and unredacted logs; tests use synthetic fixtures.
 
 ## Ownership
 
@@ -13,7 +13,7 @@ Each resource has exactly one owner:
 | `lib/` | Evaluation, normalization (`lib/eval-configuration.nix`), deployment composition and machine flake outputs (`lib/mk-flake.nix`: fixed names such as `#deployment`) |
 | `templates/machine/` | The flake and configuration `nacre install` writes for a new machine |
 | `roles/` | Baseline compositions at priority 1100, below a machine's `lib.mkDefault` baselines |
-| `platforms/<distro>/` | Native realization and its contribution interface (`platforms/arch/module.nix`); distro-specific code stays here so other distros can sit beside `arch/` |
+| `platforms/<distro>/` | Native realization and its contribution interface (`platforms/arch/module.nix`, including `arch.extensions` for adapters a machine flake adds); distro-specific code stays here so other distros can sit beside `arch/` |
 | `modules/` | Feature modules: each `module.nix` declares its options and contributes its own `arch.*` packages, groups and units (registry: `modules/default.nix`) |
 | `profiles/` | Shared Home Manager composition; personal dotfiles belong to machine flakes |
 | `checks/fixtures/` | The fixture machine behind checks, the container test and this flake's machine outputs |
@@ -32,8 +32,8 @@ Each resource has exactly one owner:
 - Core failures stop immediately. An optional module may skip as `not ready` only if its required preparation has never completed. Invalid receipts, checksum drift, ownership conflicts, missing declared core hardware, command failures and runtime drift — including readiness changing after preflight — are errors.
 - Only `--update` performs pacman/AUR convergence. Preserve kernel gates, locks and pending markers: record intent before mutation, clear it after success, leave unchanged files and healthy services untouched.
 - Failure diagnostics keep stdout, stderr and partial timeout output, with secrets redacted. `--verbose` reaches Nix, Home Manager and privileged adapters.
-- Disabling a declaration withdraws management only. `--purge` removes managed Arch deployment state, keeps packages, accounts, Runner registrations and mutable data, and skips Home Manager. Deployment performs no automatic cleanup, directory backups, garbage collection or Runner purge.
-- AI preparation verifies the source selector, build receipt and every model identity/checksum before services converge. Prepared binaries and models live outside the store; llama-swap, llama-server and Caddy bind loopback only. Runner reconcile, registration and verification stay separate from workstation deployment.
+- Disabling a declaration withdraws management only. `--purge` removes managed Arch deployment state, keeps packages, accounts, registrations and mutable data, and skips Home Manager. Deployment performs no automatic cleanup, directory backups, or garbage collection.
+- AI preparation verifies the source selector, build receipt and every model identity/checksum before services converge. Prepared binaries and models live outside the store; llama-swap, llama-server and Caddy bind loopback only.
 
 ## Desktop
 

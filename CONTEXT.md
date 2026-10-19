@@ -15,7 +15,7 @@ Nacre layers a typed configuration onto an existing Arch Linux install. Nix buil
 
 ## Static policy and live convergence
 
-Nix generates fixed content: Home Manager files, systemd units, drop-ins, AI routing and Caddy configuration. Native adapters handle what depends on live machine state: adopting existing files safely, ownership and permission checks, accounts, service state, locks, pending markers, package operations and failure reporting. GitLab Runner instances are per-environment TOML files that a pinned `runnerctl` validates and renders; tokens merge only at runtime and never enter a derivation.
+Nix generates fixed content: Home Manager files, systemd units, drop-ins, AI routing and Caddy configuration. Native adapters handle what depends on live machine state: adopting existing files safely, ownership and permission checks, accounts, service state, locks, pending markers, package operations and failure reporting. A machine flake adds adapters of its own through `arch.extensions`; arch-switch runs them like the built-in optional modules.
 
 Upstream agent skills are pinned flake inputs. The AI module selects them explicitly and Home Manager projects whole skill directories. See [agent skills](docs/ai.md#agent-skills).
 
@@ -29,4 +29,4 @@ Home Manager links static home files into the store. Arch native files are copie
 4. Converge optional modules that are ready.
 5. Activate the home generation.
 
-Core failures stop the run. An optional module may report `not ready` only if its preparation never completed. Arch and Home Manager share no rollback. See [deployment](docs/deployment.md) for purge and recovery, [AI](docs/ai.md) and [Runners](docs/runners.md) for their separate lifecycles.
+Core failures stop the run. An optional module may report `not ready` only if its preparation never completed. Arch and Home Manager share no rollback. See [deployment](docs/deployment.md) for purge and recovery, [AI](docs/ai.md) for its separate lifecycle.

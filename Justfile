@@ -20,7 +20,6 @@ check-fast:
       .#checks.x86_64-linux.source-format \
       .#checks.x86_64-linux.source-lint \
       .#checks.x86_64-linux.python-types \
-      .#checks.x86_64-linux.gitlab-runner-config \
       .#checks.x86_64-linux.system-settings-interface
 
 # Query remote Arch, LizardByte, and AUR inventories.

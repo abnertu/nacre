@@ -7,7 +7,6 @@
   # systemd skips both units under ConditionVirtualization=!container.
   services.timesyncd.enable = false;
   services.fstrim.enable = false;
-  services.gitlabRunner.enable = false;
   # A rootless container cannot load modules; the host may lack them.
   boot.kernelModules = lib.mkForce [ ];
   boot.kernel.sysctl = {

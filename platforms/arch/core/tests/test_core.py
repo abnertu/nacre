@@ -79,8 +79,8 @@ MANIFEST = {
         "blocks": [NIX_BLOCK],
         "ownedUnits": [
             {
-                "unit": "personal-agent.service",
-                "path": "/etc/systemd/system/personal-agent.service",
+                "unit": "fixture-extension.service",
+                "path": "/etc/systemd/system/fixture-extension.service",
             }
         ],
     },
@@ -374,10 +374,10 @@ class CoreTests(unittest.TestCase):
         self.deploy()
         pacman = self.root / "etc/pacman.conf"
         pacman.write_text(pacman.read_text() + "[custom]\n")
-        unit = self.root / "etc/systemd/system/personal-agent.service"
+        unit = self.root / "etc/systemd/system/fixture-extension.service"
         unit.parent.mkdir(parents=True)
         unit.write_text("[Unit]\n")
-        self.native.unit("personal-agent.service")["enabled"] = True
+        self.native.unit("fixture-extension.service")["enabled"] = True
         self.native.unit("nix-daemon.service")["active"] = True
         self.native.calls.clear()
         self.core().purge()

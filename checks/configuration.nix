@@ -16,8 +16,6 @@ let
     programs.vesktop.enable = false;
     programs.vicinae.enable = false;
     virtualization.enable = false;
-    services.gitlabRunner.enable = false;
-    services.personalAgent.enable = false;
     services.tailscale.enable = false;
     services.timesyncd.enable = false;
     services.journald.enable = false;
@@ -205,8 +203,6 @@ assert base.config.programs.ai.enable && base.config.virtualization.kvm.gui.enab
 assert base.host.systemSettings.trim.enable;
 assert override.host.name == "overridden" && override.host.systemSettings.timeZone == "UTC";
 assert override.host.systemSettings.firewall.rules == [ ];
-assert disabled.host.runnerConfigFiles == [ ];
-assert !disabled.host.personalAgent.enable;
 assert !disabled.host.powerpanel.enable;
 assert !(builtins.elem "powerpanel" packages.aur);
 assert !overriddenHome.config.programs.git.enable;
@@ -270,7 +266,6 @@ assert lib.all (name: !(builtins.elem name packages.pacman)) [
   "openrazer-daemon"
   "amd-ucode"
 ];
-assert (import ../modules/gitlab-runner { inherit lib pkgs; }).packages == { };
 assert lib.all (module: !(valid module)) [
   { typo = true; }
   { deployment.username = lib.mkForce "missing"; }

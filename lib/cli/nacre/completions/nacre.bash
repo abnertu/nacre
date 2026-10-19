@@ -3,7 +3,7 @@
 
 _nacre() {
   local cur=${COMP_WORDS[COMP_CWORD]} prev=${COMP_WORDS[COMP_CWORD - 1]}
-  local commands="install plan switch update purge status doctor changes generations rollback check build ai runner noctalia"
+  local commands="install plan switch update purge status doctor changes generations rollback check build ai noctalia"
   local i command='' args=()
   # The command follows the global options; collect its positional arguments.
   for ((i = 1; i < COMP_CWORD; i++)); do
@@ -45,7 +45,6 @@ _nacre() {
       done
       ;;
     ai) case $position in 0) words='prepare' ;; 1) words='build model' ;; esac ;;
-    runner) ((position == 0)) && words='prepare register verify status' ;;
     noctalia)
       case ${args[0]:-} in
         '') words='capture deploy' ;;

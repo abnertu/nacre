@@ -58,7 +58,7 @@ class ArchSwitchTests(unittest.TestCase):
                     ("core", "core"),
                     ("system", "system"),
                     ("ai", "ai"),
-                    ("personalAgent", "personal-agent"),
+                    ("extension", "extension"),
                 )
             },
             "lizardbyteConf": "/fixture/lizardbyte.conf",
@@ -69,6 +69,14 @@ class ArchSwitchTests(unittest.TestCase):
             "lizardbyte": ["sunshine"],
             "aur": ["extra"],
             "hold": [],
+            "extensions": [
+                {
+                    "name": "extension",
+                    "label": "fixture-service",
+                    "requires": ["ai"],
+                    "notReady": "fixture service is not prepared",
+                }
+            ],
             "userServices": ["openrazer-daemon.service"],
         }
         self.write_config()

@@ -28,20 +28,9 @@
       flake = false;
     };
 
-    personal-agent = {
-      url = "github:abnertu/personal-agent";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     nix-adapter = {
       url = "github:abnertu/nix-adapter";
       inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    gitlab-runner = {
-      url = "github:abnertu/gitlab-runner";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.nix-adapter.follows = "nix-adapter";
     };
   };
 
@@ -128,8 +117,7 @@
         inherit (d) adapterPython;
         home = d.homes.${d.homeConfigurationName};
         user = d.deploymentUser;
-      })
-      // d.runners.checks;
+      });
 
       formatter.${system} = pkgs.nixfmt;
     };

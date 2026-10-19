@@ -35,11 +35,6 @@ let
   nacre = import ./cli/nacre { inherit lib pkgs; };
   nixAdapter = inputs.nix-adapter.packages.${system}.nix-adapter;
   adapterPython = inputs.nix-adapter.packages.${system}.adapterPython;
-  runners = import ../modules/gitlab-runner {
-    inherit lib pkgs adapterPython;
-    gitlab-runner = inputs.gitlab-runner;
-    configFiles = host.runnerConfigFiles;
-  };
   ai = import ../modules/ai {
     inherit lib;
     config = host.ai;
@@ -79,8 +74,6 @@ let
     inherit (host) sysctl kernelModules nixSettings;
     aiConfig = host.ai;
     aiArtifacts = ai.artifacts;
-    personalAgentPackage = inputs.personal-agent.packages.${system}.personal-agent;
-    personalAgentConfig = host.personalAgent;
   };
   llama-prepare = import ../modules/ai/package.nix {
     inherit lib pkgs adapterPython;
@@ -104,7 +97,6 @@ in
     homeConfigurationName
     nixAdapter
     adapterPython
-    runners
     archAi
     arch-switch
     llama-prepare

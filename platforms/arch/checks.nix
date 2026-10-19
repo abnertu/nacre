@@ -34,9 +34,6 @@
             if schema == "AIManifest" and not data["llama"]:
                 schema = "Unmanaged"
             validate(getattr(module, schema), data, manifest)
-        agent = load("${./personal-agent/adapter.py}", "personal_agent")
-        data = json.load(open("${arch-switch.manifests.personalAgent}"))
-        validate(agent.Manifest if data["enabled"] else agent.Unmanaged, data, "personal agent")
         PY
         touch "$out"
       '';
@@ -79,12 +76,6 @@
         python ${../../modules/ai}/tests/test_benchmark.py
         python ${../../modules/ai}/tests/test_probe.py
         python ${../../modules/ai}/tests/test_router.py ${pkgs.llama-swap}/bin/llama-swap
-        touch "$out"
-      '';
-  personal-agent-tests =
-    pkgs.runCommand "personal-agent-tests" { nativeBuildInputs = [ adapterPython ]; }
-      ''
-        python ${./personal-agent/tests/test_personal_agent.py} ${./personal-agent/adapter.py}
         touch "$out"
       '';
   llama-prepare-interface =
