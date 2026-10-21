@@ -1,8 +1,7 @@
 { lib, skillSources }:
 let
-  matt = skillSources.matt-pocock;
-  vercel = skillSources.vercel;
-  upstream = {
+  # Skill name -> path inside its source, grouped by skillSources key.
+  bySource.matt-pocock = {
     ask-matt = "skills/engineering/ask-matt";
     "claude-handoff" = "skills/in-progress/claude-handoff";
     "code-review" = "skills/engineering/code-review";
@@ -37,11 +36,21 @@ let
     "writing-shape" = "skills/in-progress/writing-shape";
     "writing-for-agents" = "skills/productivity/writing-for-agents";
   };
-  sourceFor = name: path: if name == "find-skills" then vercel + "/${path}" else matt + "/${path}";
-  registry = upstream // {
+  bySource.vercel = {
     "find-skills" = "skills/find-skills";
   };
-  roots = lib.mapAttrs (name: path: sourceFor name path) registry;
+  bySource.obsidian = lib.genAttrs [
+    "defuddle"
+    "json-canvas"
+    "knap"
+    "obsidian-bases"
+    "obsidian-cli"
+    "obsidian-markdown"
+  ] (name: "skills/${name}");
+  owner = lib.concatMapAttrs (source: lib.mapAttrs (_: _: source)) bySource;
+  registry = lib.concatMapAttrs (_: paths: paths) bySource;
+  sourceOf = name: skillSources.${owner.${name}};
+  roots = lib.mapAttrs (name: path: sourceOf name + "/${path}") registry;
   allNames = builtins.attrNames roots;
   resolveSource =
     name: source:
@@ -57,7 +66,7 @@ let
     if !(builtins.hasAttr name roots) then
       throw "unknown AI skill selection '${name}'"
     else
-      resolveSource name (if name == "find-skills" then vercel else matt);
+      resolveSource name (sourceOf name);
 in
 {
   inherit registry roots;

@@ -23,6 +23,7 @@ let
       };
       skillSources = {
         matt-pocock = inputs.matt-pocock-skills;
+        obsidian = inputs.obsidian-skills;
         vercel = inputs.vercel-skills;
       };
     };
@@ -158,6 +159,7 @@ let
     inherit lib;
     skillSources = {
       matt-pocock = inputs.matt-pocock-skills;
+      obsidian = inputs.obsidian-skills;
       vercel = inputs.vercel-skills;
     };
   };
@@ -166,6 +168,7 @@ let
     inherit lib;
     skillSources = {
       matt-pocock = inputs.nixpkgs.outPath;
+      obsidian = inputs.nixpkgs.outPath;
       vercel = inputs.nixpkgs.outPath;
     };
   };

@@ -105,6 +105,22 @@
         "type": "github"
       }
     },
+    "obsidian-skills": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1789483437,
+        "narHash": "sha256-kyH07EVmwIEC/q6i91Kz8mPE78j9ITga2NZUpU1+nHU=",
+        "owner": "kepano",
+        "repo": "obsidian-skills",
+        "rev": "3ccff5338ea700537839b21900aa5358a0402c98",
+        "type": "github"
+      },
+      "original": {
+        "owner": "kepano",
+        "repo": "obsidian-skills",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "home-manager": "home-manager",
@@ -113,6 +129,7 @@
         "nix-adapter": "nix-adapter",
         "nixpkgs": "nixpkgs",
         "nvim-config": "nvim-config",
+        "obsidian-skills": "obsidian-skills",
         "vercel-skills": "vercel-skills"
       }
     },

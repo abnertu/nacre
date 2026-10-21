@@ -59,7 +59,7 @@ New packages arrive with `nacre update`; until then a routine switch stops with 
 
 ## Agent skills
 
-Home Manager installs explicitly selected skills, including all of Matt Pocock's, as whole directory links:
+Home Manager installs explicitly selected skills, including all of Matt Pocock's and kepano's Obsidian skills, as whole directory links:
 
 - `~/.agents/skills` follows `programs.ai.enable` and `programs.ai.skillsPresets.enable`;
 - `~/.claude/skills` follows `programs.ai.claude.enable` and `programs.ai.claude.skills.enable`;
@@ -67,12 +67,12 @@ Home Manager installs explicitly selected skills, including all of Matt Pocock's
 
 A skill installed both here and as a Claude Code plugin (such as `mattpocock-skills`) appears twice; keep one source.
 
-Sources and the selection live in [`modules/ai/skills.nix`](../modules/ai/skills.nix). The `matt-pocock-skills` and `vercel-skills` inputs are pinned in `flake.lock`. Deployment uses the prebuilt sources from the activation package: no `npx`, no download at activation, no Skills CLI lock file.
+Sources and the selection live in [`modules/ai/skills.nix`](../modules/ai/skills.nix). The `matt-pocock-skills`, `obsidian-skills` and `vercel-skills` inputs are pinned in `flake.lock`. Deployment uses the prebuilt sources from the activation package: no `npx`, no download at activation, no Skills CLI lock file.
 
 Update skill sources after reviewing upstream changes:
 
 ```bash
-nix flake update matt-pocock-skills vercel-skills
+nix flake update matt-pocock-skills obsidian-skills vercel-skills
 just check
 just build
 ```

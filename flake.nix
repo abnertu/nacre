@@ -23,6 +23,11 @@
       flake = false;
     };
 
+    obsidian-skills = {
+      url = "github:kepano/obsidian-skills";
+      flake = false;
+    };
+
     vercel-skills = {
       url = "github:vercel-labs/skills";
       flake = false;

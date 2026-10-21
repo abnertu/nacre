@@ -67,6 +67,7 @@ inputs.home-manager.lib.homeManagerConfiguration {
       config = ai;
       skillSources = {
         matt-pocock = inputs.matt-pocock-skills;
+        obsidian = inputs.obsidian-skills;
         vercel = inputs.vercel-skills;
       };
     }).homeModule
