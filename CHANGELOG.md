@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.2 (2026-10-21)
+
+### Features
+
+- **ai**: Install kepano's Obsidian skills
+
 ## 0.6.1 (2026-10-19)
 
 ### Fixes
