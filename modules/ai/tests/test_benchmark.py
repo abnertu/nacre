@@ -127,14 +127,17 @@ class BenchmarkTests(unittest.TestCase):
     def test_reserve_breach_terminates_running_process_and_preserves_output(self):
         self.install_binary(
             "import pathlib,sys,time\n"
-            f"pathlib.Path({str(self.used_file)!r}).write_text(str(8 * 1024 * 1024 * 1024))\n"
             "print('started', flush=True)\n"
-            "print('e' * 131072, file=sys.stderr, flush=True)\ntime.sleep(10)\n"
+            "print('e' * 131072, file=sys.stderr, flush=True)\n"
+            # Make the output available before the monitor can terminate us.
+            f"pathlib.Path({str(self.used_file)!r}).write_text(str(8 * 1024 * 1024 * 1024))\n"
+            "time.sleep(10)\n"
         )
         self.assertEqual(self.cli("--min-free-mib", "1024"), 1)
         row = json.loads(self.output.read_text())["rows"][0]
         self.assertIn("reserve breach", row["error"])
         self.assertIn("started", row["stdout"])
+        self.assertGreater(len(row["stderr"]), 131072)
         self.assertIsNotNone(row["returncode"])
 
 
