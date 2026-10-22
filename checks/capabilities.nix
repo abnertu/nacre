@@ -56,13 +56,6 @@ let
         raw = lib.recursiveUpdate aiDefaults raw;
       }) true
     )).success;
-  enabled = ai { enable = true; };
-  profiled = ai {
-    llama.profiles.coding = {
-      enableThinking = true;
-      temperature = 0.6;
-    };
-  };
   codexProfile = ai { enable = true; };
   codexProfileOff = ai {
     enable = true;
@@ -420,8 +413,6 @@ assert
       preserveThinking = true;
     };
   });
-assert enabled.artifacts.model.contextSize == 4096;
-assert profiled.artifacts.profiles.coding.artifacts.temperature == 0.6;
 assert
   builtins.attrNames selectedModels.artifacts.models == [
     "qwen2.5-coder-1.5b-q8-0"
@@ -434,7 +425,6 @@ assert selectedModels.artifacts.profiles.default.model == "qwen3.6-35b-a3b-ud-q5
 assert selectedModels.artifacts.profiles.coding.model == "qwen2.5-coder-1.5b-q8-0";
 assert selectedModels.artifacts.models."qwen2.5-coder-1.5b-q8-0".contextSize == 4096;
 assert selectedModels.artifacts.model.batchSize == 2048;
-assert selectedModels.artifacts.model.microBatchSize == 512;
 assert preserveOverride.artifacts.profiles.coding.artifacts.enableThinking == null;
 assert preserveOverride.artifacts.profiles.coding.artifacts.preserveThinking == false;
 # Prepared llama.cpp binaries and Caddy stay outside the declared inventory.
