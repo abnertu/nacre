@@ -2,7 +2,7 @@
 
 Declarative Arch Linux + Hyprland machines, layered with Nix.
 
-[![Check](https://github.com/abnertu/nacre/actions/workflows/check.yml/badge.svg)](https://github.com/abnertu/nacre/actions/workflows/check.yml)
+[![Check](https://img.shields.io/github/actions/workflow/status/abnertu/nacre/check.yml?branch=main&label=check&logo=githubactions&logoColor=white)](https://github.com/abnertu/nacre/actions/workflows/check.yml)
 [![Release](https://img.shields.io/github/v/release/abnertu/nacre)](https://github.com/abnertu/nacre/releases/latest)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](https://www.gnu.org/licenses/gpl-3.0.html)
 [![Arch Linux](https://img.shields.io/badge/Arch_Linux-x86__64-1793D1?logo=archlinux&logoColor=white)](https://archlinux.org/)
