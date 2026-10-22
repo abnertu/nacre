@@ -44,15 +44,9 @@ Each resource has exactly one owner:
 
 ## Tests
 
-Decide per change whether a test is warranted. A test earns its place when it would catch a realistic regression in behavior or in a contract above; value tweaks, package additions and documentation usually need none. A reproducible bug fix gets a regression test.
-
-Tests exercise behavior through the real entry point, using temporary roots, fake native commands or isolated VMs. A test is invalid, and gets deleted when found, if it:
-
-- restates values copied from source (defaults, package lists, flags, recipe names, help text);
-- greps source text instead of running it;
-- compares a generated value with the expression that produced it;
-- repeats an assertion another test already makes;
-- cannot fail.
+- A test enters the repo only when it guards behaviour no existing test covers and fails when that behaviour breaks. Weigh this before adding each one: behaviour changes and contracts above usually qualify; value tweaks, package additions and documentation usually do not. A reproducible bug fix gets a regression test.
+- Run throwaway tests freely to check your work; keep them out of the repo unless they pass that bar.
+- Tests exercise behaviour through the real entry point, using temporary roots, fake native commands or isolated VMs. Delete any test found to restate values copied from source (defaults, package lists, flags, recipe names, help text), grep source text instead of running it, compare a generated value with the expression that produced it, or repeat another test's assertion.
 
 ## Validation
 
@@ -71,15 +65,18 @@ These build without activating. For deployment or adapter changes, also run `jus
 
 ## Git
 
-- Commit validated work freely. Push only when the user explicitly asks.
-- Messages follow Conventional Commits (`type(scope): summary`, imperative), with a body explaining why for non-trivial changes.
-- Squash unpushed commits that make related changes to the same unit into one; keep unrelated changes separate.
-- Commits carry the configured Git author only: no `Co-Authored-By` or other attribution trailers.
+- Write commits in [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) format (`type(scope): summary`, imperative), with a body explaining why for non-trivial changes. git-cliff builds `CHANGELOG.md` from these messages, so the summary is what operators read.
+- Author commits as the user alone, with no `Co-Authored-By` or other co-author trailers.
+- Commit validated work as the plan progresses. Before pushing, squash related commits to the same unit into one to keep history clean; keep unrelated changes separate.
+- Push only after the user approves that push.
 
 ## Releases
 
-`VERSION` holds the semantic version that `nacre --version` reports. While in 0.x, a change that breaks configuration or CLI compatibility bumps the minor version. `just release X.Y.Z` writes `VERSION`, prepends git-cliff notes to `CHANGELOG.md`, commits and tags locally. Pushing the tag publishes a GitHub release, so it needs the user's go-ahead like any push.
+Version releases with [Semantic Versioning 2.0.0](https://semver.org/). `VERSION` holds the version `nacre --version` reports; while in 0.x, a change that breaks configuration or CLI compatibility bumps the minor version; mark its commit breaking (`type(scope)!:` or a `BREAKING CHANGE:` footer) so git-cliff flags it in the changelog. `just release X.Y.Z` writes `VERSION`, prepends git-cliff notes to `CHANGELOG.md`, commits and tags locally. Pushing the tag publishes a GitHub release, so it needs the user's approval like any push.
 
-## Documentation
+## Docs
 
-[README.md](README.md) is the entry point, [CONTEXT.md](CONTEXT.md) the composition model and `docs/` the operator procedures. All documentation is English. Write for an operator: state behavior, commands and limits; cut background, repetition and anything the code or `--help` already says. Update the relevant guide when public behavior changes. Agent constraints live only in this file.
+- Keep this file, `README.md` and every other doc concise and plain: each sentence carries information, with no filler.
+- [README.md](README.md) is the entry point for users, [CONTEXT.md](CONTEXT.md) the composition model and `docs/` the operator procedures. All documentation is English.
+- Write for an operator: state behaviour, commands and limits; leave out background, repetition and anything the code or `--help` already says. Update the relevant guide when public behaviour changes.
+- Agent constraints live only in this file.

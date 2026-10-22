@@ -1,63 +1,52 @@
 # Nacre
 
+Declarative Arch Linux + Hyprland machines, layered with Nix.
+
 [![Check](https://img.shields.io/github/actions/workflow/status/abnertu/nacre/check.yml?branch=main&label=check&logo=githubactions&logoColor=white)](https://github.com/abnertu/nacre/actions/workflows/check.yml)
-[![Arch Linux](https://img.shields.io/badge/Arch_Linux-1793D1?logo=archlinux&logoColor=white)](https://archlinux.org/)
-[![Hyprland](https://img.shields.io/badge/Hyprland-58E1FF?logo=hyprland&logoColor=black)](https://hypr.land/)
-[![Nix Flakes](https://img.shields.io/badge/Nix_Flakes-5277C3?logo=nixos&logoColor=white)](https://nixos.org/)
-[![Home Manager](https://img.shields.io/badge/Home_Manager-26.05-5277C3?logo=nixos&logoColor=white)](https://nix-community.github.io/home-manager/)
+[![Release](https://img.shields.io/github/v/release/abnertu/nacre?sort=semver)](https://github.com/abnertu/nacre/releases)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](https://www.gnu.org/licenses/gpl-3.0.html)
+[![Arch Linux](https://img.shields.io/badge/Arch_Linux-x86__64-1793D1?logo=archlinux&logoColor=white)](https://archlinux.org/)
 
-Declarative Arch Linux + Hyprland, layered with Nix.
+Nacre keeps an existing Arch install and adds a typed Nix configuration on top; it is not NixOS. Nix evaluates the configuration into one fixed deployment artifact. Arch adapters converge native files, packages and services, then the Home Manager generation embedded in that artifact activates. Unknown options, wrong types and invalid combinations fail at evaluation, before anything changes.
 
-Nacre, mother-of-pearl, builds up in layers on the shell beneath it. Likewise this project layers a typed, reproducible configuration onto an existing Arch Linux install instead of replacing it.
+It manages:
 
-Nix evaluates a typed configuration into one fixed deployment artifact. Arch adapters converge native files, packages and services, then the embedded Home Manager generation activates. Platform code lives under `platforms/`; Arch Linux (`x86_64-linux`) is the only platform today. It is not NixOS: the base system stays Arch.
+- a `minimal` or `workstation` role: the workstation adds a Hyprland session started by UWSM with the Noctalia shell
+- native system settings: locale, time, firewall, hostname, journald, logind, TRIM, a NetworkManager hotspot, a CyberPower UPS
+- optional local AI (llama.cpp behind llama-swap, loopback only), virtualization and [extensions](docs/configuration.md#machine-extensions) a machine adds
+- the home through Home Manager, with shared profiles and your own modules
+
+Credentials, keys and mutable application data never enter Git or the Nix store.
 
 ![Desktop preview](docs/assets/preview.png)
-
-## Features
-
-- **One command**: `nacre` installs a machine, previews and applies changes, reports status and problems, lists what an update changed and rolls back home generations.
-- **Roles**: a `minimal` or `workstation` baseline that hosts and your configuration refine.
-- **Hyprland desktop** started by UWSM, with the Noctalia shell and one startup owner per application.
-- **Typed configuration**: unknown options, wrong types and invalid combinations fail at evaluation.
-- **Safe deployment**: preflight before any change; routine runs install nothing, only `update` syncs pacman and AUR.
-- **Optional modules**: local AI (llama.cpp + llama-swap), virtualization, Wi-Fi hotspot, UPS, and [extensions](docs/configuration.md#machine-extensions) a machine adds.
-- **Secrets stay out**: credentials, keys and mutable data never enter Git or the Nix store.
 
 ## Requirements
 
 - Arch Linux `x86_64`, with your account in `wheel`
-- network access; the bootstrap installs Nix ([just](https://just.systems/) is only for development)
+- network access; the bootstrap installs Nix
 
-## Quick start
-
-On a new machine ([install guide](docs/install.md)):
+## Install
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/abnertu/nacre/main/scripts/bootstrap.sh)
 ```
 
-The bootstrap installs Nix and the native prerequisites, then offers to run `nacre install`.
+The bootstrap changes the host: it enables `[multilib]` and installs the base packages, Nix and yay. Read it first. It then offers to run `nacre install`. That command writes your machine's own flake to `~/.config/nacre`, which follows Nacre as an input, then plans and deploys it. The [install guide](docs/install.md) covers unattended installs and restoring an existing machine.
 
-`install` creates your machine's own flake in `~/.config/nacre`, which follows Nacre as an input: upgrading Nacre is `nix flake update nacre`, and your configuration never mixes with its code.
-
-Afterwards, day to day ([deployment guide](docs/deployment.md)):
+## Usage
 
 ```bash
-nacre check               # every flake check; touches nothing
-nacre build               # build the deployment artifact; touches nothing
-nacre plan                # show what would change
-nacre switch              # converge Arch, then activate Home Manager
-nacre update              # also upgrade declared pacman / AUR packages
-nacre --verbose switch    # full Nix, Home Manager and adapter diagnostics
-nacre purge               # remove managed Arch state, skip Home Manager
+nacre plan        # show what would change; touches nothing
+nacre switch      # converge Arch, then activate Home Manager
+nacre update      # switch, also upgrading declared pacman and AUR packages
+nacre doctor      # report what needs attention; touches nothing
 ```
 
-`nacre --help` lists every command, including `status`, `doctor`, `changes`, `generations`, `rollback` and the AI and Noctalia operations.
+Routine `switch` runs install nothing; only `update` touches pacman and AUR. `nacre --help` lists every command. To upgrade Nacre itself, run `nix flake update nacre` in `~/.config/nacre`, review `nacre plan`, then switch.
 
 ## Configuration
 
-A machine's `configuration.nix` is its single entry point. A role sets the baseline, the machine can refine it with `lib.mkDefault`, and plain definitions in `configuration.nix` win. The [fixture machine](checks/fixtures/configuration.nix) enables every feature and serves as a full example.
+A machine's `configuration.nix` is its entry point. The role sets the baseline, imported machine files can refine it with `lib.mkDefault`, and plain definitions win regardless of import order:
 
 ```nix
 role = "workstation";
@@ -65,36 +54,24 @@ networking.firewall.enable = false;
 users.users.alice.home.programs.git.settings.init.defaultBranch = "main";
 ```
 
-Inspect a resolved value without activating:
-
-```bash
-nix eval .#lib.configuration.networking.hostname.name
-```
-
-See the [configuration guide](docs/configuration.md).
+The [fixture machine](checks/fixtures/configuration.nix) enables every feature.
 
 ## Documentation
 
 | Guide | Covers |
 | --- | --- |
 | [Install](docs/install.md) | From a fresh Arch install to the first deployment |
-| [Deployment](docs/deployment.md) | Bootstrap, activation, updates, purge, recovery |
-| [Configuration](docs/configuration.md) | Options, precedence, resolved values |
+| [Deployment](docs/deployment.md) | Commands, updates, purge, diagnostics, recovery |
+| [Configuration](docs/configuration.md) | Roles, options, homes, machine extensions |
 | [System settings](docs/system-settings.md) | Native file ownership, preflight, pending markers |
-| [Desktop session](docs/desktop-session.md) | UWSM, startup ownership, live development |
+| [Desktop session](docs/desktop-session.md) | UWSM, startup ownership, themes, live development |
 | [Noctalia config](docs/noctalia-config.md) | Capturing and deploying reviewed UI preferences |
 | [Hotspot](docs/hotspot.md) | Adopting an existing NetworkManager AP |
-| [Local AI](docs/ai.md) | Model preparation, loopback services, agent skills ([benchmarks](docs/ai-benchmarks.md)) |
+| [Local AI](docs/ai.md) | Models, preparation, loopback services, agent skills |
 | [Backup](docs/backup.md) | State outside the repository and restore order |
 
 [CONTEXT.md](CONTEXT.md) explains the composition model; [CHANGELOG.md](CHANGELOG.md) lists releases.
 
-## Development
+## License
 
-Read [AGENTS.md](AGENTS.md) before changing code. Checks use temporary roots, fake native commands and isolated VMs; they never deploy. For deployment or adapter changes, `just container-test` deploys into a disposable podman container ([details](docs/deployment.md#container-test)).
-
-CI on GitHub Actions:
-
-- every push and PR: `nix flake check` and the deployment build
-- deployment changes and weekly: the container deployment test
-- weekly: a flake input update PR, plus Dependabot for workflow actions
+[GPL-3.0-or-later](LICENSE).

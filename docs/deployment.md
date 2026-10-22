@@ -11,41 +11,7 @@ Read [configuration](configuration.md), [system settings](system-settings.md) an
 
 ## Bootstrap
 
-On a fresh Arch install without Nix or just, run Nacre's bootstrap. It enables `[multilib]`, installs prerequisites, configures Nix and starts `nix-daemon.service`:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/abnertu/nacre/main/scripts/bootstrap.sh)
-```
-
-Without a machine flake it offers to create one ([install guide](install.md)); to restore an existing machine, clone its flake to `~/.config/nacre` first, and the bootstrap points you at `nix run .#nacre -- plan`.
-
-The bootstrap changes the host; read the script first.
-
-## Moving an existing checkout
-
-Checkouts older than 0.1.0 live at `~/.config/nix`, where Nix also reads user settings; 0.1.x shipped a transitional `nix.conf` there to enable flakes, and 0.2.0 removes it. Deploy 0.1.x first, so the `nix.settings` block in `/etc/nix/nix.conf` enables flakes, then move:
-
-```bash
-nacre switch
-grep -A6 'BEGIN nix-config settings' /etc/nix/nix.conf   # experimental-features is there
-mv ~/.config/nix ~/.config/nacre
-```
-
-A checkout updated to 0.2.0 before that deployment needs `--extra-experimental-features 'nix-command flakes'` on its first `nix run .#nacre`. `nacre` still finds a checkout at either location.
-
-## Moving a machine out of a Nacre checkout
-
-Before 0.5.0 a machine could live inside a clone of Nacre: its `configuration.nix`, `hosts/` and `homes/`, plus the dotfiles the `workstation` profile projected from `files/home` (kitty, ghostty, cava, btop, fastfetch and others). 0.5.0 removes all of them. Move them into a machine flake:
-
-```bash
-mkdir ~/machine && cd ~/machine && git init
-cp ~/.config/nacre/templates/machine/flake.nix .
-cp -r ~/.config/nacre/{configuration.nix,hosts,homes} .   # before updating that clone
-git add -A
-nacre --flake ~/machine plan                               # only a new home generation
-```
-
-Restore the dotfiles you used from `git show v0.4.0:files/home/...` into the flake and project them from a home module ([configuration](configuration.md#users-and-homes)); applications that left the workstation baseline go into `packages.extra`. Then replace `~/.config/nacre` with the new flake and run `nacre switch`.
+On a host without Nix, run the [bootstrap](install.md#steps) first. To restore an existing machine, clone its flake to `~/.config/nacre` before running it; the bootstrap then points you at `nix run .#nacre -- plan`.
 
 ## Commands
 
@@ -97,7 +63,6 @@ Pacman and yay caches live in the `nacre-container-pacman` and `nacre-container-
 
 Nix shows native build progress. During deployment a shared progress display tracks running, finished, skipped and failed tasks, and yields the terminal to native tool output. It falls back to plain logs with `verbose`, redirected stderr, `TERM=dumb`, any `NO_COLOR` or a non-empty `CI`. `verbose` reaches Nix, Home Manager and the privileged adapters. Adapter failures include the command, exit code, stdout, stderr and partial output before a timeout, with secrets redacted.
 
-
 ## Recovery
 
 | Situation | Action |
@@ -109,3 +74,31 @@ Nix shows native build progress. During deployment a shared progress display tra
 | Native command failed | Fix the reported cause and rerun the same command |
 
 Managed writes record a pending marker in `/var/lib/nix-config/arch/` before changing anything and clear it after success. Keep the markers so a rerun can resume; deleting them hides unfinished work. A healthy rerun rewrites no identical files and restarts no healthy services. If Home Manager fails after Arch convergence, fix the home error and rerun. Purge is not a recovery shortcut.
+
+## Migrating older machines
+
+### From `~/.config/nix` (before 0.1.0)
+
+Checkouts older than 0.1.0 live at `~/.config/nix`, where Nix also reads user settings; 0.1.x shipped a transitional `nix.conf` there to enable flakes, and 0.2.0 removes it. Deploy 0.1.x first, so the `nix.settings` block in `/etc/nix/nix.conf` enables flakes, then move:
+
+```bash
+nacre switch
+grep -A6 'BEGIN nix-config settings' /etc/nix/nix.conf   # experimental-features is there
+mv ~/.config/nix ~/.config/nacre
+```
+
+A checkout updated to 0.2.0 before that deployment needs `--extra-experimental-features 'nix-command flakes'` on its first `nix run .#nacre`. `nacre` still finds a checkout at either location.
+
+### Out of a Nacre clone (before 0.5.0)
+
+Before 0.5.0 a machine could live inside a clone of Nacre: its `configuration.nix`, `hosts/` and `homes/`, plus the dotfiles the `workstation` profile projected from `files/home` (kitty, ghostty, cava, btop, fastfetch and others). 0.5.0 removes all of them. Move them into a machine flake:
+
+```bash
+mkdir ~/machine && cd ~/machine && git init
+cp ~/.config/nacre/templates/machine/flake.nix .
+cp -r ~/.config/nacre/{configuration.nix,hosts,homes} .   # before updating that clone
+git add -A
+nacre --flake ~/machine plan                               # only a new home generation
+```
+
+Restore the dotfiles you used from `git show v0.4.0:files/home/...` into the flake and project them from a home module ([configuration](configuration.md#users-and-homes)); applications that left the workstation baseline go into `packages.extra`. Then replace `~/.config/nacre` with the new flake and run `nacre switch`.
