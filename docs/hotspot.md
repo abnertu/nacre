@@ -1,16 +1,12 @@
 # Wi-Fi hotspot
 
-The system adapter selects one existing NetworkManager AP connection by its unique name and manages only its public properties. The UUID, WPA credentials and other fields stay with NetworkManager; the adapter never reads or prints the password.
+Nacre adopts an existing NetworkManager AP connection by unique name and manages its public properties. NetworkManager retains the UUID, WPA credentials and other fields; the adapter does not read or print the password.
 
 ## Preparing the connection
 
-Before enabling `networking.hotspot`:
+Before enabling `networking.hotspot`, start NetworkManager and create the named WPA-personal AP connection with its password in NetworkManager's protected storage. Confirm that the declared wireless and uplink interfaces exist and that another connection does not hold the wireless interface.
 
-1. Make sure NetworkManager is installed and running.
-2. Create the AP connection with that name using `nmcli`, with WPA personal and its password in NetworkManager's protected storage.
-3. Check that the declared wireless and uplink interfaces exist and the wireless interface is not held by another connection.
-
-For different hardware, override `networking.hotspot.interface` and `networking.hotspot.uplink`, or disable the feature. A missing interface, a duplicate or non-AP connection, unsafe or conflicting ownership and failed native queries all stop core preflight before any change.
+Set `networking.hotspot.interface` and `.uplink` for the hardware, or disable the feature. Missing interfaces, duplicate or non-AP connections, unsafe ownership and failed queries stop core preflight.
 
 ## Deploying and verifying
 
@@ -20,10 +16,10 @@ nmcli -f DEVICE,TYPE,STATE device status
 sudo ufw status verbose
 ```
 
-Changing AP properties may reactivate the connection and briefly drop clients; a healthy, unchanged connection keeps running. With firewall management enabled, the adapter generates IPv4 DHCP, gateway DNS and forwarding rules for the selected subnet and uplink. NetworkManager handles NAT; everything else stays default-deny.
+Changed AP properties may reactivate the connection and briefly disconnect clients. An unchanged healthy AP keeps running. With firewall management enabled, Nacre supplies IPv4 DHCP, gateway DNS and forwarding rules for the chosen subnet and uplink; NetworkManager supplies NAT. Other traffic remains default-deny.
 
-Confirm address assignment, DNS and the internet route from a client. Check radio state with `iw dev <interface> info`.
+Check address assignment, DNS and internet access from a client. `iw dev <interface> info` shows radio state.
 
 ## Recovery
 
-Interrupted native actions leave a pending marker in `/var/lib/nix-config/arch/`; fix the reported cause and rerun. Disabling hotspot management keeps the NetworkManager connection, credentials and runtime state. If you change the interface, subnet or uplink, review stale manual rules yourself; deployment does not guess which ones to remove.
+Keep pending markers under `/var/lib/nix-config/arch/`, fix the reported cause and rerun. Disabling management preserves the connection and credentials. Review stale manual rules after changing subnet, interface or uplink; deployment cannot infer their ownership.

@@ -1,25 +1,14 @@
 # AGENTS Instructions
 
-Nacre: an operator-controlled Nix layer over existing Arch Linux + Hyprland machines. Each machine is its own flake that calls `nacre.lib.mkFlake`; this repository holds no real machine, and `checks/fixtures` is the reference machine that enables every feature. Nix evaluates typed policy into a fixed deployment artifact, Arch adapters reconcile live state, then the prebuilt Home Manager generation activates. Read [CONTEXT.md](CONTEXT.md) before changing composition, and the feature's guide in [`docs/`](docs/) before editing that feature.
+Nacre builds typed machine policy into a fixed Arch deployment and Home Manager generation. Real machines live in separate flakes; `checks/fixtures` supplies this repository's machine outputs. Read [CONTEXT.md](CONTEXT.md) before changing composition and the relevant [operator guide](docs/) before changing a feature.
 
 **Never read or print credentials, private keys, password stores, registration tokens, Noctalia keys or mutable application data.** Keep them out of Git, derivations, command arguments and unredacted logs; tests use synthetic fixtures.
 
 ## Ownership
 
-Each resource has exactly one owner:
-
-| Path | Owns |
-| --- | --- |
-| `lib/` | Evaluation, normalization (`lib/eval-configuration.nix`), deployment composition and machine flake outputs (`lib/mk-flake.nix`: fixed names such as `#deployment`) |
-| `templates/machine/` | The flake and configuration `nacre install` writes for a new machine |
-| `roles/` | Baseline compositions at priority 1100, below a machine's `lib.mkDefault` baselines |
-| `platforms/<distro>/` | Native realization and its contribution interface (`platforms/arch/module.nix`, including `arch.extensions` for adapters a machine flake adds); distro-specific code stays here so other distros can sit beside `arch/` |
-| `modules/` | Feature modules: each `module.nix` declares its options and contributes its own `arch.*` packages, groups and units (registry: `modules/default.nix`) |
-| `profiles/` | Shared Home Manager composition; personal dotfiles belong to machine flakes |
-| `checks/fixtures/` | The fixture machine behind checks, the container test and this flake's machine outputs |
+Each resource has one owner. Feature modules contribute native resources through `arch`; deployment consumes those merged contributions. Read the boundary table in [CONTEXT.md](CONTEXT.md) before moving ownership.
 
 - Shared options live in `lib/configuration-options.nix`, feature options in their `module.nix`. Express single-value rules as option types and cross-field rules as entries in `lib/configuration-assertions.nix` (or a feature `interface.nix` for derived values). Precedence comes from `lib.mkDefault` baselines versus ordinary user definitions, never import order.
-- Deployment code reads merged contributions from the evaluated `arch` option; a new feature adds its native names there instead of wiring them through `lib/mk-deployment.nix`.
 - Registries stay explicit. Package and service inventories live in their owning Nix source.
 - Each Arch adapter declares its manifest as a `TypedDict` (`schema.py`, or in the single-file adapter itself); its entry point validates the manifest's keys, and the `adapter-manifests` check validates the generated manifests, so Nix and Python cannot drift apart. Production Python is pyright strict; each test file opts down with `# pyright: standard`.
 - Static, public policy is Nix-generated. Python adapters and orchestration (`arch-switch`, `nacre`, `llama-prepare`) do safe live-state reconciliation, validation and recovery only; Bash is limited to thin entry points such as the deployment wrapper, home switch, bootstrap and the container test. Secrets, runtime receipts, registration tokens and mutable data stay outside derivations.
@@ -50,7 +39,7 @@ Each resource has exactly one owner:
 
 ## Validation
 
-Format Nix with `nixfmt <files>` (or `find . -name '*.nix' -print0 | xargs -0 nixfmt`), never `nix fmt`. For composition, adapter or test changes, run from the repository root:
+Format changed Nix files with `nixfmt <files>`, never `nix fmt`. For composition, adapter or test changes, run from the repository root:
 
 ```bash
 just check-fast
@@ -74,9 +63,16 @@ These build without activating. For deployment or adapter changes, also run `jus
 
 Version releases with [Semantic Versioning 2.0.0](https://semver.org/). `VERSION` holds the version `nacre --version` reports; while in 0.x, a change that breaks configuration or CLI compatibility bumps the minor version; mark its commit breaking (`type(scope)!:` or a `BREAKING CHANGE:` footer) so git-cliff flags it in the changelog. `just release X.Y.Z` writes `VERSION`, prepends git-cliff notes to `CHANGELOG.md`, commits and tags locally. Pushing the tag publishes a GitHub release, so it needs the user's approval like any push.
 
+## CI
+
+- Keep a CI check only when it catches a concrete failure no existing check covers; identify that failure before adding or retaining it. Apply the test admission rule to CI too.
+- Run repository entry points against real inputs or isolated fixtures. Reject duplicate checks, source-text assertions, copied inventories and checks that only prove a command or file exists.
+- Name workflows, jobs and steps by their target and action. Propagate command failures; missing prerequisites and skipped required coverage cannot count as success.
+- After changing these rules, audit the repository against them. Validate locally, then verify required CI on the pushed commit; report any uncovered contract or unavailable check.
+
 ## Docs
 
 - Keep this file, `README.md` and every other doc concise and plain: each sentence carries information, with no filler.
 - [README.md](README.md) is the entry point for users, [CONTEXT.md](CONTEXT.md) the composition model and `docs/` the operator procedures. All documentation is English.
 - Write for an operator: state behaviour, commands and limits; leave out background, repetition and anything the code or `--help` already says. Update the relevant guide when public behaviour changes.
-- Agent constraints live only in this file.
+- Keep agent constraints here and operator procedures in the feature guides. Preserve release history and measured benchmark data when editing their presentation.

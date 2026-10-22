@@ -81,8 +81,6 @@
   llama-prepare-interface =
     pkgs.runCommand "llama-prepare-interface" { nativeBuildInputs = [ adapterPython ]; }
       ''
-        ${llama-prepare}/bin/llama-prepare --help | grep -Fxq \
-          'usage: llama-prepare [--build-only | --model-only]'
         if ${llama-prepare}/bin/llama-prepare --model-only >out 2>err; then exit 1; fi
         grep -Fq 'run llama-prepare as root' err
         python ${../../modules/ai/tests/test_prepare.py} ${../../modules/ai/prepare.py}

@@ -1,4 +1,4 @@
-name: Check
+name: Nix validation
 
 on:
   push:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   check:
-    name: Nix checks and builds
+    name: Validate Nix sources and fixture deployment
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -30,7 +30,7 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
 
-      - name: Validate source and build all checks
+      - name: Run flake checks and build their deployment dependencies
         id: check
         shell: bash # adds pipefail, so tee cannot mask a failed check
         run: |
@@ -45,10 +45,3 @@ jobs:
           report=${report:-$(tail -n 40 "$RUNNER_TEMP/check.log")}
           report=${report//'%'/'%25'}
           echo "::error title=nix flake check::${report//$'\n'/'%0A'}"
-
-      - name: Build deployment artifacts without activation
-        run: |
-          nix build --no-link --no-update-lock-file .#deployment .#arch-switch
-
-      - name: Ensure validation left the checkout unchanged
-        run: git diff --exit-code

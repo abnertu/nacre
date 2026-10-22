@@ -1,4 +1,4 @@
-name: Update flake inputs
+name: Propose flake input updates
 
 # Proposes a reviewed lock update; merging the pull request is the intentional
 # adoption step. Pull requests opened with GITHUB_TOKEN start no workflows, but
@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   update:
-    name: Update, check and propose
+    name: Propose lock update and dispatch validation
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -66,7 +66,7 @@ jobs:
           git switch -C "$branch"
           git commit -m "chore(flake): update inputs" -m "$(sed -n '/Updated input/,$p' update.log)" flake.lock
           git push --force origin "$branch"
-          body="Weekly \`nix flake update\`. The Check and Container deployment workflows run on this branch; review the input changes and their results, then merge to adopt them."
+          body="Weekly \`nix flake update\`. The Nix validation and Arch deployment lifecycle workflows run on this branch; review the input changes and their results, then merge to adopt them."
           if gh pr view "$branch" --json state --jq .state 2>/dev/null | grep -q OPEN; then
             gh pr edit "$branch" --body "$body"
           else

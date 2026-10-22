@@ -82,7 +82,7 @@
 
 ## 0.1.0
 
-First release under the Nacre name, after the project grew out of a personal Nix configuration.
+First Nacre release, extracted from the personal Nix configuration.
 
 - Machine flakes: `nacre.lib.mkFlake { modules = [ ./configuration.nix ]; }`. Each machine follows Nacre as an input and upgrades with `nix flake update nacre`.
 - `nacre` command: `install` (creates the machine flake), `plan`, `switch`, `update`, `purge`, `status`, `generations`, `rollback`, and the AI, Runner and Noctalia operations.

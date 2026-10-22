@@ -1,6 +1,6 @@
 # Configuration
 
-A machine's flake passes its modules to `nacre.lib.mkFlake`; `nacre install` writes one with a single `configuration.nix`. A machine may split itself into imported files that set baselines with `lib.mkDefault`, so plain definitions in `configuration.nix` win; import order does not matter. Unknown options, wrong types and invalid combinations fail at evaluation.
+A machine flake calls `nacre.lib.mkFlake` with its modules. Installation starts with one `configuration.nix`; imported machine files may define baselines with `lib.mkDefault`, which ordinary definitions override regardless of import order. Unknown options, wrong types and invalid combinations fail during evaluation.
 
 ```nix
 { ... }:
@@ -12,7 +12,7 @@ A machine's flake passes its modules to `nacre.lib.mkFlake`; `nacre install` wri
 }
 ```
 
-Inspect resolved values before building or activating:
+Inspect normalized policy before building:
 
 ```bash
 nix eval .#lib.configuration.networking.hostname.name
@@ -21,42 +21,35 @@ nix eval --json .#lib.configuration.networking.firewall
 
 ## Roles
 
-`role` picks the baseline composition:
+`minimal` supplies the core system, shell and development tools. `workstation`, the default, adds Hyprland, Sunshine, Vesktop and Vicinae. Role baselines yield to machine defaults and ordinary overrides.
 
-| Role | Contents |
-| --- | --- |
-| `minimal` | Core system, shell and development tools; no graphical session |
-| `workstation` (default) | `minimal` plus the Hyprland desktop, Sunshine, Vesktop and Vicinae |
+Deployments are named `<hostname>-<role>` and also exposed as `#deployment`.
 
-Roles sit below the machine's `lib.mkDefault` baselines, which sit below plain definitions, so any value a role sets can be overridden. The deployment is named `<hostname>-<role>`, for example `arch-workstation`, and is also available as `#deployment`.
-
-## Where to change things
+## Options
 
 | Change | Namespace |
 | --- | --- |
-| Network, hotspot, firewall, hostname | `networking` |
+| Network, AP, firewall, hostname | `networking` |
 | Locale, timezone, console | `i18n`, `time`, `console` |
-| Native services, AI | `services`, `programs.ai` |
+| Native services and AI | `services`, `programs.ai` |
 | Hardware and virtualization | `hardware`, `virtualization` |
-| Kernel modules and parameters | `boot.kernelModules`, `boot.kernel.sysctl` |
-| Nix daemon settings (`/etc/nix/nix.conf` managed block) | `nix.settings` |
-| Additional repository and AUR packages | `packages.extra.pacman`, `packages.extra.aur` |
-| Packages `update` must not upgrade | `packages.hold` |
-| Graphical session and user programs | `desktop`, `programs`, `users.users.<name>.home` |
+| Kernel modules and sysctl | `boot.kernelModules`, `boot.kernel.sysctl` |
+| Managed Nix daemon block | `nix.settings` |
+| Additional native packages | `packages.extra.pacman`, `packages.extra.aur` |
+| Held upgrades | `packages.hold` |
+| Desktop and home programs | `desktop`, `programs`, `users.users.<name>.home` |
 
-A top-level switch controls the resources it owns. Disabling an Arch feature withdraws management only: packages, services, registrations and application data stay. Home Manager switches to the new generation as usual.
+Disabling an Arch feature withdraws management without removing its packages, services, registrations or data. Home Manager still activates the newly declared home.
 
-`packages.hold` keeps installed packages at their version during `update`, for example `packages.hold = [ "ghostty" ];` while an upgrade is broken. It works like pacman's `--ignore` for both repository and AUR packages: missing held packages still install, a manual `pacman -Syu` ignores the hold, and an upgrade whose dependencies need a newer held package fails resolution. Remove the entry to resume upgrades.
+`packages.hold = [ "ghostty" ];` excludes installed packages from Nacre's pacman and AUR upgrades. Missing held packages still install; dependency resolution can fail if another package requires a newer version. Manual pacman operations do not honor this declaration. Remove the hold to resume upgrades.
 
-`boot.kernelModules` and `boot.kernel.sysctl` default to a container networking baseline (bridge modules, forwarding, BBR). Override one key, set it to `null` to withdraw it, or replace the module list with `lib.mkForce`.
-
-AI models are selected under `programs.ai.llama.models.<inventory-key>`; read the [AI guide](ai.md) before changing models, offload or context.
+Kernel defaults support container networking. Override a sysctl key, set it to `null` to withdraw management, or replace the module list with `lib.mkForce`. Read [local AI](ai.md) before selecting models, offload or context under `programs.ai.llama.models`.
 
 ## Users and homes
 
-The machine selects an existing login account with `deployment.username`; the account must exist before deployment. To switch users, change both the selected account and its entry in `users.users`. Service accounts belong to their modules and get no home. Keep Home Manager's `stateVersion` fixed through routine updates.
+`deployment.username` selects an existing login account declared in `users.users`. Changing users requires changing both. Modules create their service accounts without home composition. Keep Home Manager's `stateVersion` fixed during routine updates.
 
-Nacre's profiles supply the shared home: shell, development tools, desktop theming and default configurations for Ghostty, btop, cava, fastfetch, swappy, Vesktop and the Powerlevel10k prompt (`files/home`). Personal settings and dotfiles come from the machine flake's own Home Manager modules, which can also replace a default:
+Shared profiles provide shell, development tools, themes and default application configuration. Personal settings belong in machine-owned home modules:
 
 ```nix
 users.users.alice.homeModules = [ ./homes/alice/home.nix ];
@@ -73,16 +66,15 @@ users.users.alice.homeModules = [ ./homes/alice/home.nix ];
 }
 ```
 
-Nacre's defaults use `lib.mkDefault`, so plain definitions in these modules win. Keep the Noctalia snapshot at `homes/<user>/noctalia/config.toml`, where `noctalia-config` and `nacre doctor` look for it.
+Nacre uses `lib.mkDefault` for these defaults, so plain home definitions win. Keep the reviewed Noctalia snapshot at `homes/<user>/noctalia/config.toml`, where the CLI and doctor look for it.
 
-After changes, run `nacre build` and `nacre plan`.
+After editing, run `nacre build` and review `nacre plan`.
 
 ## Machine extensions
 
-A machine flake can add features Nacre does not ship: its own modules for packages and units, and privileged adapters that run like Nacre's optional modules. A module may contribute to `arch.pacman`, `arch.aur`, `arch.groups`, `arch.systemUnits` and `arch.userServices`, and register an adapter under `arch.extensions`:
+A machine can add packages, groups and units through `arch.pacman`, `arch.aur`, `arch.groups`, `arch.systemUnits` and `arch.userServices`. Register privileged adapters under `arch.extensions`:
 
 ```nix
-# modules/my-service.nix in the machine flake: the flake passes its input
 { my-service }:
 { config, lib, ... }:
 {
@@ -91,21 +83,26 @@ A machine flake can add features Nacre does not ship: its own modules for packag
     arch.pacman = [ "podman" ];
     arch.extensions.my-service = {
       label = "my-service";
-      adapter = ./adapter.py;           # run as: adapter MANIFEST PHASE
+      adapter = ./adapter.py;
       manifest.executable = "${my-service.packages.x86_64-linux.default}/bin/my-service";
-      requires = [ "ai" ];              # skipped until local AI is prepared
+      requires = [ "ai" ];
       notReady = "run my-service-setup first";
-      ownedUnits = [ { unit = "my-service.service"; path = "/etc/systemd/system/my-service.service"; } ];
+      ownedUnits = [ {
+        unit = "my-service.service";
+        path = "/etc/systemd/system/my-service.service";
+      } ];
     };
   };
 }
 ```
 
-The adapter receives the manifest as a JSON file and a phase (`preflight`, `plan`, `converge`), runs as root, and exits 20 while its preparation has never completed; [nix-adapter](https://github.com/abnertu/nix-adapter) provides the base classes Nacre's own adapters use. Extensions converge after Nacre's optional modules; purge retires their `ownedUnits`. A flake input the module needs (a package, for example) reaches it from `flake.nix`, which can also publish the machine's own packages, apps and checks:
+Nacre invokes `adapter MANIFEST PHASE` as root for `preflight`, `plan` and `converge`. Exit 20 means preparation has never completed. [nix-adapter](https://github.com/abnertu/nix-adapter) provides the base adapter classes. Extensions converge after built-in optional modules; purge retires their declared `ownedUnits`.
+
+Pass external inputs into the module from the machine's `flake.nix`. `extraOutputs` exposes additional packages, apps and checks:
 
 ```nix
 outputs = { nacre, my-service, ... }: nacre.lib.mkFlake {
   modules = [ ./configuration.nix (import ./modules/my-service.nix { inherit my-service; }) ];
-  extraOutputs.checks.x86_64-linux.my-service = ...;
+  extraOutputs.packages.x86_64-linux.my-service = my-service.packages.x86_64-linux.default;
 };
 ```

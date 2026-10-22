@@ -52,11 +52,13 @@
         touch "$out"
       '';
   arch-switch-interface = pkgs.runCommand "arch-switch-interface-check" { } ''
-    # The wrapped executables start and reject conflicting modes.
-    ${arch-switch}/bin/arch-switch --help >/dev/null
-    if ${arch-switch}/bin/arch-switch --check --update >/dev/null 2>&1; then exit 1; fi
-    ${archDeployment}/bin/${deploymentName} --help >/dev/null
-    if ${archDeployment}/bin/${deploymentName} --plan --update >/dev/null 2>&1; then exit 1; fi
+    # Packaged wrappers must preserve argument rejection before touching live state.
+    status=0
+    ${arch-switch}/bin/arch-switch --check --update >out 2>err || status=$?
+    test "$status" -eq 2
+    status=0
+    ${archDeployment}/bin/${deploymentName} --plan --update >out 2>err || status=$?
+    test "$status" -eq 2
     touch "$out"
   '';
   justfile =

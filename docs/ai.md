@@ -1,16 +1,16 @@
 # Local AI
 
-The AI feature runs declared GGUF models with a pinned native llama.cpp, routed by llama-swap. Nix generates the routing, Caddy and systemd configuration; the Arch adapter checks prepared artifacts, ownership and service state before applying it. Built binaries and models live at declared native paths, outside the store.
+Nacre serves declared GGUF models through pinned native llama.cpp and llama-swap. Nix generates routing, Caddy and systemd policy; the Arch adapter validates prepared artifacts, ownership and service readiness before convergence. Binaries and models remain at declared native paths outside the store.
 
 ```text
 Tailnet HTTPS → Tailscale Serve → loopback Caddy → loopback llama-swap → loopback llama-server
 ```
 
-Caddy forwards only `/health` and `/v1/*`. Models, profiles, versions and checksums are declared in the AI module.
+Caddy exposes only `/health` and `/v1/*` through the tailnet route. The AI module declares model identities, profiles, runtime versions and checksums.
 
 ## Selecting models
 
-`programs.ai.llama.model.name` is the default model. With an empty `llama.models`, the single-model behavior applies; with explicit entries, every model you use (including `model.name`) must be enabled:
+`programs.ai.llama.model.name` selects the default. An empty `llama.models` uses single-model mode; an explicit selection must enable every referenced model, including the default:
 
 ```nix
 programs.ai.llama = {
@@ -35,13 +35,13 @@ programs.ai.llama = {
 };
 ```
 
-- Each model sets its own device, context, cache, batch, parallel slots and offload. The default model applies `llama.model` overrides first, then its per-model settings.
-- Profiles share the model process and control only sampling and thinking.
-- Unknown fields, profiles pointing at unselected models, invalid batches and conflicting thinking settings fail at evaluation.
-- With concurrency, the selection may not exceed `maxLoadedModels`; backends load on first request and stay resident. Without it, the limit must be 1 and models swap on demand.
-- Preparation covers selected models only; deselecting deletes nothing.
+- Each model controls device, context, cache, batch, slots and offload. Per-model settings override `llama.model` settings for the default model.
+- Profiles share a backend process and change sampling and thinking only.
+- Evaluation rejects unknown fields, unselected profile targets, invalid batches and conflicting thinking options.
+- Concurrent selection cannot exceed `maxLoadedModels`; backends load on demand and stay resident. Without concurrency, the limit is 1 and models swap on demand.
+- Preparation covers the selection; deselection removes no artifacts.
 
-`vramEstimateMiB` and `memoryBudgetMiB` describe a measured budget: with a budget set, every selected model needs an estimate and the sum must fit. They do not limit real allocation. Fixed offload, context and batch with `fit = false` make results independent of load order. Measure peak prompt processing, leave headroom for the desktop and Sunshine, and remeasure after changing models or runtime.
+`memoryBudgetMiB` requires a `vramEstimateMiB` for every selected model and rejects a sum above the budget. These are planning estimates, not allocation limits. Fixed offload, context and batch with `fit = false` avoid load-order-dependent fitting. Measure peak prompt processing with desktop and Sunshine headroom, and remeasure after runtime or model changes.
 
 The option name `qwen3.6-35b-a3b-ud-q5-k-m` is kept for compatibility; the file is MXFP4_MOE. Query `/v1/models` for exact API IDs.
 
@@ -55,19 +55,19 @@ With `programs.ai.enable`, the AI module installs these AUR packages, each with 
 | Claude Desktop (`claude-desktop`, only with the desktop) | `programs.ai.claudeDesktop.enable` |
 | Codex (`openai-codex-bin`) | `programs.ai.codex.enable` |
 
-New packages arrive with `nacre update`; until then a routine switch stops with exit code 3.
+Install newly declared native tools with `nacre update`; a routine switch exits 3 while they are missing.
 
 ## Agent skills
 
-Home Manager installs explicitly selected skills, including all of Matt Pocock's and kepano's Obsidian skills, as whole directory links:
+Home Manager projects selected skill directories from pinned upstream sources:
 
 - `~/.agents/skills` follows `programs.ai.enable` and `programs.ai.skillsPresets.enable`;
 - `~/.claude/skills` follows `programs.ai.claude.enable` and `programs.ai.claude.skills.enable`;
 - none depends on llama.cpp preparation.
 
-A skill installed both here and as a Claude Code plugin (such as `mattpocock-skills`) appears twice; keep one source.
+Choose one installation source per skill to avoid duplicate discovery through managed links and plugins.
 
-Sources and the selection live in [`modules/ai/skills.nix`](../modules/ai/skills.nix). The `matt-pocock-skills`, `obsidian-skills` and `vercel-skills` inputs are pinned in `flake.lock`. Deployment uses the prebuilt sources from the activation package: no `npx`, no download at activation, no Skills CLI lock file.
+[`modules/ai/skills.nix`](../modules/ai/skills.nix) owns the selection from the locked `matt-pocock-skills`, `obsidian-skills` and `vercel-skills` inputs. Activation uses prebuilt sources without downloads or a Skills CLI lockfile.
 
 Update skill sources after reviewing upstream changes:
 
@@ -77,23 +77,23 @@ just check
 just build
 ```
 
-Then deploy and commit the lock change; revert the lock to roll back. `nacre update` handles native packages only and never advances skills. A selected upstream path that disappears or lacks `SKILL.md` fails evaluation, so updates never drop a skill silently. Skill directories are read-only links; `npx skills update` would fight them.
+Review and commit the lock update before deployment; revert it to restore earlier sources. `nacre update` does not advance skill inputs. Missing selected paths or `SKILL.md` files fail evaluation. Managed skill links are read-only; update their flake inputs rather than running a skill updater against them.
 
 ## Codex local profile
 
-With AI, Codex and llama.cpp enabled, Home Manager generates `~/.codex/llama-cpp.config.toml` from the default model's API ID and context:
+When AI, Codex and llama.cpp are enabled, Home Manager generates `~/.codex/llama-cpp.config.toml` using the default model identity and context:
 
 - provider `llama_cpp` (Responses API at `http://127.0.0.1:11434/v1`), web search off;
 - auto-compaction at 75% of context (12K tokens at the default 16K);
 - Codex multi-agent tools off, because the pinned llama.cpp Responses bridge supports only function tools.
 
-Use it with `codex --profile llama-cpp` ([Codex 0.134+](https://learn.chatgpt.com/docs/config-file/config-advanced)). `--profile` reads from the default `~/.codex`, not a custom `CODEX_HOME`. Disable with `programs.ai.codex.localProfile.enable = false`. The module manages no other Codex settings or credentials.
+Select the generated profile with `codex --profile llama-cpp` from the default Codex home. The managed profile is not projected into a custom `CODEX_HOME`. Disable it with `programs.ai.codex.localProfile.enable = false`; other Codex preferences and credentials remain unmanaged.
 
-Qwen3.5 uses a managed chat template that keeps multiple system/developer messages in order. The GGUF's built-in template rejects them with HTTP 500 (`System message must be at the beginning`), which Codex may show as a generic overload error.
+The managed Qwen3.5 template preserves multiple system/developer messages in order. The bundled GGUF template rejects that input with HTTP 500 (`System message must be at the beginning`); a client may present a generic overload message.
 
 ## FIM completion
 
-Base completion weights are served on `/v1/completions` with raw prefix/suffix tokens:
+Send raw prefix/suffix tokens to `/v1/completions` for fill-in-the-middle completion:
 
 ```bash
 curl --fail http://127.0.0.1:11434/v1/completions \
@@ -101,11 +101,11 @@ curl --fail http://127.0.0.1:11434/v1/completions \
   --data '{"model":"Qwen2.5-Coder-3B-Q4_K_M.gguf","prompt":"<|fim_prefix|>def add(a, b):\n    <|fim_suffix|>\n\nassert add(2, 3) == 5\n<|fim_middle|>","max_tokens":64,"temperature":0,"stop":["<|fim_pad|>","<|endoftext|>","<|im_end|>"]}'
 ```
 
-Set stop tokens explicitly; the candidate models declare different EOS tokens. Add a file or language hint to the prefix (for example `# Nix expression`) when the syntax is ambiguous.
+Specify stop tokens for the selected model. Add a language or filename hint such as `# Nix expression` when the prefix is ambiguous.
 
 ## Benchmarks
 
-These tools use the real GPU and are separate from deployment and checks. Download candidates to a scratch directory and verify their SHA-256. Avoid running another large model beside the managed router; for isolated runs, stop the router and restore it afterwards without touching `/etc`, receipts or the prepared selector.
+Benchmark tools use the real GPU outside deployment and CI. Stage candidates in scratch space and verify SHA-256. Isolated measurements may require stopping the router and restoring it afterwards; retain managed configuration, receipts and the prepared selector.
 
 Find the discrete GPU's sysfs path instead of assuming `card0`:
 
@@ -125,7 +125,7 @@ python modules/ai/benchmark.py \
   --min-free-mib 4096 --output /var/tmp/ai-bench.json
 ```
 
-It measures PP512, PP4096 and TG128 three times each and records binary version, model checksum, parameters, raw diagnostics and peak VRAM. `--depths 8192` measures generation after a longer prefix. The headroom monitor stops its own benchmark processes; polling cannot catch instant allocations.
+The benchmark repeats PP512, PP4096 and TG128 and records runtime version, model checksum, parameters, diagnostics and peak VRAM. `--depths 8192` adds generation after a longer prefix. The headroom monitor stops benchmark-owned processes, but polling can miss brief allocations.
 
 ```bash
 python modules/ai/probe.py --base-url http://127.0.0.1:11434 \
@@ -135,7 +135,7 @@ python modules/ai/probe.py --base-url http://127.0.0.1:11434 \
   --model COMPLETION_ID --mode fim --output /var/tmp/ai-fim.json
 ```
 
-The probe uses synthetic prompts, compares thinking on and off, and repeats prefixes to observe cache reuse. It records the first SSE event, reasoning and visible answer separately, including failures and partial output. Do not infer long-context speed from empty-context TG128. Results for this machine are in [benchmarks](ai-benchmarks.md).
+The probe compares thinking modes and repeated synthetic prefixes, recording first SSE event, reasoning, visible answer, failures and partial output separately. Empty-context TG128 does not predict long-context generation. See [measured results](ai-benchmarks.md) for the recorded workstation experiment.
 
 ## Preparation
 
@@ -145,10 +145,10 @@ nacre ai prepare build    # only the pinned llama.cpp
 nacre ai prepare model    # only download and fully verify the declared models
 ```
 
-- The build uses the declared llama.cpp version and reviewed patches, installs into a versioned directory, then atomically moves the `current` selector. It needs native C++, ROCm and Vulkan toolchains.
-- Models are staged by declared identity, published atomically only after a full SHA-256 check, and recorded in a root-owned receipt. Routine deployment compares receipt identity and file metadata instead of rehashing the GGUF.
-- Unknown staging state, a mismatched selector or checksum needs a manual decision.
-- Downloads use `hf download --local-dir`. After a failed download, rerun `nacre ai prepare model`: staging for the same identity is reused and still verified.
+- Build the declared runtime and patches with native C++, ROCm and Vulkan tools, install into a versioned directory and atomically select it through `current`.
+- Stage models by identity, fully verify SHA-256 before atomic publication and record a root-owned receipt. Routine deployment compares that identity and metadata without rehashing the GGUF.
+- Unknown staging state, selector mismatch and checksum mismatch require manual resolution.
+- Downloads use `hf download --local-dir`. Retry `nacre ai prepare model` to resume matching staged downloads and verify them before publication.
 
 ## Deploying and checking
 
@@ -160,6 +160,6 @@ sudo tailscale serve status --json
 systemctl status llama-swap.service caddy.service
 ```
 
-Until the build selector exists, deployment skips AI visibly and leaves its files and services alone. Afterwards, a missing model, invalid build or model receipt, checksum change, unmanaged Caddy configuration, failed service or state change after preflight stops the run.
+Before a build selector exists, deployment reports AI as unprepared and leaves it untouched. After preparation, missing models, invalid receipts, checksum drift, unmanaged Caddy state, service failures and post-preflight changes stop convergence.
 
-Disabling AI stops convergence and removes nothing. `purge` withdraws the Tailscale Serve route, the Caddy site and `llama-swap`, keeping prepared binaries, models and receipts.
+Disabling AI withdraws management. Purge removes its Tailscale Serve route, Caddy site and llama-swap resources while retaining prepared binaries, models and receipts.

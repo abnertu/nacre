@@ -1,32 +1,30 @@
 # System settings
 
-`configuration.nix` selects which native system features are managed. `platforms/arch/system/` owns locale, timezone, firewall and similar settings; `platforms/arch/core/` owns the remaining core files, units, groups and kernel parameters. Each adapter reads one Nix-generated manifest, so convergence and purge cover the same declarations. Before writing or starting anything, adapters check the live files, ownership, native commands and units. These `/etc` files do not belong to Home Manager.
+The system adapter owns locale, timezone, console, hostname, firewall, hotspot and selected native service settings. Core adapters own the remaining native files, units, groups and kernel parameters. Their Nix-generated manifests define both convergence and purge; Home Manager does not own these `/etc` files.
 
-| Option | Manages |
+| Options | Native resources |
 | --- | --- |
 | `i18n`, `time`, `console` | Locale, timezone, keymap and font |
-| `networking.hostname`, `networking.firewall`, `networking.hotspot` | Hostname, UFW, an existing NetworkManager AP |
-| `services.timesyncd`, `services.journald`, `services.logind`, `services.fstrim`, `services.powerpanel` | systemd native settings, UPS daemon config and service state |
+| `networking.hostname`, `networking.firewall`, `networking.hotspot` | Hostname, UFW and an existing NetworkManager AP |
+| `services.timesyncd`, `services.journald`, `services.logind`, `services.fstrim`, `services.powerpanel` | Native settings, service state and UPS configuration |
 
-System preflight is part of the core stage: a missing hotspot interface, missing resources, conflicts with another provider or owner, and command failures stop the run instead of skipping. Before enabling a feature the first time, check its current owner from a local session you can recover from, especially time sync, storage discard, console resources, NetworkManager and UFW (`sudo ufw status verbose`).
+Preflight checks files, ownership, commands and units before mutations. Missing interfaces or resources, conflicting providers and failed queries stop the core stage. Before first adoption, inspect current ownership from a recoverable local session, especially for UFW, networking, time sync, storage discard and console settings. See [hotspot](hotspot.md) for AP preparation.
 
-See [hotspot](hotspot.md) for adopting an AP. Disabling a declaration withdraws management only. `purge` removes only the drop-ins this adapter owns and keeps the current locale, timezone, hostname, console, firewall rules and hotspot settings.
+Disabling a declaration withdraws management. Purge removes owned drop-ins while retaining the current locale, timezone, hostname, console, firewall rules and hotspot properties.
 
 ## PowerPanel (CyberPower UPS)
 
-`services.powerpanel` manages the UPS through `/etc/pwrstatd.conf`, the AUR package `powerpanel` and `pwrstatd.service`:
+`services.powerpanel` manages `/etc/pwrstatd.conf`, the `powerpanel` AUR package and `pwrstatd.service`. Its shutdown policy waits for the remaining-runtime threshold rather than shutting down immediately on power failure; inspect `powerfailShutdown`, `runtimeThreshold` and `lowbattShutdown` when changing it.
 
-- Shutdown on power failure waits for the remaining runtime threshold (`powerfailShutdown = false`, `runtimeThreshold = 300`, `lowbattShutdown = true`).
-- The deployment user joins the `power` group, so `pwrstat -status` and `pwrstat -config` work without root.
-- A change to `/etc/pwrstatd.conf` records a pending marker and restarts a running `pwrstatd.service`.
+The deployment user joins `power`, allowing `pwrstat -status` and `pwrstat -config` without root. Changed daemon configuration records pending work and restarts a running service.
 
 ## Changes and recovery
 
-Adapters compare content, ownership and mode, and replace a file atomically only when it differs. A pending marker in `/var/lib/nix-config/arch/` is recorded before a change and cleared after it succeeds. Healthy reruns rewrite nothing and restart nothing. logind changes take effect at the next boot instead of restarting the logged-in session. The TRIM timer keeps the native schedule with catch-up disabled; a conflicting schedule needs a manual decision.
+Adapters compare content, owner and mode before atomic replacement. They record intent under `/var/lib/nix-config/arch/` and clear it after success. Healthy reruns rewrite no identical files and restart no healthy services. logind changes wait until reboot; the adapter does not restart an active login session. fstrim keeps the native schedule with catch-up disabled and refuses conflicting schedules.
 
-On failure, fix the reported cause and rerun with the marker in place. `nacre --verbose switch` shows native commands and diagnostics.
+Keep pending markers, fix the reported cause and rerun. `nacre --verbose switch` exposes native diagnostics.
 
-Validate source only:
+For isolated validation:
 
 ```bash
 nix build --no-link --show-trace --print-build-logs \

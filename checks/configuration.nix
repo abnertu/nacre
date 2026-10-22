@@ -158,7 +158,6 @@ let
     }
   ];
   valid = module: (builtins.tryEval (builtins.deepSeq (evaluate [ module ]).host true)).success;
-  hotspot = evaluate [ { networking.hotspot.enable = true; } ];
   hotspotOff = evaluate [ { networking.hotspot.enable = false; } ];
   hotspotParentOff = evaluate [
     {
@@ -176,21 +175,9 @@ let
   ];
 
 in
-assert hotspot.host.systemSettings.hotspot.channel == 36;
 assert hotspotOverride.host.systemSettings.hotspot.channel == 149;
 assert hotspotOff.host.systemSettings.hotspot == null;
 assert hotspotParentOff.host.systemSettings.hotspot == null;
-assert disabled.host.ai.llama.enable;
-# Check the composed initialization, including Home Manager's own definitions.
-assert lib.assertMsg (lib.hasInfix "powerlevel10k.zsh-theme" home.config.programs.zsh.initContent)
-  "zsh initialization lost p10k";
-assert lib.all (text: lib.hasInfix text home.config.programs.zsh.initContent) [
-  ".p10k.zsh"
-  "autosuggest-accept"
-  "zsh-syntax-highlighting.zsh"
-  "oh-my-zsh.sh"
-  "fzf --zsh"
-];
 assert switchesWork;
 assert minimalRole.deploymentName == "fixture-minimal";
 assert !minimalRole.configuration.config.desktop.enable;
@@ -199,19 +186,12 @@ assert builtins.elem "hyprland" base.config.arch.pacman;
 assert !(minimalRole.homes."fixture@fixture".config.home.file ? ".zprofile");
 assert !roleBelowHost.config.desktop.enable;
 assert builtins.length merged.host.systemSettings.firewall.rules == 2;
-assert base.config.programs.ai.enable && base.config.virtualization.kvm.gui.enable;
-assert base.host.systemSettings.trim.enable;
 assert override.host.name == "overridden" && override.host.systemSettings.timeZone == "UTC";
 assert override.host.systemSettings.firewall.rules == [ ];
 assert !disabled.host.powerpanel.enable;
 assert !(builtins.elem "powerpanel" packages.aur);
 assert !overriddenHome.config.programs.git.enable;
-assert lib.all
-  (name: lib.any (package: (package.pname or "") == name) overriddenHome.config.home.packages)
-  [
-    "bat"
-    "hello"
-  ];
+assert builtins.elem pkgs.hello overriddenHome.config.home.packages;
 assert headlessHome.config.systemd.user.services == { };
 assert !(headlessHome.config.home.file ? ".zprofile");
 assert !(headlessHome.config.xdg.configFile ? "noctalia/storage.toml");

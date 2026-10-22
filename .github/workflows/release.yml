@@ -1,4 +1,4 @@
-name: Release
+name: Publish release
 
 on:
   push:
@@ -9,11 +9,11 @@ permissions:
 
 jobs:
   release:
-    name: Publish the GitHub release
+    name: Verify version and publish GitHub release
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Check out
+      - name: Check out release history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0

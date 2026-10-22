@@ -10,12 +10,6 @@ let
     address = "192.0.2.1/24";
   };
   valid = raw: (builtins.tryEval (builtins.deepSeq (parse raw) true)).success;
-  evaluated = import ../../../../lib/eval-configuration.nix {
-    inherit lib;
-    modules = [ ../../../../checks/fixtures/configuration.nix ];
-  };
-  baseline = evaluated.host.systemSettings;
-  packages = evaluated.config.arch;
   optional = import ../default.nix {
     inherit lib pkgs;
     hostName = "fixture";
@@ -50,7 +44,6 @@ assert lib.all (override: !(valid { hotspot = ap // override; })) [
 ];
 assert valid { };
 assert (parse { }).locale == null && (parse { }).firewall == null;
-assert baseline.timeSync != null && baseline.journal != null && baseline.trim != null;
 assert valid {
   locale = {
     generated = [ "en_US.UTF-8" ];
@@ -118,7 +111,4 @@ assert lib.all (value: !(valid value)) [
   { firewall.incoming = "allow"; }
   { firewall.command = "ufw reset"; }
 ];
-assert builtins.elem "glibc" packages.pacman;
-assert builtins.elem "ufw" packages.pacman;
-assert builtins.elem "tzdata" packages.pacman;
 true

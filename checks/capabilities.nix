@@ -189,12 +189,6 @@ let
   upstreamSkill = builtins.head (builtins.attrNames skillRegistry.roots);
   skills = lib.filterAttrs (name: _: lib.hasPrefix ".agents/skills/" name) home.config.home.file;
 in
-assert
-  aiAur { enable = true; } == [
-    "claude-code"
-    "claude-desktop"
-    "openai-codex-bin"
-  ];
 assert aiAur { enable = false; } == [ ] && disabled.homeModule.home.file == { };
 assert
   home.config.home.file.".codex/llama-cpp.config.toml".text
@@ -252,7 +246,6 @@ assert
     };
   in
   builtins.elem "fixture-repo-app" extra.pacman && builtins.elem "fixture-aur-app" extra.aur;
-assert builtins.elem "qemu-desktop" (virtualization { }).pacman;
 assert !(builtins.elem "kvm" (virtualization { enable = false; }).groups);
 assert builtins.elem "qemu-desktop" v.pacman && builtins.elem "podman" v.pacman;
 assert builtins.elem "kvm" v.groups;

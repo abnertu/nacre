@@ -1,44 +1,38 @@
 # Install
 
-Nacre layers onto an existing Arch Linux install; it does not partition disks or install the base system.
-
-## Before you start
-
-- Arch Linux `x86_64`, booted into the installed system
-- your login account, in `wheel`, with its home at `/home/<name>`
-- a network connection
+Nacre requires an installed, booted Arch Linux `x86_64` system, network access and a login account in `wheel` with a home under `/home/<name>`. Disk partitioning and base-system installation remain outside Nacre.
 
 ## Steps
+
+Read [the bootstrap](../scripts/bootstrap.sh), then execute it:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/abnertu/nacre/main/scripts/bootstrap.sh)
 ```
 
-The [bootstrap](../scripts/bootstrap.sh) enables `[multilib]`, installs the base packages, Nix and yay, and starts the Nix daemon; it changes the host, so read it first (`curl -fsSL https://raw.githubusercontent.com/abnertu/nacre/main/scripts/bootstrap.sh | less`). On a terminal it then offers to run `nacre install`. If it added you to `wheel`, log in again and run install yourself:
+The script enables `[multilib]`, installs base packages, Nix and yay, and starts the Nix daemon. In a terminal it offers to run `nacre install`. If group membership changed, log in again before running installation:
 
 ```bash
 nix run github:abnertu/nacre#nacre -- install
 ```
 
-`install` asks for the user, hostname, role, time zone and locale, offering this machine's current values. It detects AMD graphics and the initramfs images under `/boot`, then creates your machine's flake in `~/.config/nacre`:
+Installation asks for user, hostname, role, time zone and locale. It detects AMD graphics and initramfs images, writes the [machine template](../templates/machine/configuration.nix) and a flake following Nacre into `~/.config/nacre`, and commits the generated files so Nix can see them. Use `--flake PATH` to choose another checkout.
 
-- `flake.nix` follows Nacre: `nacre.lib.mkFlake { modules = [ ./configuration.nix ]; }`
-- `configuration.nix` is written from [the template](../templates/machine/configuration.nix)
-- both are committed to a new Git repository, since Nix only reads tracked files
-
-It then shows `nacre plan` and runs `nacre update` once you confirm. Pass `--flake PATH` for another location.
-
-For an unattended install, pass every value and `--yes`:
+It previews the machine and asks before `nacre update`. For unattended installation, supply every value and `--yes`:
 
 ```bash
 nix run github:abnertu/nacre#nacre -- install --user alice --hostname box \
   --role minimal --timezone Europe/Berlin --locale en_US.UTF-8 --yes
 ```
 
-Without `--yes` and without a terminal, it stops after the plan. In an existing flake, it refuses to replace a `configuration.nix` with uncommitted changes unless you pass `--force`.
+Without a terminal or `--yes`, installation stops after the plan. In an existing flake, uncommitted `configuration.nix` changes are protected unless `--force` is passed.
+
+## Restore an existing machine
+
+Clone its machine flake to `~/.config/nacre` before bootstrapping. The bootstrap then directs you to `nix run .#nacre -- plan`; restore required external state using the [backup guide](backup.md) before deployment.
 
 ## Afterwards
 
-The home generation installs `nacre`, so later runs are `nacre plan` and `nacre switch`. Upgrade Nacre itself with `nix flake update nacre` in `~/.config/nacre`, review `nacre plan`, then switch; your configuration never merges with Nacre's code.
+The activated home provides `nacre`. Add hardware, home modules and optional features using [configuration](configuration.md); the [fixture](../checks/fixtures/configuration.nix) demonstrates feature composition.
 
-The generated file is a starting point: add hardware, features and home settings as described in [configuration](configuration.md), and enable opt-in features such as the [hotspot](hotspot.md) or [local AI](ai.md) when you need them. The [fixture machine](../checks/fixtures/configuration.nix) enables every feature and serves as a full example.
+To adopt Nacre changes, run `nix flake update nacre` in the machine checkout, review the lock diff and `nacre plan`, then switch. Your configuration remains separate from Nacre's source.

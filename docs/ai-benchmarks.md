@@ -1,8 +1,8 @@
-# Local AI benchmarks
+# Local AI benchmark record
 
-Measured on 2026-10-06 with synthetic prompts and verified GGUFs. These results set the Arch host defaults; they are not a general performance claim.
+Measurements from 2026-10-06 used synthetic prompts and checksum-verified GGUFs on the workstation below. They informed that machine's settings; other hardware and workloads require new measurements.
 
-## Setup
+## Measurement environment
 
 | Item | Spec |
 | --- | --- |
@@ -12,9 +12,9 @@ Measured on 2026-10-06 with synthetic prompts and verified GGUFs. These results 
 | llama.cpp | build 10884, commit `434ddbbc0e30522e897670681e503b797c12b7c1` |
 | Router | llama-swap 224 with the Nix-generated config |
 
-`llama-bench` measured PP512, PP4096 and TG128, compared ROCm0 / Vulkan0, q8 / q4 KV, ubatch 64–1024, batch 1024 / 2048 and threads 4 / 8. Chosen settings: Vulkan0, all layers on GPU, flash attention on, q8 KV, batch 2048, ubatch 512, 8 threads. Raising ubatch to 1024 dropped 4B PP4096 from 3,277 to 2,979 tok/s and added ~508 MiB peak VRAM.
+`llama-bench` measured PP512, PP4096 and TG128, compared ROCm0 / Vulkan0, q8 / q4 KV, ubatch 64–1024, batch 1024 / 2048 and threads 4 / 8. The selected run used Vulkan0, all layers on GPU, flash attention on, q8 KV, batch 2048, ubatch 512, 8 threads. Raising ubatch to 1024 dropped 4B PP4096 from 3,277 to 2,979 tok/s and added ~508 MiB peak VRAM.
 
-## Candidates
+## Candidate measurements
 
 | Model | PP512 tok/s | PP4096 tok/s | TG128 tok/s | Peak GPU MiB |
 | --- | ---: | ---: | ---: | ---: |
@@ -30,9 +30,9 @@ Peaks include the desktop's own usage. Model identities and checksums are pinned
 - **3B handles completion**: it passed all four small Python, JavaScript and Nix tests; 1.5B passed three. The set is too small to rank general coding ability.
 - FIM prefixes need a language hint: without `# Nix expression`, both models misread a Nix snippet.
 
-## Routing and context
+## Concurrent routing and context
 
-Both models resident:
+The following runs kept both selected models resident:
 
 | Scenario | Agent generation | Completion generation | First content (warm) | Peak GPU |
 | --- | --- | --- | --- | --- |
@@ -40,11 +40,11 @@ Both models resident:
 | Near the old 32K limit, concurrent | 48.0–48.2 tok/s | — | cold 13.9 s | — |
 | Final 16K, 15,168-token prompt, 128 tokens out | 72.4 alone; 50.2–59.9 concurrent | 60.8–84.3 tok/s | agent 50–55 ms (cold 6.71 s) | 6,263 MiB |
 
-Speed dropped sharply near 32K, so the agent context defaults to 16K and completion to 4K. Larger contexts remain configurable at a measured cost. The final settings stayed above 50 tok/s in these samples, with little margin at long context.
+Speed dropped sharply near 32K, so the agent context defaults to 16K and completion to 4K. Larger contexts remain configurable at a measured cost. These final samples exceeded 50 tok/s, with little margin at long context.
 
-Declared estimates are 6,144 MiB (agent) and 3,072 MiB (completion), within the 11,264 MiB budget. Sunshine streaming was not measured; memory headroom does not prove frame stability.
+Declared estimates are 6,144 MiB (agent) and 3,072 MiB (completion), within the 11,264 MiB budget. Sunshine streaming was not measured, so these results establish no frame-stability claim.
 
-## Thinking and diagnosis
+## Observations
 
 - The previous Qwen3.6 with `enable_thinking=false` answered `17 * 23` directly; with `true` it ran out of a 256-token limit before answering. Both decoded at ~21 tok/s, so disabling thinking did not fix slow decoding.
 - The chosen 4B answered directly through the plain alias and correctly after reasoning through the thinking alias. Repeated requests reused the prompt cache; a synthetic tool call produced the expected `lookup_symbol` call.
