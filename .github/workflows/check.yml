@@ -1,4 +1,4 @@
-name: Nix validation
+name: check
 
 on:
   push:

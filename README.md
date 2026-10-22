@@ -2,7 +2,7 @@
 
 Declarative configuration and deployment for existing Arch Linux and Hyprland machines, evaluated with Nix.
 
-[![Nix validation](https://github.com/abnertu/nacre/actions/workflows/check.yml/badge.svg)](https://github.com/abnertu/nacre/actions/workflows/check.yml)
+[![check](https://github.com/abnertu/nacre/actions/workflows/check.yml/badge.svg)](https://github.com/abnertu/nacre/actions/workflows/check.yml)
 [![Release](https://img.shields.io/github/v/release/abnertu/nacre)](https://github.com/abnertu/nacre/releases/latest)
 [![GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](https://www.gnu.org/licenses/gpl-3.0.html)
 [![Arch Linux](https://img.shields.io/badge/Arch_Linux-x86__64-1793D1?logo=archlinux&logoColor=white)](https://archlinux.org/)
