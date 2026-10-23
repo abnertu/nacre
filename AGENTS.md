@@ -1,12 +1,12 @@
 # AGENTS Instructions
 
-Nacre builds typed machine policy into a fixed Arch deployment and Home Manager generation. Real machines live in separate flakes; `checks/fixtures` supplies this repository's machine outputs. Read [CONTEXT.md](CONTEXT.md) before changing composition and the relevant [operator guide](docs/) before changing a feature.
+Nacre builds typed machine policy into a fixed Arch deployment and Home Manager generation. Real machines live in separate flakes; `checks/fixtures` supplies this repository's machine outputs.
 
 **Never read or print credentials, private keys, password stores, registration tokens, Noctalia keys or mutable application data.** Keep them out of Git, derivations, command arguments and unredacted logs; tests use synthetic fixtures.
 
 ## Ownership
 
-Each resource has one owner. Feature modules contribute native resources through `arch`; deployment consumes those merged contributions. Read the boundary table in [CONTEXT.md](CONTEXT.md) before moving ownership.
+Each resource has one owner. Feature modules contribute native resources through `arch`; deployment consumes those merged contributions.
 
 - Shared options live in `lib/configuration-options.nix`, feature options in their `module.nix`. Express single-value rules as option types and cross-field rules as entries in `lib/configuration-assertions.nix` (or a feature `interface.nix` for derived values). Precedence comes from `lib.mkDefault` baselines versus ordinary user definitions, never import order.
 - Registries stay explicit. Package and service inventories live in their owning Nix source.
@@ -73,6 +73,8 @@ Version releases with [Semantic Versioning 2.0.0](https://semver.org/). `VERSION
 ## Docs
 
 - Keep this file, `README.md` and every other doc concise and plain: each sentence carries information, with no filler.
-- [README.md](README.md) is the entry point for users, [CONTEXT.md](CONTEXT.md) the composition model and `docs/` the operator procedures. All documentation is English.
+- Read [CONTEXT.md](CONTEXT.md), the composition model and its boundary table, before changing composition or moving ownership.
+- Read the relevant [operator guide](docs/) before changing a feature.
+- [README.md](README.md) is the entry point for users. All documentation is English.
 - Write for an operator: state behaviour, commands and limits; leave out background, repetition and anything the code or `--help` already says. Update the relevant guide when public behaviour changes.
 - Keep agent constraints here and operator procedures in the feature guides. Preserve release history and measured benchmark data when editing their presentation.
