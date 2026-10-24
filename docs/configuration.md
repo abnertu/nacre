@@ -1,6 +1,6 @@
 # Configuration
 
-A machine flake calls `nacre.lib.mkFlake` with its modules. Installation starts with one `configuration.nix`; imported machine files may define baselines with `lib.mkDefault`, which ordinary definitions override regardless of import order. Unknown options, wrong types and invalid combinations fail during evaluation.
+A machine flake calls `nacre.lib.mkFlake` with its modules. Installation starts with one `configuration.nix`. Imported machine files can define baselines with `lib.mkDefault`. Ordinary definitions override those baselines, in each import order. Unknown options, wrong types and invalid combinations fail during evaluation.
 
 ```nix
 { ... }:
@@ -12,7 +12,7 @@ A machine flake calls `nacre.lib.mkFlake` with its modules. Installation starts 
 }
 ```
 
-Inspect normalized policy before building:
+Before you build, inspect the normalized policy:
 
 ```bash
 nix eval .#lib.configuration.networking.hostname.name
@@ -23,7 +23,7 @@ nix eval --json .#lib.configuration.networking.firewall
 
 `minimal` supplies the core system, shell and development tools. `workstation`, the default, adds Hyprland, Sunshine, Vesktop and Vicinae. Role baselines yield to machine defaults and ordinary overrides.
 
-Deployments are named `<hostname>-<role>` and also exposed as `#deployment`.
+A deployment has the name `<hostname>-<role>`. It is also available as `#deployment`.
 
 ## Options
 
@@ -39,15 +39,21 @@ Deployments are named `<hostname>-<role>` and also exposed as `#deployment`.
 | Held upgrades | `packages.hold` |
 | Desktop and home programs | `desktop`, `programs`, `users.users.<name>.home` |
 
-Disabling an Arch feature withdraws management without removing its packages, services, registrations or data. Home Manager still activates the newly declared home.
+When you disable an Arch feature, Nacre withdraws management. It does not remove the packages, services, registrations or data of the feature. Home Manager still activates the newly declared home.
 
-`packages.hold = [ "ghostty" ];` excludes installed packages from Nacre's pacman and AUR upgrades. Missing held packages still install; dependency resolution can fail if another package requires a newer version. Manual pacman operations do not honor this declaration. Remove the hold to resume upgrades.
+`packages.hold = [ "ghostty" ];` excludes installed packages from Nacre's pacman and AUR upgrades. Missing held packages still install. Dependency resolution can fail if another package needs a newer version. Manual pacman operations ignore this declaration. Remove the hold to resume upgrades.
 
-Kernel defaults support container networking. Override a sysctl key, set it to `null` to withdraw management, or replace the module list with `lib.mkForce`. Read [local AI](ai.md) before selecting models, offload or context under `programs.ai.llama.models`.
+Kernel defaults support container networking. You can change them in these ways:
+
+- Override a sysctl key.
+- Set a key to `null` to withdraw management.
+- Replace the module list with `lib.mkForce`.
+
+Read [local AI](ai.md) before you select models, offload or context under `programs.ai.llama.models`.
 
 ## Users and homes
 
-`deployment.username` selects an existing login account declared in `users.users`. Changing users requires changing both. Modules create their service accounts without home composition. Keep Home Manager's `stateVersion` fixed during routine updates.
+`deployment.username` selects an existing login account declared in `users.users`. To change the user, change both. Modules create their service accounts without home composition. Keep Home Manager's `stateVersion` fixed during routine updates.
 
 Shared profiles provide shell, development tools, themes and default application configuration. Personal settings belong in machine-owned home modules:
 
@@ -66,9 +72,9 @@ users.users.alice.homeModules = [ ./homes/alice/home.nix ];
 }
 ```
 
-Nacre uses `lib.mkDefault` for these defaults, so plain home definitions win. Keep the reviewed Noctalia snapshot at `homes/<user>/noctalia/config.toml`, where the CLI and doctor look for it.
+Nacre uses `lib.mkDefault` for these defaults, so plain home definitions win. Keep the reviewed Noctalia snapshot at `homes/<user>/noctalia/config.toml`. The CLI and doctor look for it there.
 
-After editing, run `nacre build` and review `nacre plan`.
+After you edit, run `nacre build`. Then review `nacre plan`.
 
 ## Machine extensions
 
@@ -96,9 +102,9 @@ A machine can add packages, groups and units through `arch.pacman`, `arch.aur`, 
 }
 ```
 
-Nacre invokes `adapter MANIFEST PHASE` as root for `preflight`, `plan` and `converge`. Exit 20 means preparation has never completed. [nix-adapter](https://github.com/abnertu/nix-adapter) provides the base adapter classes. Extensions converge after built-in optional modules; purge retires their declared `ownedUnits`.
+Nacre invokes `adapter MANIFEST PHASE` as root for `preflight`, `plan` and `converge`. Exit 20 means preparation has never completed. [nix-adapter](https://github.com/abnertu/nix-adapter) provides the base adapter classes. Extensions converge after built-in optional modules. Purge retires their declared `ownedUnits`.
 
-Pass external inputs into the module from the machine's `flake.nix`. `extraOutputs` exposes additional packages, apps and checks:
+Pass external inputs into the module from the `flake.nix` of the machine. `extraOutputs` exposes additional packages, apps and checks:
 
 ```nix
 outputs = { nacre, my-service, ... }: nacre.lib.mkFlake {

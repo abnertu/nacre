@@ -1,8 +1,8 @@
 # Desktop session
 
-UWSM starts Hyprland. Arch provides native graphical binaries; Home Manager supplies configuration and user services. Each application has one startup owner. Activation starts new units, restarts changed units and stops removed units while leaving unchanged services running.
+UWSM starts Hyprland. Arch provides native graphical binaries. Home Manager supplies configuration and user services. Each application has one startup owner. Activation starts new units, restarts changed units and stops removed units. Unchanged services continue to run.
 
-Noctalia owns the StatusNotifier watcher. Tray applications wait for it; Vicinae tolerates a late watcher. Vesktop keeps compatibility flags in its own service, and Sunshine captures through Wayland `wlr`. The development profile uses GPG-backed `pass` for password storage and Git credentials.
+Noctalia owns the StatusNotifier watcher. Tray applications wait for it. Vicinae accepts a late watcher. Vesktop keeps compatibility flags in its own service. Sunshine captures through Wayland `wlr`. The development profile uses GPG-backed `pass` for password storage and Git credentials.
 
 ## Themes
 
@@ -17,17 +17,17 @@ Application configuration selects theme files that Noctalia rewrites at runtime:
 | Vesktop | `vesktop/themes/noctalia*.css`, `discord-system24.css` |
 | Hyprland | `hypr/noctalia.lua`, writable only with a local worktree |
 
-Select templates in the Noctalia snapshot. Files appear after Noctalia first runs and follow the wallpaper. The pinned Hyprland input retains its committed theme. Default Ghostty, btop and cava configuration already selects these files; replacement configuration must do the same so hooks can reload programs without editing read-only declarations.
+Select templates in the Noctalia snapshot. The files appear after the first Noctalia run and follow the wallpaper. The pinned Hyprland input keeps its committed theme. The default Ghostty, btop and cava configuration already selects these files. A replacement configuration must also select them. Then hooks can reload programs without edits to read-only declarations.
 
 ## Application settings
 
-fcitx5 uses read-only declarations under `workstation.fcitx5`. Change input methods and global options in the home configuration and switch; its GUI cannot save them. Declare only non-default values. Learned phrases remain writable under `~/.local/share/fcitx5`. An existing configuration directory blocks activation and must be moved aside deliberately.
+fcitx5 uses read-only declarations under `workstation.fcitx5`. Change input methods and global options in the home configuration, then switch. The fcitx5 GUI cannot save them. Declare only non-default values. Learned phrases stay writable under `~/.local/share/fcitx5`. An existing configuration directory blocks activation. Move it aside deliberately.
 
-Noctalia keeps GUI preferences live and a reviewed snapshot in the machine flake. Doctor reports drift; [capture](noctalia-config.md#capture) imports intended changes for review.
+Noctalia keeps live GUI preferences and a reviewed snapshot in the machine flake. Doctor reports drift. [Capture](noctalia-config.md#capture) imports intended changes for review.
 
 ## Noctalia encrypted storage
 
-Noctalia's file storage key lives outside Git and the store at `~/.local/share/noctalia/file-key-v1/master-key`. Activation generates a missing key. Restoring encrypted data without its original key makes that data unreadable; back up both together using the [backup guide](backup.md).
+The Noctalia file storage key lives outside Git and the store, at `~/.local/share/noctalia/file-key-v1/master-key`. Activation generates a missing key. Encrypted data that you restore without its original key is unreadable. Back up the key and the data together, as the [backup guide](backup.md) describes.
 
 ## Checking the session
 
@@ -38,13 +38,13 @@ busctl --user call org.freedesktop.DBus /org/freedesktop/DBus \
 systemctl --user show noctalia.service -p MainPID
 ```
 
-The watcher PID should belong to Noctalia, and restarting the shell should recover the tray without restarting unrelated applications.
+The watcher PID must belong to Noctalia. A shell restart must recover the tray without a restart of unrelated applications.
 
 ## Live development
 
-Home Manager projects pinned `nvim-config` and `hypr-config` inputs into `~/.config/nvim` and `~/.config/hypr`. Projection refuses to overwrite a Git worktree or backup directory.
+Home Manager projects pinned `nvim-config` and `hypr-config` inputs into `~/.config/nvim` and `~/.config/hypr`. Projection does not overwrite a Git worktree or a backup directory.
 
-To use another published source, add it as a machine flake input and select it:
+To use another published source, add it as a machine flake input. Then select it:
 
 ```nix
 outputs = { nacre, ... }@inputs: nacre.lib.mkFlake {
@@ -55,7 +55,7 @@ outputs = { nacre, ... }@inputs: nacre.lib.mkFlake {
 };
 ```
 
-Use `sources.neovim` for Neovim. For edits without rebuilding, choose absolute local paths:
+Use `sources.neovim` for Neovim. For edits without a rebuild, choose absolute local paths:
 
 ```nix
 users.users.alice.development = {
@@ -64,6 +64,6 @@ users.users.alice.development = {
 };
 ```
 
-Home Manager links directly to each worktree and skips that target's projection check. Reload the editor or compositor to apply edits. Set the path to `null` to restore the pinned source and projection checks.
+Home Manager links directly to each worktree and skips the projection check of that target. To apply edits, reload the editor or compositor. To restore the pinned source and projection checks, set the path to `null`.
 
-Bindings and compositor appearance belong in the Hyprland repository. Wallpaper, bar and widgets belong in [Noctalia configuration](noctalia-config.md).
+Bindings and compositor appearance belong in the Hyprland repo. Wallpaper, bar and widgets belong in [Noctalia configuration](noctalia-config.md).

@@ -1,6 +1,6 @@
 # Backup and restore
 
-The flake rebuilds configuration; deployment creates no backups. Preserve irreplaceable external state on encrypted media with its original owner and mode. Keep secrets outside Git and the Nix store.
+The flake rebuilds configuration. Deployment creates no backups. Keep irreplaceable external state on encrypted media, with its original owner and mode. Keep secrets outside Git and the Nix store.
 
 ## Required state
 
@@ -12,7 +12,7 @@ The flake rebuilds configuration; deployment creates no backups. Preserve irrepl
 | Noctalia storage key and encrypted data | Key: `~/.local/share/noctalia/file-key-v1/master-key` | A newly generated key cannot decrypt old data |
 | Hotspot connection | `/etc/NetworkManager/system-connections/` | AP and WPA credentials must be recreated |
 
-Machine extensions may add required state; follow their own backup procedures.
+Machine extensions can add required state. Follow their own backup procedures.
 
 ## Rebuildable state
 
@@ -23,12 +23,12 @@ Machine extensions may add required state; follow their own backup procedures.
 | Tool sessions | Tool-owned login directories | Authenticate again |
 | Input learning | `~/.local/share/fcitx5/` | Relearn phrases and order |
 
-Before reinstalling, review uncaptured Noctalia preferences and intentionally [capture](noctalia-config.md#capture) and commit those to retain. The Nix store, home generations and deployment pending markers are not restore inputs.
+Before you reinstall, review uncaptured Noctalia preferences. [Capture](noctalia-config.md#capture) and commit the preferences that you want to keep. The Nix store, home generations and deployment pending markers are not restore inputs.
 
 ## Restore order
 
 1. Install Arch and recreate the login account in `wheel`.
-2. Clone the machine flake and run the [bootstrap](deployment.md#bootstrap); use [installation](install.md) for a new machine.
+2. Clone the machine flake and run the [bootstrap](deployment.md#bootstrap). For a new machine, use [installation](install.md).
 3. Restore required external state with its original metadata, including extension-owned state.
 4. Review `nacre plan`, then run `nacre update`.
 5. Prepare AI and any machine extensions that need a separate setup step.
