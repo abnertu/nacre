@@ -7,7 +7,7 @@ Declarative configuration and deployment for existing Arch Linux and Hyprland ma
 [![Arch Linux](https://img.shields.io/badge/Arch_Linux-1793D1?logo=archlinux&logoColor=white)](https://archlinux.org/)
 [![Nix](https://img.shields.io/badge/Nix-5277C3?logo=nixos&logoColor=white)](https://nixos.org/)
 
-Nix validates typed options and builds a fixed deployment artifact. Arch adapters converge native files, packages and services; the artifact's Home Manager generation activates afterwards. Machines keep their own flakes and follow Nacre as an input. Credentials and mutable application data stay outside Git and the Nix store.
+Nix validates typed options and builds a fixed deployment artifact. Arch adapters converge native files, packages and services. Then the artifact's Home Manager generation activates. Machines keep their own flakes and follow Nacre as an input. Credentials and mutable application data stay outside Git and the Nix store.
 
 ![Desktop preview](docs/assets/preview.png)
 
@@ -21,7 +21,7 @@ Read [the bootstrap script](scripts/bootstrap.sh), then run:
 bash <(curl -fsSL https://raw.githubusercontent.com/abnertu/nacre/main/scripts/bootstrap.sh)
 ```
 
-It enables `[multilib]`, installs prerequisites including Nix and yay, and offers to run `nacre install`. Installation creates a machine flake at `~/.config/nacre`, previews changes and asks before deploying. See [installation](docs/install.md) for unattended setup and restoring an existing flake.
+The script enables `[multilib]` and installs the prerequisites, including Nix and yay. Then it offers to run `nacre install`. Installation creates a machine flake at `~/.config/nacre`, shows a preview of the changes and asks before it deploys. See [installation](docs/install.md) for unattended setup and for the restore of an existing flake.
 
 ## Usage
 
@@ -32,7 +32,11 @@ nacre update     # also upgrade declared pacman and AUR packages
 nacre doctor     # report drift and pending work
 ```
 
-Routine `switch` installs no packages. Update Nacre itself with `nix flake update nacre` in the machine checkout, review the lock diff and `nacre plan`, then switch.
+A routine `switch` installs no packages. To update Nacre itself, in the machine checkout:
+
+1. Run `nix flake update nacre`.
+2. Review the lock diff and the output of `nacre plan`.
+3. Run `nacre switch`.
 
 ## Configuration
 
@@ -58,4 +62,4 @@ The workstation role adds Hyprland through UWSM, Noctalia and shared desktop con
 | [Local AI](docs/ai.md) | Prepare models and serve loopback APIs |
 | [Backup](docs/backup.md) | Preserve state outside the flake |
 
-[CONTEXT.md](CONTEXT.md) explains composition; [CHANGELOG.md](CHANGELOG.md) records releases.
+[CONTEXT.md](CONTEXT.md) explains composition. [CHANGELOG.md](CHANGELOG.md) records releases.
