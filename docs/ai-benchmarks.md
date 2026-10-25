@@ -19,7 +19,17 @@ Measurements from 2026-10-06 used synthetic prompts and checksum-verified GGUFs 
 - ubatch 64–1024 and batch 1024 / 2048.
 - Threads 4 / 8.
 
-The selected run used Vulkan0, all layers on GPU, flash attention on, q8 KV, batch 2048, ubatch 512 and 8 threads. With ubatch 1024, 4B PP4096 dropped from 3,277 to 2,979 tok/s. Peak VRAM increased by ~508 MiB.
+The selected run used these settings:
+
+- Device: Vulkan0.
+- Layers: all on GPU.
+- Flash attention: on.
+- KV: q8.
+- Batch: 2048.
+- Ubatch: 512.
+- Threads: 8.
+
+With ubatch 1024, 4B PP4096 dropped from 3,277 to 2,979 tok/s. Peak VRAM increased by ~508 MiB.
 
 ## Candidate measurements
 

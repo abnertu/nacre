@@ -33,7 +33,13 @@ Each resource has one owner. Feature modules contribute native resources through
 - The two stages share no rollback transaction.
 - Core failures stop immediately.
 - An optional module can skip as `not ready` only if its required preparation never completed.
-- These are errors: invalid receipts, checksum drift, ownership conflicts, missing declared core hardware, command failures and runtime drift. Runtime drift includes a readiness change after preflight.
+- Treat each of these conditions as an error:
+  - Invalid receipts.
+  - Checksum drift.
+  - Ownership conflicts.
+  - Missing declared core hardware.
+  - Command failures.
+  - Runtime drift, including a readiness change after preflight.
 - Only `--update` does pacman and AUR convergence.
 - Preserve kernel gates, locks and pending markers. Record the intent before a mutation, and clear it after success.
 - Leave unchanged files and healthy services untouched.
@@ -134,6 +140,10 @@ Version releases with [Semantic Versioning 2.0.0](https://semver.org/). `VERSION
   - Give one instruction in each sentence.
   - Write instructions in the imperative and in the active voice.
   - Use one word for one meaning, and one meaning for one word.
+- Review each sentence over these limits.
+- Split it if it holds more than one instruction or fact.
+- A list of items can stay in one sentence.
+- Make a bullet list from more than five items.
 - Read [CONTEXT.md](CONTEXT.md) before you change composition or move ownership. It holds the composition model and its boundary table.
 - Read the relevant [operator guide](docs/) before you change a feature.
 - [README.md](README.md) is the entry point for users.

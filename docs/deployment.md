@@ -46,7 +46,14 @@ Deployment does these steps:
 
 If home activation fails, the Arch changes stay.
 
-A module can skip as `not ready` only before its preparation has ever completed. Nacre does not touch the files and services of a skipped module. These conditions stop the run: invalid receipts, checksum drift, ownership conflicts, missing core hardware, failed native commands and a readiness change after preflight.
+A module can skip as `not ready` only before its preparation has ever completed. Nacre does not touch the files and services of a skipped module. Each of these conditions stops the run:
+
+- Invalid receipts.
+- Checksum drift.
+- Ownership conflicts.
+- Missing core hardware.
+- Failed native commands.
+- A readiness change after preflight.
 
 Purge withdraws these items:
 
