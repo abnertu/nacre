@@ -8,6 +8,17 @@
 let
   lib = pkgs.lib;
   fixtures = import ../../checks/lib.nix { inherit inputs lib; };
+  desktopPolicy = (fixtures.evaluate [ ]).config.arch;
+  headlessPolicy = (fixtures.evaluate [ { desktop.enable = false; } ]).config.arch;
+  packageNames = policy: policy.pacman ++ policy.aur ++ policy.lizardbyte;
+  nativeDesktopPackages = map (lib.removeSuffix "-bin") (
+    lib.subtractLists (packageNames headlessPolicy) (packageNames desktopPolicy)
+  );
+  nativeGraphicalUnits = builtins.attrNames (
+    lib.filterAttrs (
+      _: service: builtins.elem "graphical-session.target" (lib.toList (service.Unit.PartOf or [ ]))
+    ) home.config.systemd.user.services
+  );
   # A minimal session home; the full variant adds OpenRazer and Noctalia storage.
   fixture =
     full:
@@ -38,6 +49,15 @@ let
         }
       );
     };
+  loginHome = fixtures.home [
+    {
+      users.users.login = fixtures.login {
+        homeDirectory = "/home/login";
+        modules = [ "hyprland" ];
+      };
+    }
+  ] "login";
+  loginProfile = pkgs.writeText "fixture-zprofile" loginHome.config.home.file.".zprofile".text;
 in
 {
   overview-refresh = import ./overview/checks.nix { inherit pkgs; };
@@ -74,18 +94,14 @@ in
           pkgs.python3
           pkgs.bash
           pkgs.coreutils
+          pkgs.zsh
         ];
       }
       ''
-        python ${./tests/test_projection.py} ${./check-projection.sh}
+        python ${./tests/test_projection.py} ${./check-projection.sh} ${loginProfile}
         touch "$out"
       '';
   home-projection-interface =
-    assert
-      !(home.config.home.file ? ".zprofile")
-      ||
-        pkgs.lib.hasInfix "exec /usr/bin/uwsm start hyprland.desktop"
-          home.config.home.file.".zprofile".text;
     assert !(home.config.xdg.configFile ? nvim) || !home.config.xdg.configFile.nvim.recursive;
     assert
       !(home.config.xdg.configFile ? hypr)
@@ -136,48 +152,56 @@ in
     assert sourcedHome.config.xdg.configFile.hypr.source == "${hypr}";
     assert sourcedHome.config.xdg.configFile.nvim.source == "${nvim}";
     pkgs.writeText "home-config-sources" "passed";
-  arch-graphical-session = pkgs.runCommand "arch-graphical-session-check" { } ''
-    units=${home.activationPackage}/home-files/.config/systemd/user
-    profile=${home.config.home.path}
-    for unit in \
-      hyprpolkitagent.service \
-      noctalia.service \
-      polychromatic-tray.service \
-      quickshell-overview.service \
-      tailscale-systray.service \
-      vesktop.service \
-      vicinae.service; do
-      [[ -f "$units/$unit" ]] || continue
-      if ${pkgs.gnugrep}/bin/grep -Eq '^Exec(Start|StartPre|StartPost|Reload)=.*/nix/store/' "$units/$unit"; then
-        printf 'Arch graphical unit references a Nix package: %s\n' "$unit" >&2
-        exit 1
-      fi
-    done
-    for executable in \
-      ghostty \
-      gimp \
-      hypridle \
-      hyprlock \
-      hyprpolkitagent \
-      hyprsunset \
-      kitty \
-      mpv \
-      mpvpaper \
-      noctalia \
-      noctalia-shell \
-      obs \
-      quickshell \
-      remmina \
-      swappy \
-      uwsm \
-      vesktop \
-      vicinae \
-      vlc; do
-      if [[ -e "$profile/bin/$executable" ]]; then
-        printf 'Arch Home profile provides a native graphical executable: %s\n' "$executable" >&2
-        exit 1
-      fi
-    done
-    touch "$out"
-  '';
+  arch-graphical-session =
+    let
+      policy = pkgs.writeText "native-graphical-ownership.json" (
+        builtins.toJSON {
+          units = nativeGraphicalUnits;
+          packages = nativeDesktopPackages;
+          unitDirectory = "${home.activationPackage}/home-files/.config/systemd/user";
+          profile = "${home.config.home.path}";
+        }
+      );
+    in
+    pkgs.runCommand "arch-graphical-session-check" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+      python - ${policy} <<'PY'
+      import configparser
+      import json
+      import shlex
+      import sys
+      from pathlib import Path
+
+      policy = json.loads(Path(sys.argv[1]).read_text())
+      units, profile = Path(policy["unitDirectory"]), Path(policy["profile"])
+      if not units.is_dir() or not (profile / "bin").is_dir():
+          raise SystemExit("missing built graphical ownership input")
+      forbidden = set(policy["packages"])
+      for name in policy["units"]:
+          for line in (units / (name + ".service")).read_text().splitlines():
+              key, separator, value = line.partition("=")
+              if separator and key in {"ExecStart", "ExecStartPre", "ExecStartPost", "ExecReload"} and value:
+                  executable = shlex.split(value)[0].lstrip("-@:+!|")
+                  if executable.startswith("/nix/store/"):
+                      raise SystemExit(f"native graphical unit executes a Nix binary: {name}")
+                  forbidden.add(Path(executable).name)
+      for name in forbidden:
+          if (profile / "bin" / name).exists():
+              raise SystemExit(f"Home Manager supplies an Arch-owned executable: {name}")
+      for path in (profile / "share/applications").glob("*.desktop"):
+          desktop = configparser.RawConfigParser(strict=False)
+          desktop.read(path)
+          entry = desktop["Desktop Entry"]
+          if entry.getboolean("Terminal", fallback=False) or entry.getboolean("NoDisplay", fallback=False):
+              continue
+          command = shlex.split(entry.get("Exec", ""))
+          if not command:
+              raise SystemExit(f"graphical desktop entry has no command: {path.name}")
+          executable = Path(command[0])
+          if not executable.is_absolute():
+              executable = profile / "bin" / executable
+          if str(executable.resolve()).startswith("/nix/store/"):
+              raise SystemExit(f"Home Manager supplies a graphical desktop application: {path.name}")
+      PY
+      touch "$out"
+    '';
 }

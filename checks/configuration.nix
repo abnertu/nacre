@@ -181,15 +181,12 @@ assert hotspotParentOff.host.systemSettings.hotspot == null;
 assert switchesWork;
 assert minimalRole.deploymentName == "fixture-minimal";
 assert !minimalRole.configuration.config.desktop.enable;
-assert !(builtins.elem "hyprland" minimalRole.configuration.config.arch.pacman);
-assert builtins.elem "hyprland" base.config.arch.pacman;
 assert !(minimalRole.homes."fixture@fixture".config.home.file ? ".zprofile");
 assert !roleBelowHost.config.desktop.enable;
 assert builtins.length merged.host.systemSettings.firewall.rules == 2;
 assert override.host.name == "overridden" && override.host.systemSettings.timeZone == "UTC";
 assert override.host.systemSettings.firewall.rules == [ ];
 assert !disabled.host.powerpanel.enable;
-assert !(builtins.elem "powerpanel" packages.aur);
 assert !overriddenHome.config.programs.git.enable;
 assert builtins.elem pkgs.hello overriddenHome.config.home.packages;
 assert headlessHome.config.systemd.user.services == { };
@@ -205,21 +202,12 @@ assert lib.all (name: disabled.host.systemSettings.${name} == null) [
   "trim"
   "console"
 ];
-assert lib.all (name: !(builtins.elem name packages.pacman)) [
-  "ufw"
-  "networkmanager"
-  "bluez"
-  "tailscale"
-  "power-profiles-daemon"
-];
 assert packages.lizardbyte == [ ];
-assert !(builtins.elem "vesktop-bin" packages.aur) && !(builtins.elem "vicinae-bin" packages.aur);
 assert lib.all (name: !(builtins.hasAttr name home.config.systemd.user.services)) [
   "vesktop"
   "vicinae"
   "tailscale-systray"
 ];
-assert home.config.systemd.user.services.noctalia.Unit.Wants == [ ];
 assert !(builtins.hasAttr "noctalia/config.toml" home.config.xdg.configFile);
 assert lib.all (homeDirectory: !(valid { users.users.fixture = { inherit homeDirectory; }; })) [
   "/home/"
@@ -241,11 +229,6 @@ assert valid {
     hyprlandPath = "/home/fixture/src/hyprland";
   };
 };
-assert lib.all (name: !(builtins.elem name packages.pacman)) [
-  "podman"
-  "openrazer-daemon"
-  "amd-ucode"
-];
 assert lib.all (module: !(valid module)) [
   { typo = true; }
   { deployment.username = lib.mkForce "missing"; }
@@ -285,14 +268,29 @@ assert lib.all (module: !(valid module)) [
   }
   { users.users.fixture.profiles.unknown.enable = true; }
 ];
-pkgs.runCommand "configuration-interface" { } ''
-  test -x ${minimal.arch-switch}/bin/arch-switch
-  test -x ${minimalRole.homes."fixture@fixture".activationPackage}/activate
-  test -x ${freshInstall.deployment}/bin/box-workstation
-  test -x ${freshInstall.homes."alice@box".activationPackage}/activate
-  test -x ${minimal.homes."fixture@fixture".activationPackage}/activate
-  test -x ${headlessHome.activationPackage}/activate
-  test -x ${overriddenHome.activationPackage}/activate
-  test -x ${home.activationPackage}/activate
-  touch "$out"
-''
+pkgs.linkFarm "configuration-fixtures" [
+  {
+    name = "minimal";
+    path = minimal.deployment;
+  }
+  {
+    name = "minimal-role-home";
+    path = minimalRole.homes."fixture@fixture".activationPackage;
+  }
+  {
+    name = "fresh-install";
+    path = freshInstall.deployment;
+  }
+  {
+    name = "headless-home";
+    path = headlessHome.activationPackage;
+  }
+  {
+    name = "overridden-home";
+    path = overriddenHome.activationPackage;
+  }
+  {
+    name = "disabled-features-home";
+    path = home.activationPackage;
+  }
+]

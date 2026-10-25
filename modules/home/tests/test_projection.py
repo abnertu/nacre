@@ -1,15 +1,59 @@
 # pyright: standard
+import json
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-SCRIPT = Path(sys.argv.pop()).read_text()
+SCRIPT = Path(sys.argv.pop(1)).read_text()
+LOGIN_PROFILE = Path(sys.argv.pop(1)).read_text()
 
 
 class ProjectionTests(unittest.TestCase):
+    def test_login_replaces_shell_only_when_uwsm_allows_start(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            native = root / "uwsm"
+            native.write_text(
+                f"#!{sys.executable}\n"
+                "import json, os, sys\n"
+                "from pathlib import Path\n"
+                "if sys.argv[1:] == ['check', 'may-start']:\n"
+                "    raise SystemExit(int(os.environ['DENY_START']))\n"
+                "print(json.dumps({'pid': os.getpid(), 'args': sys.argv[1:]}))\n"
+            )
+            native.chmod(0o755)
+            profile = root / "zprofile"
+            profile.write_text(LOGIN_PROFILE.replace("/usr/bin/uwsm", str(native)))
+            zsh = shutil.which("zsh")
+            if zsh is None:
+                raise RuntimeError("required zsh is unavailable")
+            for deny in (0, 1):
+                with self.subTest(deny_start=deny):
+                    process = subprocess.Popen(
+                        [
+                            zsh,
+                            "-f",
+                            "-c",
+                            f"source {shlex.quote(str(profile))}; print continued",
+                        ],
+                        env={"HOME": directory, "DENY_START": str(deny)},
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                    )
+                    output, error = process.communicate(timeout=5)
+                    self.assertEqual(process.returncode, 0, error)
+                    if deny:
+                        self.assertEqual(output.strip(), "continued")
+                    else:
+                        result = json.loads(output)
+                        self.assertEqual(result["pid"], process.pid)
+                        self.assertEqual(result["args"], ["start", "hyprland.desktop"])
+
     def test_clean_paths_worktrees_and_backups(self):
         for obstruction in (
             None,

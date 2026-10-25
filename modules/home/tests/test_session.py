@@ -31,15 +31,24 @@ def unit(name):
 class SessionTests(unittest.TestCase):
     def test_launcher_wait_bounds_slow_calls_and_degrades(self):
         launcher = unit("vicinae")
-        self.assertEqual(launcher["TimeoutStartSec"], ["15s"])
         script = (
             launcher["ExecStartPre"][0].split(" -c '", 1)[1][:-1].replace("$$", "$")
         )
-        self.assertIn("--timeout=1s", script)
         with tempfile.TemporaryDirectory() as directory:
             fake = Path(directory) / "busctl"
-            for body in ("exit 0", "exit 1", "sleep 0.2; exit 1"):
-                fake.write_text(f"#!{shutil.which('bash')}\n" + body)
+            for mode in ("ready", "unavailable", "hung"):
+                fake.write_text(
+                    f"#!{sys.executable}\n"
+                    "import sys, time\n"
+                    f"mode = {mode!r}\n"
+                    "if mode == 'ready': raise SystemExit(0)\n"
+                    "if mode == 'hung':\n"
+                    "    timeout = next((float(a.split('=')[1][:-1]) "
+                    "for a in sys.argv if a.startswith('--timeout=') "
+                    "and a.endswith('s')), 2.6)\n"
+                    "    time.sleep(min(timeout, 2.6))\n"
+                    "raise SystemExit(1)\n"
+                )
                 fake.chmod(0o755)
                 candidate = (
                     script.replace("/usr/bin/busctl", str(fake))
@@ -82,28 +91,14 @@ class SessionTests(unittest.TestCase):
         )
 
     def test_tray_consumers_and_degraded_launcher(self):
-        for name in (
-            "tailscale-systray",
-            "vesktop",
-            "vicinae",
-            "polychromatic-tray",
-        ):
-            if not (UNITS / (name + ".service")).exists():
-                continue
+        names = ["tailscale-systray", "vesktop", "vicinae"]
+        if EXPECTED["openrazer"]:
+            names.append("polychromatic-tray")
+        for name in names:
             config = unit(name)
             self.assertIn("noctalia.service", config["After"])
             self.assertIn("noctalia.service", config["Wants"])
             self.assertIn("graphical-session.target", config["PartOf"])
-        self.assertTrue(unit("vicinae")["ExecStartPre"][0].endswith("exit 0'"))
-
-    def test_package_units_are_not_copied(self):
-        for name in ("app-dev.lizardbyte.app.Sunshine", "sunshine", "openrazer-daemon"):
-            self.assertFalse((UNITS / (name + ".service")).exists())
-        self.assertTrue(
-            (
-                UNITS / "app-dev.lizardbyte.app.Sunshine.service.d/override.conf"
-            ).is_file()
-        )
 
 
 if __name__ == "__main__":

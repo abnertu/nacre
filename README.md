@@ -15,7 +15,7 @@ Nix validates typed options and builds a fixed deployment artifact. Arch adapter
 
 Start from Arch Linux `x86_64` with network access and an existing login account in `wheel`. Nacre does not install the base operating system.
 
-Read [the bootstrap script](scripts/bootstrap.sh), then run:
+Read [the bootstrap script](scripts/bootstrap.sh). Then run:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/abnertu/nacre/main/scripts/bootstrap.sh)
