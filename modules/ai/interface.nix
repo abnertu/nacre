@@ -7,6 +7,35 @@ let
     (lib.evalModules {
       modules = [
         { options = import ./options.nix { inherit lib; }; }
+        (
+          { config, ... }:
+          let
+            defaults = inventory.${config.llama.model.name}.profilePresets or { };
+            names = lib.unique (builtins.attrNames defaults ++ builtins.attrNames (raw.llama.profiles or { }));
+            fields = lib.unique (
+              lib.concatMap builtins.attrNames (
+                lib.concatMap (model: builtins.attrValues (model.profilePresets or { })) (
+                  builtins.attrValues inventory
+                )
+              )
+            );
+          in
+          {
+            llama.profiles = lib.genAttrs names (
+              name:
+              lib.genAttrs fields (
+                field:
+                lib.mkDefault (
+                  let
+                    target = config.llama.profiles.${name}.model;
+                    selected = if target == null then config.llama.model.name else target;
+                  in
+                  inventory.${selected}.profilePresets.${name}.${field} or null
+                )
+              )
+            );
+          }
+        )
         raw
       ];
     }).config;
@@ -30,9 +59,6 @@ let
         // modelOverrides;
     in
     effective
-    // lib.optionalAttrs (effective.preserveThinking or null == true) {
-      enableThinking = null;
-    }
   ) selectedModelNames;
   effectiveDefaultModel = result.llama.model.name;
 in
@@ -75,41 +101,31 @@ assert lib.assertMsg (
     lib.all (model: model ? vramEstimateMiB) effectiveModels
     && lib.all (model: model.vramEstimateMiB != null) effectiveModels
     &&
-      lib.foldl' (total: model: total + model.vramEstimateMiB) 0 effectiveModels
-      <= result.llama.memoryBudgetMiB
+      lib.foldl' (
+        total: model:
+        if result.llama.concurrentModels then
+          total + model.vramEstimateMiB
+        else
+          lib.max total model.vramEstimateMiB
+      ) 0 effectiveModels <= result.llama.memoryBudgetMiB
   )
 ) "llama.cpp selected model VRAM estimates must be declared and fit within memoryBudgetMiB";
-assert lib.assertMsg (lib.all
-  (profile: !((profile.enableThinking or null) == true && (profile.preserveThinking or null) == true))
-  (builtins.attrValues result.llama.profiles)
-) "llama.cpp profiles must choose enable-thinking or preserve-thinking, not both";
-assert lib.assertMsg (lib.all
-  (
-    profile:
+assert lib.assertMsg (
+  lib.all (
+    name:
     let
-      name = if profile.model == null then effectiveDefaultModel else profile.model;
       model = builtins.elemAt effectiveModels (
         lib.lists.findFirstIndex (candidate: candidate == name) 0 selectedModelNames
       );
-      enableThinking =
-        if profile.enableThinking == null then model.enableThinking or null else profile.enableThinking;
-      preserveThinking =
-        if profile.preserveThinking == null then
-          model.preserveThinking or null
-        else
-          profile.preserveThinking;
     in
-    !(enableThinking == true && preserveThinking == true) || profile.preserveThinking == true
-  )
-  (builtins.attrValues result.llama.profiles)
-) "llama.cpp effective profiles must not enable and preserve thinking together";
-assert lib.assertMsg (
-  !(
-    (result.llama.model.enableThinking or null) == true
-    && (result.llama.model.preserveThinking or null) == true
-  )
+    model.preserveThinking or null != true || inventory.${name}.preserveThinkingSupported
+  ) selectedModelNames
   && lib.all (
-    model: !((model.enableThinking or null) == true && (model.preserveThinking or null) == true)
-  ) (builtins.attrValues result.llama.models)
-) "llama.cpp runtime settings must choose enable-thinking or preserve-thinking, not both";
+    profile:
+    let
+      name = if profile.model == null then effectiveDefaultModel else profile.model;
+    in
+    profile.preserveThinking != true || inventory.${name}.preserveThinkingSupported
+  ) (builtins.attrValues result.llama.profiles)
+) "llama.cpp reasoning preservation requires a supporting model template";
 builtins.deepSeq result result

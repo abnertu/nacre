@@ -27,7 +27,6 @@ class Source(TypedDict):
 class Server(TypedDict):
     host: str
     port: int
-    modelsMax: int
 
 
 class Generated(TypedDict):

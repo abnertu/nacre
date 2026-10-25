@@ -31,6 +31,7 @@
   programs.ai.llama = {
     enable = lib.mkDefault true;
     model = {
+      name = "qwen3.6-35b-a3b-mxfp4-moe";
       device = "ROCm0";
       contextSize = 4096;
     };

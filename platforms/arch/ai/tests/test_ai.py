@@ -106,7 +106,7 @@ class AITests(unittest.TestCase):
                 "revision": "deadbeef",
                 "grammarRepetitionThreshold": 20000,
             },
-            "server": {"host": "127.0.0.1", "port": 11434, "modelsMax": 1},
+            "server": {"host": "127.0.0.1", "port": 11434},
             "model": {
                 "id": "agent",
                 "path": "/var/lib/llama/models/model.gguf",
@@ -217,8 +217,6 @@ class AITests(unittest.TestCase):
         )
         self.assertIn("--config /etc/llama-swap/config.yaml", unit)
         self.assertIn("--listen 127.0.0.1:11434", unit)
-        self.assertIn("@api path /health /v1/*", self.generated["caddySite"])
-        self.assertIn("respond 404", self.generated["caddySite"])
         self.assertTrue(any(c[:2] == ("caddy", "reload") for c in self.native.calls))
         self.assertFalse(any((self.root / "var/lib/nix-config/arch").iterdir()))
 

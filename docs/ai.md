@@ -14,10 +14,13 @@ Caddy exposes only `/health` and `/v1/*` through the tailnet route. The AI modul
 
 ```nix
 programs.ai.llama = {
-  model.name = "qwen3.5-4b-q4-k-m";
+  model = {
+    name = "qwen3.5-4b-q4-k-m";
+    device = "Vulkan0";
+  };
   concurrentModels = true;
   maxLoadedModels = 2;
-  memoryBudgetMiB = 11264;
+  memoryBudgetMiB = 10240;
   models = {
     "qwen3.5-4b-q4-k-m" = {
       enable = true;
@@ -35,15 +38,49 @@ programs.ai.llama = {
 };
 ```
 
-- Each model controls device, context, cache, batch, slots and offload. Per-model settings override `llama.model` settings for the default model.
+- Declare the device for your machine. Each model controls device, context, cache, batch, slots and offload. Per-model settings override `llama.model` settings for the default model.
+- `threads` and `threadsBatch` set generation and prompt-processing CPU threads. Unset values use the native defaults.
+- Backends use Jinja templates, disable context shifting, and disable the host-memory prompt cache.
 - Profiles share a backend process and change sampling and thinking only.
-- Evaluation rejects unknown fields, unselected profile targets, invalid batches and conflicting thinking options.
+- The target model supplies each profile's defaults. Explicit profile fields override those defaults individually.
+- `enableThinking` controls new reasoning. `preserveThinking` retains earlier reasoning where the model template supports it.
+- These controls are independent. The managed Qwen3.5 template does not support earlier-turn preservation.
+- Evaluation rejects unknown fields, unselected profile targets, invalid batches and unsupported reasoning preservation.
 - Concurrent selection cannot exceed `maxLoadedModels`. Backends load on demand and stay resident. Without concurrency, the limit is 1, and models swap on demand.
 - Preparation covers the selection. Deselection removes no artifacts.
 
-`memoryBudgetMiB` needs a `vramEstimateMiB` for each selected model. It rejects a sum above the budget. These are planning estimates, not allocation limits. Fixed offload, context and batch with `fit = false` prevent fitting that depends on load order. Measure peak prompt processing with headroom for the desktop and Sunshine. After runtime or model changes, measure again.
+`memoryBudgetMiB` needs a `vramEstimateMiB` for each selected model.
+Concurrent models use the sum of their estimates.
+Exclusive models use the largest estimate because they swap on demand.
+These are planning estimates, not allocation limits.
+Fixed offload, context and batch with `fit = false` prevent fitting that depends on load order.
+Measure peak prompt processing with headroom for the desktop and Sunshine.
+After runtime or model changes, measure again.
 
-The option name `qwen3.6-35b-a3b-ud-q5-k-m` stays for compatibility. The file is MXFP4_MOE. Query `/v1/models` for exact API IDs.
+Set `vramLimitsMiB` to enforce kernel limits for the router and all its backends:
+
+```nix
+programs.ai.llama.vramLimitsMiB = {
+  "drm/0000:03:00.0/vram" = 10239;
+  "drm/0000:12:00.0/vram" = 1;
+};
+```
+
+Use the region names reported by your driver.
+This example divides a total 10 GiB budget between two GPU regions.
+The startup guard enables `dmem` in the service's ancestors and verifies each `dmem.max` limit before starting inference.
+A missing controller, missing region, existing allocation, or failed readback prevents startup.
+An empty map disables this guard.
+The limits cover all aliases and backend children together.
+The desktop stays outside the service cgroup.
+Drivers can move allocations to host memory when VRAM is exhausted.
+Qualify fixed offload and context settings separately to avoid that slowdown.
+
+Select the Unsloth MXFP4 artifact with `qwen3.6-35b-a3b-mxfp4-moe`.
+Its runtime defaults use 32K context, 26 CPU expert layers, microbatch 128, and eight CPU threads.
+The default alias uses the general-thinking recipe.
+Measure these fixed settings on your hardware before deployment.
+Query `/v1/models` for exact API IDs.
 
 ## Agent tools
 
@@ -84,7 +121,7 @@ Review and commit the lock update before deployment. To restore earlier sources,
 When AI, Codex and llama.cpp are enabled, Home Manager generates `~/.codex/llama-cpp.config.toml`. It uses the default model identity and context:
 
 - Provider `llama_cpp` (Responses API at `http://127.0.0.1:11434/v1`), with web search off.
-- Auto-compaction at 75% of context (12K tokens at the default 16K).
+- Auto-compaction at 75% of the selected context.
 - Codex multi-agent tools off. The pinned llama.cpp Responses bridge supports only function tools.
 
 From the default Codex home, select the generated profile with `codex --profile llama-cpp`. Home Manager does not project the managed profile into a custom `CODEX_HOME`. To disable it, set `programs.ai.codex.localProfile.enable = false`. Other Codex preferences and credentials stay unmanaged.
@@ -125,7 +162,32 @@ python modules/ai/benchmark.py \
   --min-free-mib 4096 --output /var/tmp/ai-bench.json
 ```
 
-The benchmark repeats PP512, PP4096 and TG128. It records runtime version, model checksum, parameters, diagnostics and peak VRAM. `--depths 8192` adds generation after a longer prefix. The headroom monitor stops benchmark-owned processes. But polling can miss brief allocations.
+The benchmark repeats PP512, PP4096 and TG128. It records runtime version, model checksum, parameters, diagnostics and sampled peak VRAM. `--depths 8192` adds generation after a longer prefix. `--cpu-moe-layers 24,28,32` compares CPU expert placement. An empty matrix fails.
+
+Use `--prompt-tokens 128,512 --generation-tokens 32 --repetitions 1` for a short placement screen.
+Confirm promising placements with longer prefixes and repetitions.
+
+The headroom monitor stops benchmark-owned process groups. Polling can miss brief allocations. Aggregate GPU counters include desktop use.
+
+For a kernel device-memory limit, supply an empty delegated cgroup:
+
+```bash
+python modules/ai/benchmark.py \
+  --model /path/to/verified-model.gguf \
+  --binary-prefix /opt/llama-cpp-opencode/current \
+  --device-path /sys/class/drm/card1/device --devices Vulkan0 \
+  --cpu-moe-layers 24,28 --ubatches 128 --caches q8_0 \
+  --cgroup /sys/fs/cgroup/path/to/experiment \
+  --dmem-region drm/0000:03:00.0/vram --max-vram-mib 10240 \
+  --min-free-mib 0 --min-host-available-mib 4096 --reject-vram-spill \
+  --output /var/tmp/ai-bench-limited.json
+```
+
+The command sets `dmem.max` before launching children and rejects populated groups. It disables group swap when that controller exists. It records available host memory and group memory counters. It records lifetime VRAM peaks when `dmem.peak` exists. Sampled group peaks are lower bounds. Counter failures stop the run. The command does not create or delegate cgroups.
+
+Verify driver accounting and enforcement with disposable allocations before loading weights. Keep the desktop outside the experiment group. `--min-free-mib` controls aggregate free space; it does not set the model allocation limit. Benchmark children inherit only PATH, locale, runtime-directory and device-selector variables. Their library path uses the selected prefix.
+
+The monitor deduplicates DRM clients across group processes and descriptors. It records requested VRAM, resident VRAM, and resident GTT separately. `--reject-vram-spill` stops a run when requested VRAM becomes nonresident. These sampled counters can miss short migrations.
 
 ```bash
 python modules/ai/probe.py --base-url http://127.0.0.1:11434 \
@@ -135,7 +197,7 @@ python modules/ai/probe.py --base-url http://127.0.0.1:11434 \
   --model COMPLETION_ID --mode fim --output /var/tmp/ai-fim.json
 ```
 
-The probe compares thinking modes and repeated synthetic prefixes. It records these items separately: first SSE event, reasoning, visible answer, failures and partial output. Empty-context TG128 does not predict long-context generation. See [measured results](ai-benchmarks.md) for the recorded workstation experiment.
+The probe compares thinking modes and repeated synthetic prefixes. It records these items separately: first SSE event, reasoning, visible answer, failures and partial output. Empty-context TG128 does not predict long-context generation. See [measured results](ai-benchmarks.md) for the historical workstation experiment.
 
 ## Preparation
 

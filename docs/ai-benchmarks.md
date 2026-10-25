@@ -1,6 +1,6 @@
 # Local AI benchmark record
 
-Measurements from 2026-10-06 used synthetic prompts and checksum-verified GGUFs on the workstation below. They set the values for that machine. Other hardware and workloads need new measurements.
+Measurements from 2026-10-06 used synthetic prompts and checksum-verified GGUFs on the workstation below. They selected a workstation profile at that time. They do not describe the current inventory defaults. Requalify settings for the current hardware and workload.
 
 ## Measurement environment
 
@@ -33,8 +33,8 @@ The selected run used Vulkan0, all layers on GPU, flash attention on, q8 KV, bat
 
 Peaks include the usage of the desktop. The [artifact inventory](../modules/ai/artifacts.nix) pins model identities and checksums.
 
-- **4B is the default agent**: 9B missed the 50 tok/s target.
-- **3B handles completion**: it passed all four small Python, JavaScript and Nix tests. 1.5B passed three. The set is too small to rank general coding ability.
+- **That experiment selected 4B as the agent**: 9B missed the 50 tok/s target.
+- **That experiment selected 3B for completion**: it passed all four small Python, JavaScript and Nix tests. 1.5B passed three. The set is too small to rank general coding ability.
 - FIM prefixes need a language hint. Without `# Nix expression`, both models misread a Nix snippet.
 
 ## Concurrent routing and context
@@ -47,9 +47,9 @@ The following runs kept both selected models resident:
 | Near the old 32K limit, concurrent | 48.0–48.2 tok/s | — | cold 13.9 s | — |
 | Final 16K, 15,168-token prompt, 128 tokens out | 72.4 alone; 50.2–59.9 concurrent | 60.8–84.3 tok/s | agent 50–55 ms (cold 6.71 s) | 6,263 MiB |
 
-Speed dropped sharply near 32K. Thus the agent context defaults to 16K and the completion context to 4K. Larger contexts stay configurable, at a measured cost. These final samples exceeded 50 tok/s, with little margin at long context.
+Speed dropped sharply near 32K. That experiment used 16K agent context and 4K completion context. Larger contexts stay configurable, at a measured cost. These final samples exceeded 50 tok/s, with little margin at long context.
 
-Declared estimates are 6,144 MiB (agent) and 3,072 MiB (completion), within the 11,264 MiB budget. Sunshine streaming was not measured. Thus these results make no claim about frame stability.
+That configuration declared 6,144 MiB (agent) and 3,072 MiB (completion), within its 11,264 MiB budget. Sunshine streaming was not measured. Thus these results make no claim about frame stability.
 
 ## Observations
 

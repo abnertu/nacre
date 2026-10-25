@@ -2,7 +2,6 @@
   pkgs,
   arch-switch,
   llama-prepare,
-  aiManifest,
   adapterPython ? pkgs.python3,
   ...
 }:
@@ -60,12 +59,7 @@
     pkgs.runCommand "ai-services-tests" { nativeBuildInputs = [ adapterPython ]; }
       ''
         python ${./ai}/tests/test_ai.py ${./ai/package-caddy.Caddyfile} ${./ai}/runtime.py
-        touch "$out"
-      '';
-  ai-generated-artifacts =
-    pkgs.runCommand "ai-generated-artifacts" { nativeBuildInputs = [ adapterPython ]; }
-      ''
-        python ${./ai/tests/test_generated.py} ${aiManifest}
+        python ${./ai}/tests/test_dmem_guard.py ${./ai}/dmem_guard.py
         touch "$out"
       '';
   ai-diagnostic-tools =

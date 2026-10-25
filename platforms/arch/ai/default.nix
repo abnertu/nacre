@@ -59,6 +59,9 @@ let
           "--host 127.0.0.1"
           "--port \${PORT}"
           "--no-webui"
+          "--jinja"
+          "--no-context-shift"
+          "--cache-ram 0"
           "--ctx-size ${toString runtimeModel.contextSize}"
           "--fit ${if runtimeModel.fit or true then "on" else "off"}"
           "--fit-target ${toString runtimeModel.fitTarget}"
@@ -79,6 +82,10 @@ let
         ++ lib.optional (
           runtimeModel.cpuMoeLayers or null != null
         ) "--n-cpu-moe ${toString runtimeModel.cpuMoeLayers}"
+        ++ lib.optional (runtimeModel.threads or null != null) "--threads ${toString runtimeModel.threads}"
+        ++ lib.optional (
+          runtimeModel.threadsBatch or null != null
+        ) "--threads-batch ${toString runtimeModel.threadsBatch}"
       );
     in
     lib.nameValuePair model.id {
@@ -102,6 +109,9 @@ let
     models = switcherModels;
   };
   prefix = artifacts.source.installPrefix + "/current";
+  guardPolicy = pkgs.writeText "llama-swap-dmem-policy.json" (
+    builtins.toJSON { limitsMiB = config.llama.vramLimitsMiB; }
+  );
   switcherConfig = builtins.toJSON {
     inherit (switcher)
       startPort
@@ -118,6 +128,9 @@ let
     Wants=network-online.target
 
     [Service]
+    ${lib.optionalString (
+      config.llama.vramLimitsMiB != { }
+    ) "ExecStartPre=${pkgs.python3}/bin/python ${./dmem_guard.py} ${guardPolicy}"}
     Environment=LD_LIBRARY_PATH=${prefix}/lib:${prefix}/lib64
     ExecStart=${lib.optionalString llama "${pkgs.llama-swap}/bin/llama-swap"} --config /etc/llama-swap/config.yaml --listen 127.0.0.1:${toString artifacts.server.port}
     Restart=on-failure

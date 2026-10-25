@@ -62,6 +62,14 @@ let
       type = positive;
       default = null;
     };
+    threads = lib.mkOption {
+      type = positive;
+      default = null;
+    };
+    threadsBatch = lib.mkOption {
+      type = positive;
+      default = null;
+    };
   };
   samplingOptions = {
     reasoningEffort = lib.mkOption {
@@ -136,6 +144,17 @@ in
     memoryBudgetMiB = lib.mkOption {
       type = lib.types.nullOr lib.types.ints.positive;
       default = null;
+      description = "Validate declared model estimates; this does not enforce a runtime limit.";
+    };
+    vramLimitsMiB = lib.mkOption {
+      type = lib.types.addCheck (lib.types.attrsOf lib.types.ints.positive) (
+        limits:
+        lib.all (
+          region: builtins.match "drm/[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\\.[0-7]/vram[0-9]*" region != null
+        ) (builtins.attrNames limits)
+      );
+      default = { };
+      description = "Enforce per-region dmem.max limits for the router and all model backends.";
     };
     concurrentModels = lib.mkOption {
       type = lib.types.bool;
@@ -167,107 +186,9 @@ in
         type = lib.types.enum (builtins.attrNames inventory.models);
         default = inventory.defaultModel;
       };
-      device = lib.mkOption {
-        type = lib.types.nullOr (lib.types.strMatching "(ROCm|Vulkan)[0-9]+");
-        default = null;
-      };
-      contextSize = lib.mkOption {
-        type = lib.types.nullOr lib.types.ints.positive;
-        default = null;
-      };
-      fitTarget = lib.mkOption {
-        type = lib.types.nullOr lib.types.ints.positive;
-        default = null;
-      };
-      fit = lib.mkOption {
-        type = lib.types.nullOr lib.types.bool;
-        default = null;
-      };
-      gpuLayers = lib.mkOption {
-        type = lib.types.nullOr (lib.types.ints.between 0 100000);
-        default = null;
-      };
-      cpuMoeLayers = lib.mkOption {
-        type = lib.types.nullOr (lib.types.ints.between 0 100000);
-        default = null;
-      };
-      cacheTypeK = lib.mkOption {
-        type = lib.types.nullOr (
-          lib.types.enum [
-            "f16"
-            "q8_0"
-            "q4_0"
-          ]
-        );
-        default = null;
-      };
-      cacheTypeV = lib.mkOption {
-        type = lib.types.nullOr (
-          lib.types.enum [
-            "f16"
-            "q8_0"
-            "q4_0"
-          ]
-        );
-        default = null;
-      };
-      batchSize = lib.mkOption {
-        type = lib.types.nullOr lib.types.ints.positive;
-        default = null;
-      };
-      microBatchSize = lib.mkOption {
-        type = lib.types.nullOr lib.types.ints.positive;
-        default = null;
-      };
-      parallel = lib.mkOption {
-        type = lib.types.nullOr lib.types.ints.positive;
-        default = null;
-      };
-      reasoningEffort = lib.mkOption {
-        type = lib.types.nullOr (
-          lib.types.enum [
-            "minimal"
-            "low"
-            "medium"
-            "high"
-            "xhigh"
-          ]
-        );
-        default = null;
-      };
-      enableThinking = lib.mkOption {
-        type = lib.types.nullOr lib.types.bool;
-        default = null;
-      };
-      preserveThinking = lib.mkOption {
-        type = lib.types.nullOr lib.types.bool;
-        default = null;
-      };
-      temperature = lib.mkOption {
-        type = lib.types.nullOr lib.types.float;
-        default = null;
-      };
-      topP = lib.mkOption {
-        type = lib.types.nullOr lib.types.float;
-        default = null;
-      };
-      topK = lib.mkOption {
-        type = lib.types.nullOr (lib.types.ints.between 0 100000);
-        default = null;
-      };
-      minP = lib.mkOption {
-        type = lib.types.nullOr lib.types.float;
-        default = null;
-      };
-      presencePenalty = lib.mkOption {
-        type = lib.types.nullOr lib.types.float;
-        default = null;
-      };
-      repetitionPenalty = lib.mkOption {
-        type = lib.types.nullOr lib.types.float;
-        default = null;
-      };
-    };
+    }
+    // runtimeOptions
+    // samplingOptions;
     profiles = lib.mkOption {
       type = lib.types.attrsOf (
         lib.types.submodule {
@@ -276,50 +197,7 @@ in
               type = lib.types.nullOr (lib.types.enum (builtins.attrNames inventory.models));
               default = null;
             };
-            reasoningEffort = lib.mkOption {
-              type = lib.types.nullOr (
-                lib.types.enum [
-                  "minimal"
-                  "low"
-                  "medium"
-                  "high"
-                  "xhigh"
-                ]
-              );
-              default = null;
-            };
-            enableThinking = lib.mkOption {
-              type = lib.types.nullOr lib.types.bool;
-              default = null;
-            };
-            preserveThinking = lib.mkOption {
-              type = lib.types.nullOr lib.types.bool;
-              default = null;
-            };
-            temperature = lib.mkOption {
-              type = lib.types.nullOr lib.types.float;
-              default = null;
-            };
-            topP = lib.mkOption {
-              type = lib.types.nullOr lib.types.float;
-              default = null;
-            };
-            topK = lib.mkOption {
-              type = lib.types.nullOr (lib.types.ints.between 0 100000);
-              default = null;
-            };
-            minP = lib.mkOption {
-              type = lib.types.nullOr lib.types.float;
-              default = null;
-            };
-            presencePenalty = lib.mkOption {
-              type = lib.types.nullOr lib.types.float;
-              default = null;
-            };
-            repetitionPenalty = lib.mkOption {
-              type = lib.types.nullOr lib.types.float;
-              default = null;
-            };
+
           }
           // samplingOptions;
         }

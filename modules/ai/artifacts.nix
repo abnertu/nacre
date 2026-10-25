@@ -1,4 +1,23 @@
 let
+  qwenProfile = enableThinking: temperature: topP: presencePenalty: {
+    inherit
+      enableThinking
+      temperature
+      topP
+      presencePenalty
+      ;
+    topK = 20;
+    minP = 0.0;
+    repetitionPenalty = 1.0;
+  };
+  qwenProfiles = {
+    thinking-general = qwenProfile true 1.0 0.95 1.5;
+    thinking-coding = qwenProfile true 0.6 0.95 0.0;
+    instruct = qwenProfile false 0.7 0.8 1.5;
+    preserved-thinking = (qwenProfile true 0.6 0.95 0.0) // {
+      preserveThinking = true;
+    };
+  };
   runtime = {
     contextSize = 32768;
     fit = false;
@@ -19,6 +38,7 @@ let
     repetitionPenalty = 1.0;
   };
   model = repository: revision: file: sha256: settings: {
+    preserveThinkingSupported = false;
     artifact = {
       inherit
         repository
@@ -39,8 +59,10 @@ rec {
     grammarRepetitionThreshold = 20000;
     installPrefix = "/opt/llama-cpp-opencode";
   };
-  defaultModel = "qwen3.6-35b-a3b-ud-q5-k-m";
-  models."qwen3.6-35b-a3b-ud-q5-k-m" = {
+  defaultModel = "qwen3.6-35b-a3b-mxfp4-moe";
+  models."qwen3.6-35b-a3b-mxfp4-moe" = {
+    preserveThinkingSupported = true;
+    profilePresets = qwenProfiles;
     artifact = {
       id = "Qwen3.6-35B-A3B-GGUF:MXFP4_MOE";
       repository = "unsloth/Qwen3.6-35B-A3B-GGUF";
@@ -49,21 +71,14 @@ rec {
       path = "/var/lib/llama/models/Qwen3.6-35B-A3B-MXFP4_MOE.gguf";
       sha256 = "2fdd20997c4d88ee25f70f500c61f8b999378d92ab055f9d450fc70d617158d3";
     };
-    runtime = {
-      contextSize = 131072;
-      fitTarget = 6144;
-      cacheTypeK = "q8_0";
-      cacheTypeV = "q8_0";
-      batchSize = 2048;
-      microBatchSize = 512;
-      parallel = 1;
+    runtime = runtime // {
+      cpuMoeLayers = 26;
+      microBatchSize = 128;
+      threads = 8;
+      threadsBatch = 8;
       enableThinking = true;
-      temperature = 0.6;
-      topP = 0.95;
-      topK = 20;
-      minP = 0.0;
-      presencePenalty = 0.0;
-      repetitionPenalty = 1.0;
+      temperature = 1.0;
+      presencePenalty = 1.5;
     };
   };
   models."qwen3.5-4b-q4-k-m" =
@@ -98,7 +113,6 @@ rec {
   server = {
     host = "127.0.0.1";
     port = 11434;
-    modelsMax = 1;
   };
   proxy.localPort = 11435;
 }

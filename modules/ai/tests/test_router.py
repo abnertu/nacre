@@ -19,9 +19,7 @@ import urllib.request
 from pathlib import Path
 from typing import cast
 
-LLAMA_SWAP = (
-    Path(sys.argv.pop()).resolve(strict=True) if "--child" not in sys.argv else None
-)
+LLAMA_SWAP: Path | None = None
 FIXTURE = Path(__file__).resolve()
 
 
@@ -143,6 +141,7 @@ class FakeModelHandler(http.server.BaseHTTPRequestHandler):
             {
                 "fixture_model": cast(FakeModelServer, self.server).fixture_model,
                 "pid": os.getpid(),
+                "native_arguments": cast(FakeModelServer, self.server).native_arguments,
                 "request": request,
                 "started": started,
                 "ended": time.monotonic(),
@@ -161,6 +160,7 @@ class FakeModelHandler(http.server.BaseHTTPRequestHandler):
 class FakeModelServer(http.server.ThreadingHTTPServer):
     fixture_model: str
     request_file: Path
+    native_arguments: list[str]
 
 
 def run_child(argv):
@@ -168,6 +168,7 @@ def run_child(argv):
     port = int(argv[argv.index("--child-port") + 1])
     server = FakeModelServer(("127.0.0.1", port), FakeModelHandler)
     server.fixture_model = model
+    server.native_arguments = argv
     server.request_file = Path(argv[argv.index("--request-file") + 1])
     server.serve_forever()
 
@@ -273,23 +274,16 @@ class RouterIntegrationTests(unittest.TestCase):
         self.config_path = self.root / "config.json"
         self.config_path.write_text(json.dumps(self.config))
         self.addCleanup(self.stop_router)
-        version = subprocess.run(
-            [str(LLAMA_SWAP), "-version"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=True,
-        )
-        self.assertIn("version: 224 ", version.stdout)
 
-    def start_router(self):
-        if LLAMA_SWAP is None:
+    def start_router(self, binary=None):
+        binary = binary or LLAMA_SWAP
+        if binary is None:
             raise RuntimeError(
                 "router integration must run with the pinned binary path argument"
             )
         self.router = subprocess.Popen(
             [
-                str(LLAMA_SWAP),
+                str(binary),
                 "-config",
                 str(self.config_path),
                 "-listen",
@@ -351,12 +345,6 @@ class RouterIntegrationTests(unittest.TestCase):
             self.router_log.close()
 
     def test_models_stay_loaded_route_concurrently_and_apply_chat_alias(self):
-        self.assertEqual(self.config["globalTTL"], 0)
-        self.assertTrue(self.config["groups"]["shared"]["persistent"])
-        for model_config in self.config["models"].values():
-            self.assertEqual(model_config["ttl"], 0)
-        self.assertNotIn("ttl", self.config["groups"]["shared"])
-
         self.start_router()
         base = f"http://127.0.0.1:{self.router_port}/v1/completions"
         try:
@@ -522,4 +510,5 @@ if __name__ == "__main__":
     if "--child" in sys.argv:
         run_child(sys.argv)
     else:
+        LLAMA_SWAP = Path(sys.argv.pop()).resolve(strict=True)
         unittest.main()

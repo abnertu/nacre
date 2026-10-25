@@ -29,9 +29,6 @@ let
       effective = declared.artifact // declared.runtime // fallbackDevice // legacy // overrides;
     in
     effective
-    // lib.optionalAttrs (effective.preserveThinking or null == true) {
-      enableThinking = null;
-    }
   );
   profileInputs = config.llama.profiles // {
     default = {
@@ -48,12 +45,7 @@ let
     in
     {
       model = selectedName;
-      artifacts =
-        selected
-        // overrides
-        // lib.optionalAttrs (profile.preserveThinking or null == true) {
-          enableThinking = null;
-        };
+      artifacts = selected // overrides;
     }
   ) profileInputs;
   codexLocalProfileEnabled =
@@ -90,9 +82,6 @@ in
     model = profiles.default.artifacts;
     models = modelArtifacts;
     inherit profiles;
-    server = inventory.server // {
-      modelsMax = config.llama.maxLoadedModels;
-    };
     concurrentModels = config.llama.concurrentModels;
   };
   homeModule = {

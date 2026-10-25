@@ -115,7 +115,6 @@
       // (import ./platforms/arch/checks.nix {
         inherit pkgs;
         inherit (d) arch-switch llama-prepare adapterPython;
-        aiManifest = d.archAi.manifest;
       })
       // (import ./modules/home/checks.nix {
         inherit pkgs inputs;

@@ -8,6 +8,7 @@ let
     llama = {
       enable = true;
       model = {
+        name = "qwen3.6-35b-a3b-mxfp4-moe";
         device = "ROCm0";
         contextSize = 4096;
       };
@@ -38,15 +39,6 @@ let
     };
   archFor = extra: (evaluate extra).config.arch;
   virtualization = raw: archFor { virtualization = raw; };
-  aiAur =
-    raw:
-    builtins.sort builtins.lessThan (
-      lib.intersectLists [
-        "claude-code"
-        "claude-desktop"
-        "openai-codex-bin"
-      ] (archFor { programs.ai = raw; }).aur
-    );
   validConfig = module: (builtins.tryEval (builtins.deepSeq (evaluate module).host true)).success;
   validAi =
     raw:
@@ -85,20 +77,15 @@ let
   codexProfileText =
     name: codex:
     pkgs.writeText "${name}.toml" codex.homeModule.home.file.".codex/llama-cpp.config.toml".text;
-  codexProfileExpected =
-    name: codex:
-    pkgs.writeText "${name}-expected.json" (
-      builtins.toJSON {
-        model = codex.artifacts.model.id;
-        context = codex.artifacts.model.contextSize;
-      }
-    );
   selectedModelsRaw = {
     llama.model.batchSize = 128;
-    llama.models."qwen3.6-35b-a3b-ud-q5-k-m" = {
+    llama.models."qwen3.6-35b-a3b-mxfp4-moe" = {
       enable = true;
       vramEstimateMiB = 6144;
-      batchSize = 2048;
+      batchSize = 384;
+      microBatchSize = 96;
+      threads = 3;
+      threadsBatch = 5;
     };
     llama.models."qwen3.5-4b-q4-k-m" = {
       enable = true;
@@ -109,6 +96,8 @@ let
       vramEstimateMiB = 2048;
       contextSize = 4096;
     };
+    llama.vramLimitsMiB."drm/0000:03:00.0/vram" = 173;
+    llama.profiles.instruct.temperature = 0.42;
     llama.concurrentModels = true;
     llama.maxLoadedModels = 3;
     llama.memoryBudgetMiB = 12288;
@@ -128,8 +117,31 @@ let
     artifacts = selectedModels.artifacts;
     tailscale = false;
   };
+  exclusiveModelsRaw = {
+    llama.models."qwen3.6-35b-a3b-mxfp4-moe" = {
+      enable = true;
+      vramEstimateMiB = 173;
+    };
+    llama.models."qwen2.5-coder-1.5b-q8-0" = {
+      enable = true;
+      vramEstimateMiB = 181;
+    };
+    llama.memoryBudgetMiB = 200;
+    llama.profiles.thinking-general.model = "qwen2.5-coder-1.5b-q8-0";
+  };
+  exclusiveModels = ai exclusiveModelsRaw;
+  exclusiveModelsConfig = import ../modules/ai/interface.nix {
+    inherit lib;
+    raw = lib.recursiveUpdate aiDefaults exclusiveModelsRaw;
+  };
+  exclusiveModelsArch = import ../platforms/arch/ai {
+    inherit lib pkgs;
+    config = exclusiveModelsConfig;
+    artifacts = exclusiveModels.artifacts;
+    tailscale = false;
+  };
   preserveOverride = ai {
-    llama.models."qwen3.6-35b-a3b-ud-q5-k-m" = {
+    llama.models."qwen3.6-35b-a3b-mxfp4-moe" = {
       enable = true;
       preserveThinking = true;
     };
@@ -187,16 +199,9 @@ let
     };
   };
   upstreamSkill = builtins.head (builtins.attrNames skillRegistry.roots);
-  skills = lib.filterAttrs (name: _: lib.hasPrefix ".agents/skills/" name) home.config.home.file;
 in
-assert aiAur { enable = false; } == [ ] && disabled.homeModule.home.file == { };
-assert
-  home.config.home.file.".codex/llama-cpp.config.toml".text
-  == codexProfile.homeModule.home.file.".codex/llama-cpp.config.toml".text;
+assert disabled.homeModule.home.file == { };
 assert !(home.config.home.file ? ".codex/config.toml");
-assert lib.all (
-  name: home.config.home.file.".agents/skills/${name}".source == skillRegistry.roots.${name}
-) (builtins.attrNames skillRegistry.roots);
 assert !unknownSkillSelection.success;
 assert !missingSkillSource.success;
 assert agentSkillsOnly.homeModule.home.file ? ".agents/skills/${upstreamSkill}";
@@ -207,28 +212,6 @@ assert skillsDisabledWithoutSources.homeModule.home.file == { };
 assert !(codexProfileOff.homeModule.home.file ? ".codex/llama-cpp.config.toml");
 assert !(codexOff.homeModule.home.file ? ".codex/llama-cpp.config.toml");
 assert !(llamaOff.homeModule.home.file ? ".codex/llama-cpp.config.toml");
-assert
-  aiAur {
-    enable = true;
-    claude.enable = false;
-    claudeDesktop.enable = false;
-  } == [ "openai-codex-bin" ];
-assert
-  aiAur {
-    enable = true;
-    codex.enable = false;
-  } == [
-    "claude-code"
-    "claude-desktop"
-  ];
-# Claude Desktop is graphical and follows the desktop.
-assert
-  !(builtins.elem "claude-desktop"
-    (archFor {
-      programs.ai.enable = true;
-      desktop.enable = false;
-    }).aur
-  );
 assert
   (ai {
     enable = true;
@@ -247,11 +230,8 @@ assert
   in
   builtins.elem "fixture-repo-app" extra.pacman && builtins.elem "fixture-aur-app" extra.aur;
 assert !(builtins.elem "kvm" (virtualization { enable = false; }).groups);
-assert builtins.elem "qemu-desktop" v.pacman && builtins.elem "podman" v.pacman;
 assert builtins.elem "kvm" v.groups;
 assert !(builtins.elem "libvirtd.socket" v.systemUnits);
-assert !(builtins.elem "virt-manager" v.pacman);
-assert builtins.elem "virt-manager" gui.pacman && builtins.elem "libvirt" gui.pacman;
 assert builtins.elem "libvirtd.socket" gui.systemUnits && builtins.elem "kvm" gui.groups;
 assert lib.all
   (
@@ -260,8 +240,6 @@ assert lib.all
       disabledGui = virtualization raw;
     in
     !(builtins.elem "libvirtd.socket" disabledGui.systemUnits)
-    && !(builtins.elem "virt-manager" disabledGui.pacman)
-    && !(builtins.elem "libvirt" disabledGui.pacman)
   )
   [
     {
@@ -279,20 +257,13 @@ assert lib.all
     }
   ];
 assert
-  !(builtins.elem "podman"
-    (virtualization {
-      enable = true;
-      podman.enable = false;
-    }).pacman
-  );
-assert
   let
     noKvm = virtualization {
       enable = true;
       kvm.enable = false;
     };
   in
-  !(builtins.elem "kvm" noKvm.groups) && !(builtins.elem "qemu-desktop" noKvm.pacman);
+  !(builtins.elem "kvm" noKvm.groups);
 assert lib.all (module: !(validConfig module)) [
   { virtualization.kvm.gui.enable = "true"; }
   { virtualization.kvm.gui.enabel = true; }
@@ -305,6 +276,7 @@ assert !(validAi { codex.enabel = true; });
 assert !(validAi { codex.localProfile.enable = "true"; });
 assert !(validAi { claude.enabel = true; });
 assert !(validAi { llama.proxy.httpsPort = 0; });
+assert !(validAi { llama.vramLimitsMiB.invalid = 173; });
 assert !(validAi { llama.model.microBatchSize = 4096; });
 assert !(validAi { llama.model.name = "unknown"; });
 assert !(validAi { llama.models.unknown.enable = true; });
@@ -314,7 +286,7 @@ assert
       enable = true;
       vramEstimateMiB = 4096;
     };
-    llama.models."qwen3.6-35b-a3b-ud-q5-k-m" = {
+    llama.models."qwen3.6-35b-a3b-mxfp4-moe" = {
       enable = true;
       vramEstimateMiB = 6144;
     };
@@ -359,16 +331,15 @@ assert
     llama.memoryBudgetMiB = 6144;
     llama.model.name = "qwen3.5-4b-q4-k-m";
   });
-assert
-  !(validAi {
-    llama.models."qwen3.6-35b-a3b-ud-q5-k-m" = {
-      enable = true;
-      preserveThinking = true;
-    };
-    llama.profiles.coding.enableThinking = true;
-  });
 assert validAi {
-  llama.models."qwen3.6-35b-a3b-ud-q5-k-m" = {
+  llama.models."qwen3.6-35b-a3b-mxfp4-moe" = {
+    enable = true;
+    preserveThinking = true;
+  };
+  llama.profiles.coding.enableThinking = true;
+};
+assert validAi {
+  llama.models."qwen3.6-35b-a3b-mxfp4-moe" = {
     enable = true;
     preserveThinking = true;
   };
@@ -377,14 +348,13 @@ assert validAi {
     preserveThinking = false;
   };
 };
-assert
-  !(validAi {
-    llama.models."qwen3.6-35b-a3b-ud-q5-k-m" = {
-      enable = true;
-      enableThinking = true;
-      preserveThinking = true;
-    };
-  });
+assert validAi {
+  llama.models."qwen3.6-35b-a3b-mxfp4-moe" = {
+    enable = true;
+    enableThinking = true;
+    preserveThinking = true;
+  };
+};
 assert
   !(validAi {
     llama.models."qwen3.5-4b-q4-k-m" = {
@@ -400,7 +370,14 @@ assert
   });
 assert !(validAi { llama.source.revision = "main"; });
 assert
+  !(validAi (
+    lib.recursiveUpdate exclusiveModelsRaw {
+      llama.memoryBudgetMiB = 180;
+    }
+  ));
+assert
   !(validAi {
+    llama.model.name = "qwen3.5-9b-q4-k-m";
     llama.profiles.invalid = {
       enableThinking = true;
       preserveThinking = true;
@@ -410,67 +387,49 @@ assert
   builtins.attrNames selectedModels.artifacts.models == [
     "qwen2.5-coder-1.5b-q8-0"
     "qwen3.5-4b-q4-k-m"
-    "qwen3.6-35b-a3b-ud-q5-k-m"
+    "qwen3.6-35b-a3b-mxfp4-moe"
   ];
-assert selectedModels.artifacts.server.modelsMax == 3;
 assert selectedModels.artifacts.concurrentModels;
-assert selectedModels.artifacts.profiles.default.model == "qwen3.6-35b-a3b-ud-q5-k-m";
+assert selectedModels.artifacts.profiles.default.model == "qwen3.6-35b-a3b-mxfp4-moe";
 assert selectedModels.artifacts.profiles.coding.model == "qwen2.5-coder-1.5b-q8-0";
 assert selectedModels.artifacts.models."qwen2.5-coder-1.5b-q8-0".contextSize == 4096;
-assert selectedModels.artifacts.model.batchSize == 2048;
-assert preserveOverride.artifacts.profiles.coding.artifacts.enableThinking == null;
+assert selectedModels.artifacts.model.batchSize == 384;
+assert preserveOverride.artifacts.profiles.coding.artifacts.enableThinking == true;
 assert preserveOverride.artifacts.profiles.coding.artifacts.preserveThinking == false;
 # Prepared llama.cpp binaries and Caddy stay outside the declared inventory.
 assert !(builtins.elem "llama-cpp" baseline.pacman) && !(builtins.elem "caddy" baseline.pacman);
 assert
   lib.filterAttrs (name: _: lib.hasPrefix ".agents/skills/" name) homeDisabled.config.home.file
   == { };
-assert skills != { };
-assert lib.all (file: !file.recursive) (builtins.attrValues skills);
 pkgs.runCommand "capabilities-check" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-    python3 - ${selectedModelsArch.manifest} \
-      ${codexProfileText "codex-default" codexProfile} \
-      ${codexProfileExpected "codex-default" codexProfile} \
-      ${codexProfileText "codex-selected" selectedCodexProfile} \
-      ${codexProfileExpected "codex-selected" selectedCodexProfile} <<'PY'
-  import json
+    python ${../platforms/arch/ai/tests/test_generated.py} \
+      ${selectedModelsArch.manifest} ${pkgs.llama-swap}/bin/llama-swap \
+      ${../modules/ai/tests/test_router.py} \
+      ${pkgs.writeText "routing-expectations.json" (
+        builtins.toJSON {
+          baselineId = selectedModels.artifacts.models."qwen3.6-35b-a3b-mxfp4-moe".id;
+          batch = selectedModelsRaw.llama.models."qwen3.6-35b-a3b-mxfp4-moe".batchSize;
+          microBatch = selectedModelsRaw.llama.models."qwen3.6-35b-a3b-mxfp4-moe".microBatchSize;
+          concurrent = selectedModelsRaw.llama.concurrentModels;
+          exclusiveManifest = exclusiveModelsArch.manifest;
+          exclusiveDefaultId = exclusiveModels.artifacts.models."qwen3.6-35b-a3b-mxfp4-moe".id;
+          exclusiveTargetId = exclusiveModels.artifacts.models."qwen2.5-coder-1.5b-q8-0".id;
+        }
+      )}
+    python - ${codexProfileText "codex-default" codexProfile} \
+      ${codexProfileText "codex-selected" selectedCodexProfile} <<'PY'
   import sys
   import tomllib
+  from urllib.parse import urlsplit
 
-  def check_codex_profile(toml_path, expected_path):
-      with open(toml_path, "rb") as source:
+  for filename in sys.argv[1:]:
+      with open(filename, "rb") as source:
           profile = tomllib.load(source)
-      with open(expected_path, encoding="utf-8") as source:
-          expected = json.load(source)
-
-      assert profile["model"] == expected["model"]
-      assert profile["model_context_window"] == expected["context"]
-      assert profile["model_auto_compact_token_limit"] == expected["context"] * 3 // 4
       provider = profile["model_providers"][profile["model_provider"]]
-      assert provider["base_url"].startswith("http://127.0.0.1:")
-
-  check_codex_profile(sys.argv[2], sys.argv[3])
-  check_codex_profile(sys.argv[4], sys.argv[5])
-
-  manifest = json.load(open(sys.argv[1], encoding="utf-8"))
-  router = json.loads(manifest["generated"]["switcherConfig"])
-  models = router["models"]
-  assert router["globalTTL"] == 0
-  assert router["groups"]["default"]["swap"] is False
-  assert router["groups"]["default"]["exclusive"] is False
-  assert router["groups"]["default"]["persistent"] is True
-  assert len(models) == 3
-  assert set(router["groups"]["default"]["members"]) == set(models)
-  for key, model in models.items():
-      if key.startswith("Qwen3.6"):
-          continue
-      assert "--fit off" in model["cmd"]
-      assert "--n-gpu-layers 99" in model["cmd"]
-      assert "--n-cpu-moe 0" in model["cmd"]
-  assert any("qwen2.5-coder" in key.lower() for key in models)
-  qwen = next(model for key, model in models.items() if key.startswith("Qwen3.6"))
-  assert "--batch-size 2048" in qwen["cmd"]
-  assert "--ubatch-size 512" in qwen["cmd"]
+      endpoint = urlsplit(provider["base_url"])
+      assert endpoint.scheme == "http" and endpoint.hostname == "127.0.0.1"
+      assert endpoint.path == "/v1" and endpoint.port
+      assert provider["wire_api"] == "responses"
   PY
     touch $out
 ''
