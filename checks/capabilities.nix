@@ -26,6 +26,8 @@ let
         matt-pocock = inputs.matt-pocock-skills;
         obsidian = inputs.obsidian-skills;
         vercel = inputs.vercel-skills;
+        gh = pkgs.gh.src;
+        abnertu = inputs.abnertu-skills;
       };
     };
   evaluate =
@@ -199,7 +201,14 @@ let
     };
   };
   upstreamSkill = builtins.head (builtins.attrNames skillRegistry.roots);
+  skillSetFiles = raw: (ai ({ enable = true; } // raw)).homeModule.home.file;
+  allSkillSets = skillSetFiles { };
+  ghSkillsOff = skillSetFiles { skillSets.gh.enable = false; };
+  abnertuSkillsOff = skillSetFiles { skillSets.abnertu.enable = false; };
 in
+assert allSkillSets ? ".agents/skills/gh-skill" && allSkillSets ? ".claude/skills/converge";
+assert !(ghSkillsOff ? ".agents/skills/gh") && ghSkillsOff ? ".agents/skills/converge";
+assert !(abnertuSkillsOff ? ".claude/skills/converge") && abnertuSkillsOff ? ".claude/skills/gh";
 assert disabled.homeModule.home.file == { };
 assert !(home.config.home.file ? ".codex/config.toml");
 assert !unknownSkillSelection.success;

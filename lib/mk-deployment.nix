@@ -42,6 +42,8 @@ let
       matt-pocock = inputs.matt-pocock-skills;
       obsidian = inputs.obsidian-skills;
       vercel = inputs.vercel-skills;
+      gh = pkgs.gh.src;
+      abnertu = inputs.abnertu-skills;
     };
   };
   archAi = import ../platforms/arch/ai {

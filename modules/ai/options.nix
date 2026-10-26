@@ -129,6 +129,10 @@ in
     };
   };
   skillsPresets.enable = enable "the registered Codex agent skill presets";
+  skillSets = {
+    gh.enable = enable "the gh and gh-skill skills from the packaged GitHub CLI source";
+    abnertu.enable = enable "abnertu's agent skills";
+  };
   claude = {
     enable = enable "Claude Code";
     skills.enable = enable "the registered agent skills in ~/.claude/skills";

@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "abnertu-skills": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1793016444,
+        "narHash": "sha256-0vnePOkfYt+78/Yuk59rSuUR6iH6Acv/FWF769GPo/M=",
+        "owner": "abnertu",
+        "repo": "skills",
+        "rev": "03955a716e3fdf25b0107a0962f94843d0538ffa",
+        "type": "github"
+      },
+      "original": {
+        "owner": "abnertu",
+        "repo": "skills",
+        "type": "github"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -123,6 +139,7 @@
     },
     "root": {
       "inputs": {
+        "abnertu-skills": "abnertu-skills",
         "home-manager": "home-manager",
         "hypr-config": "hypr-config",
         "matt-pocock-skills": "matt-pocock-skills",

@@ -91,7 +91,8 @@ in
         skills =
           if config.skillsPresets.enable || claudeSkillsEnabled then
             import ./skills.nix {
-              inherit lib skillSources;
+              inherit lib;
+              skillSources = lib.filterAttrs (source: _: config.skillSets.${source}.enable or true) skillSources;
             }
           else
             null;

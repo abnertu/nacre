@@ -47,8 +47,25 @@ let
     "obsidian-cli"
     "obsidian-markdown"
   ] (name: "skills/${name}");
-  owner = lib.concatMapAttrs (source: lib.mapAttrs (_: _: source)) bySource;
-  registry = lib.concatMapAttrs (_: paths: paths) bySource;
+  bySource.gh = lib.genAttrs [
+    "gh"
+    "gh-skill"
+  ] (name: "skills/${name}");
+  bySource.abnertu = lib.genAttrs [
+    "converge"
+    "setup-agent-prefs"
+    "setup-repo-docs"
+  ] (name: "skills/${name}");
+  # Optional sets register their skills only when the caller supplies their source.
+  optionalSources = [
+    "gh"
+    "abnertu"
+  ];
+  enabledBySource = lib.filterAttrs (
+    source: _: !(builtins.elem source optionalSources) || skillSources ? ${source}
+  ) bySource;
+  owner = lib.concatMapAttrs (source: lib.mapAttrs (_: _: source)) enabledBySource;
+  registry = lib.concatMapAttrs (_: paths: paths) enabledBySource;
   sourceOf = name: skillSources.${owner.${name}};
   roots = lib.mapAttrs (name: path: sourceOf name + "/${path}") registry;
   allNames = builtins.attrNames roots;

@@ -33,6 +33,11 @@
       flake = false;
     };
 
+    abnertu-skills = {
+      url = "github:abnertu/skills";
+      flake = false;
+    };
+
     nix-adapter = {
       url = "github:abnertu/nix-adapter";
       inputs.nixpkgs.follows = "nixpkgs";

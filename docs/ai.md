@@ -104,12 +104,18 @@ Home Manager projects selected skill directories from pinned upstream sources:
 
 Choose one installation source for each skill. Otherwise, managed links and plugins discover it twice.
 
-[`modules/ai/skills.nix`](../modules/ai/skills.nix) owns the selection from the locked `matt-pocock-skills`, `obsidian-skills` and `vercel-skills` inputs. Activation uses prebuilt sources without downloads or a Skills CLI lockfile.
+[`modules/ai/skills.nix`](../modules/ai/skills.nix) owns the selection from these sources. Activation uses prebuilt sources without downloads or a Skills CLI lockfile.
+
+- The locked `matt-pocock-skills`, `obsidian-skills` and `vercel-skills` inputs.
+- `gh` and `gh-skill` from the source of the packaged `gh`. `programs.ai.skillSets.gh.enable` selects them.
+- The locked `abnertu-skills` input. `programs.ai.skillSets.abnertu.enable` selects it.
+
+Both skill sets are on by default. The `gh` skills follow the `nixpkgs` lock, so they match the installed `gh`. The development profile installs `gh`.
 
 Review the upstream changes. Then update the skill sources:
 
 ```bash
-nix flake update matt-pocock-skills obsidian-skills vercel-skills
+nix flake update matt-pocock-skills obsidian-skills vercel-skills abnertu-skills
 just check
 just build
 ```
