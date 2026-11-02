@@ -108,16 +108,16 @@
     "nvim-config": {
       "flake": false,
       "locked": {
-        "lastModified": 1792046084,
-        "narHash": "sha256-eCNuvLrv8DES/YXUG7EXw7MjQ+ZmMmqnv/P0NyGfqRQ=",
-        "owner": "Orbit-Lua",
-        "repo": "orbitvim",
-        "rev": "f6c7594e7fbe9c6873097231aff41175b434b470",
+        "lastModified": 1793616603,
+        "narHash": "sha256-H2f+sZsbncmqyLQ8poRvmT2sz39a6MVM2Z6KlDW/2fA=",
+        "owner": "abnertu",
+        "repo": "orbit.nvim",
+        "rev": "3572b02dcbda489697ce1011604f988f34bdd503",
         "type": "github"
       },
       "original": {
-        "owner": "Orbit-Lua",
-        "repo": "orbitvim",
+        "owner": "abnertu",
+        "repo": "orbit.nvim",
         "type": "github"
       }
     },
