@@ -9,7 +9,7 @@
     };
 
     nvim-config = {
-      url = "github:Orbit-Lua/orbitvim";
+      url = "github:Orbit-Lua/orbit.nvim";
       flake = false;
     };
 
