@@ -22,7 +22,10 @@ let
   moduleRegistry = import ../modules/home;
   resolve =
     registry: kind: name:
-    if builtins.hasAttr name registry then registry.${name} else throw "unknown ${kind}: ${name}";
+    if builtins.hasAttr name registry then
+      registry.${name}.module
+    else
+      throw "unknown ${kind}: ${name}";
   userNormalized = user // {
     sources = {
       neovim = user.sources.neovim or null;
@@ -83,11 +86,13 @@ inputs.home-manager.lib.homeManagerConfiguration {
             options.enable = lib.mkOption {
               type = lib.types.bool;
               default = true;
+              description = "Whether the account enables this home capability.";
             };
           }
         );
         default = { };
         internal = true;
+        description = "Home capabilities that the deployment enables, keyed by home module name.";
       };
       config.workstation.capabilities = lib.genAttrs [ "noctalia-config" ] (name: {
         enable = builtins.elem name userNormalized.modules;

@@ -1,37 +1,48 @@
 { lib }:
 let
   inventory = import ./artifacts.nix;
-  enable = description: (lib.mkEnableOption description) // { default = true; };
+  # An enable option that defaults to true.
+  enabledByDefault =
+    description:
+    lib.mkEnableOption description
+    // {
+      default = true;
+    };
   port = lib.types.ints.between 1 65535;
-  nullable = type: lib.types.nullOr type;
-  positive = nullable lib.types.ints.positive;
+  optionalPositive = lib.types.nullOr lib.types.ints.positive;
   runtimeOptions = {
     device = lib.mkOption {
-      type = nullable (lib.types.strMatching "(ROCm|Vulkan)[0-9]+");
+      type = lib.types.nullOr (lib.types.strMatching "(ROCm|Vulkan)[0-9]+");
       default = null;
+      description = "llama.cpp device, such as Vulkan0 or ROCm0; null uses the llama.cpp default.";
     };
     contextSize = lib.mkOption {
-      type = positive;
+      type = optionalPositive;
       default = null;
+      description = "Context length in tokens; null uses the model's runtime default.";
     };
     fit = lib.mkOption {
-      type = nullable lib.types.bool;
+      type = lib.types.nullOr lib.types.bool;
       default = null;
+      description = "Whether llama.cpp fits offload and context to free memory; false keeps the fixed values.";
     };
     fitTarget = lib.mkOption {
-      type = positive;
+      type = optionalPositive;
       default = null;
+      description = "Free memory, in MiB, that fitting leaves on the device; null uses the llama.cpp default.";
     };
     gpuLayers = lib.mkOption {
-      type = nullable (lib.types.ints.between 0 100000);
+      type = lib.types.nullOr (lib.types.ints.between 0 100000);
       default = null;
+      description = "Layers offloaded to the GPU; null uses the model's runtime default.";
     };
     cpuMoeLayers = lib.mkOption {
-      type = nullable (lib.types.ints.between 0 100000);
+      type = lib.types.nullOr (lib.types.ints.between 0 100000);
       default = null;
+      description = "Mixture-of-experts layers kept on the CPU; null uses the model's runtime default.";
     };
     cacheTypeK = lib.mkOption {
-      type = nullable (
+      type = lib.types.nullOr (
         lib.types.enum [
           "f16"
           "q8_0"
@@ -39,9 +50,10 @@ let
         ]
       );
       default = null;
+      description = "KV cache type of the keys; null uses the model's runtime default.";
     };
     cacheTypeV = lib.mkOption {
-      type = nullable (
+      type = lib.types.nullOr (
         lib.types.enum [
           "f16"
           "q8_0"
@@ -49,31 +61,37 @@ let
         ]
       );
       default = null;
+      description = "KV cache type of the values; null uses the model's runtime default.";
     };
     batchSize = lib.mkOption {
-      type = positive;
+      type = optionalPositive;
       default = null;
+      description = "Logical batch size for prompt processing; null uses the model's runtime default.";
     };
     microBatchSize = lib.mkOption {
-      type = positive;
+      type = optionalPositive;
       default = null;
+      description = "Physical micro-batch size; null uses the model's runtime default.";
     };
     parallel = lib.mkOption {
-      type = positive;
+      type = optionalPositive;
       default = null;
+      description = "Concurrent request slots of the backend; null uses the model's runtime default.";
     };
     threads = lib.mkOption {
-      type = positive;
+      type = optionalPositive;
       default = null;
+      description = "CPU threads for generation; null uses the native default.";
     };
     threadsBatch = lib.mkOption {
-      type = positive;
+      type = optionalPositive;
       default = null;
+      description = "CPU threads for prompt processing; null uses the native default.";
     };
   };
   samplingOptions = {
     reasoningEffort = lib.mkOption {
-      type = nullable (
+      type = lib.types.nullOr (
         lib.types.enum [
           "minimal"
           "low"
@@ -83,67 +101,77 @@ let
         ]
       );
       default = null;
+      description = "Reasoning effort sent to the chat template; null uses the model default.";
     };
     enableThinking = lib.mkOption {
-      type = nullable lib.types.bool;
+      type = lib.types.nullOr lib.types.bool;
       default = null;
+      description = "Whether the model starts new reasoning; null uses the model default.";
     };
     preserveThinking = lib.mkOption {
-      type = nullable lib.types.bool;
+      type = lib.types.nullOr lib.types.bool;
       default = null;
+      description = "Whether earlier-turn reasoning stays in the prompt, where the template supports it; null uses the model default.";
     };
     temperature = lib.mkOption {
-      type = nullable lib.types.float;
+      type = lib.types.nullOr lib.types.float;
       default = null;
+      description = "Sampling temperature; null uses the model default.";
     };
     topP = lib.mkOption {
-      type = nullable lib.types.float;
+      type = lib.types.nullOr lib.types.float;
       default = null;
+      description = "Nucleus sampling probability; null uses the model default.";
     };
     topK = lib.mkOption {
-      type = nullable (lib.types.ints.between 0 100000);
+      type = lib.types.nullOr (lib.types.ints.between 0 100000);
       default = null;
+      description = "Top-k sampling limit; null uses the model default.";
     };
     minP = lib.mkOption {
-      type = nullable lib.types.float;
+      type = lib.types.nullOr lib.types.float;
       default = null;
+      description = "Minimum token probability relative to the best token; null uses the model default.";
     };
     presencePenalty = lib.mkOption {
-      type = nullable lib.types.float;
+      type = lib.types.nullOr lib.types.float;
       default = null;
+      description = "Penalty for tokens already present; null uses the model default.";
     };
     repetitionPenalty = lib.mkOption {
-      type = nullable lib.types.float;
+      type = lib.types.nullOr lib.types.float;
       default = null;
+      description = "Penalty for repeated tokens; null uses the model default.";
     };
   };
 in
 {
-  enable = enable "ai";
+  enable = enabledByDefault "the AI tools";
   codex = {
-    enable = enable "Codex";
+    enable = enabledByDefault "Codex";
     localProfile.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
       description = "Manage a Codex profile for the selected local llama.cpp model.";
     };
   };
-  skillsPresets.enable = enable "the registered Codex agent skill presets";
+  skillsPresets.enable = enabledByDefault "the registered Codex agent skill presets";
   skillSets = {
-    gh.enable = enable "the gh and gh-skill skills from the packaged GitHub CLI source";
-    abnertu.enable = enable "abnertu's agent skills";
+    gh.enable = enabledByDefault "the gh and gh-skill skills from the packaged GitHub CLI source";
+    abnertu.enable = enabledByDefault "abnertu's agent skills";
   };
   claude = {
-    enable = enable "Claude Code";
-    skills.enable = enable "the registered agent skills in ~/.claude/skills";
+    enable = enabledByDefault "Claude Code";
+    skills.enable = enabledByDefault "the registered agent skills in ~/.claude/skills";
   };
   # Graphical: installed only with the desktop.
-  claudeDesktop.enable = enable "Claude Desktop";
+  claudeDesktop.enable = enabledByDefault "Claude Desktop";
   llama = {
     enable = lib.mkEnableOption "llama.cpp on a local GPU";
     maxLoadedModels = lib.mkOption {
       type = lib.types.ints.positive;
       default = 1;
+      description = "Largest number of model backends resident at once; it must be 1 unless concurrentModels is set.";
     };
     memoryBudgetMiB = lib.mkOption {
       type = lib.types.nullOr lib.types.ints.positive;
@@ -163,6 +191,7 @@ in
     concurrentModels = lib.mkOption {
       type = lib.types.bool;
       default = false;
+      description = "Whether selected models stay resident together, up to maxLoadedModels, instead of swapping on demand.";
     };
     models = lib.mkOption {
       type = lib.types.attrsOf (
@@ -172,10 +201,13 @@ in
               enable = lib.mkOption {
                 type = lib.types.bool;
                 default = name == inventory.defaultModel;
+                defaultText = lib.literalExpression "name == defaultModel";
+                description = "Whether this model is selected, so that preparation fetches it and the router serves it.";
               };
               vramEstimateMiB = lib.mkOption {
                 type = lib.types.nullOr lib.types.ints.positive;
                 default = null;
+                description = "Planned device memory of this model, in MiB, checked against memoryBudgetMiB.";
               };
             }
             // runtimeOptions
@@ -184,11 +216,14 @@ in
         )
       );
       default = { };
+      description = "Per-model settings, keyed by inventory model name; they override llama.model for that model.";
     };
     model = {
       name = lib.mkOption {
         type = lib.types.enum (builtins.attrNames inventory.models);
         default = inventory.defaultModel;
+        defaultText = lib.literalExpression "defaultModel";
+        description = "The default model, which receives the settings below.";
       };
     }
     // runtimeOptions
@@ -200,6 +235,7 @@ in
             model = lib.mkOption {
               type = lib.types.nullOr (lib.types.enum (builtins.attrNames inventory.models));
               default = null;
+              description = "Selected model that this profile runs on; null uses the default model.";
             };
 
           }
@@ -207,12 +243,14 @@ in
         }
       );
       default = { };
+      description = "Named sampling profiles that share a model's backend and change only sampling and thinking.";
     };
     proxy = {
-      enable = enable "the Caddy and Tailscale Serve proxy for llama.cpp";
+      enable = enabledByDefault "the Caddy and Tailscale Serve proxy for llama.cpp";
       httpsPort = lib.mkOption {
         type = port;
         default = 443;
+        description = "Tailnet HTTPS port that Tailscale Serve exposes for the proxy.";
       };
     };
   };

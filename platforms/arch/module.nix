@@ -4,26 +4,59 @@
 { config, lib, ... }:
 let
   inherit (lib) mkOption types optionals;
-  names =
-    description:
-    mkOption {
-      type = types.listOf types.str;
-      default = [ ];
-      apply = lib.unique;
-      internal = true;
-      inherit description;
-    };
   desktop = config.desktop.enable;
 in
 {
   options.arch = {
-    pacman = names "Arch repository packages.";
-    aur = names "AUR packages, installed through yay as the login user.";
-    lizardbyte = names "Packages from the managed LizardByte repository.";
-    hold = names "Installed packages update must not upgrade.";
-    groups = names "Groups the deployment user must belong to.";
-    systemUnits = names "System units to enable and keep active.";
-    userServices = names "Packaged user units to enable for the deployment user.";
+    pacman = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      apply = lib.unique;
+      internal = true;
+      description = "Arch repository packages.";
+    };
+    aur = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      apply = lib.unique;
+      internal = true;
+      description = "AUR packages, installed through yay as the login user.";
+    };
+    lizardbyte = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      apply = lib.unique;
+      internal = true;
+      description = "Packages from the managed LizardByte repository.";
+    };
+    hold = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      apply = lib.unique;
+      internal = true;
+      description = "Installed packages update must not upgrade.";
+    };
+    groups = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      apply = lib.unique;
+      internal = true;
+      description = "Groups the deployment user must belong to.";
+    };
+    systemUnits = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      apply = lib.unique;
+      internal = true;
+      description = "System units to enable and keep active.";
+    };
+    userServices = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      apply = lib.unique;
+      internal = true;
+      description = "Packaged user units to enable for the deployment user.";
+    };
     extensions = mkOption {
       default = { };
       description = ''
@@ -61,8 +94,14 @@ in
               type = types.listOf (
                 types.submodule {
                   options = {
-                    unit = mkOption { type = types.str; };
-                    path = mkOption { type = types.str; };
+                    unit = mkOption {
+                      type = types.str;
+                      description = "Unit name, such as babu.service.";
+                    };
+                    path = mkOption {
+                      type = types.str;
+                      description = "Unit file that purge removes, under /etc/systemd/system.";
+                    };
                   };
                 }
               );
