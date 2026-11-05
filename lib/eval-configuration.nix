@@ -35,7 +35,7 @@ let
   setting = value: if value.enable then builtins.removeAttrs value [ "enable" ] else null;
   host = {
     name = cfg.networking.hostname.name;
-    role = cfg.role;
+    inherit (cfg) role;
     system = cfg.nixpkgs.hostPlatform;
     platform = cfg.deployment.platform;
     deployment = builtins.removeAttrs cfg.deployment [ "platform" ];
@@ -53,7 +53,7 @@ let
       inherit lib;
       raw = cfg.programs.ai;
     };
-    virtualization = cfg.virtualization;
+    inherit (cfg) virtualization;
     systemSettings = import ./system-settings.nix {
       inherit lib;
       raw = {
@@ -70,7 +70,7 @@ let
       };
     };
     powerpanel = cfg.services.powerpanel;
-    arch = cfg.arch;
+    inherit (cfg) arch;
     users = lib.mapAttrs (
       _: user:
       (builtins.removeAttrs user [ "home" ])

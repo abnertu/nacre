@@ -10,6 +10,8 @@ let
       ../platforms
       ../modules
       ../checks
+      ../roles
+      ../templates/machine/flake.nix
     ];
   };
 in

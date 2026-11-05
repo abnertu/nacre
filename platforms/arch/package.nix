@@ -51,7 +51,7 @@ let
         inherit lib pkgs;
         config = aiConfig;
         artifacts = aiArtifacts;
-        tailscale = capabilities.tailscale;
+        inherit (capabilities) tailscale;
       };
   # One manifest per adapter; checks validate them against the Python schemas.
   manifests = {
@@ -108,7 +108,7 @@ in
         aur
         hold
         ;
-      userServices = arch.userServices;
+      inherit (arch) userServices;
     };
     passAsFile = [ "config" ];
   }

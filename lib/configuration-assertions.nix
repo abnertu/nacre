@@ -2,7 +2,7 @@
 { config, lib, ... }:
 let
   users = config.users.users;
-  deployment = config.deployment;
+  inherit (config) deployment;
   user = users.${deployment.username} or null;
   homes = map (value: value.homeDirectory) (builtins.attrValues users);
 in

@@ -116,7 +116,7 @@ let
   selectedModelsArch = import ../platforms/arch/ai {
     inherit lib pkgs;
     config = selectedModelsConfig;
-    artifacts = selectedModels.artifacts;
+    inherit (selectedModels) artifacts;
     tailscale = false;
   };
   exclusiveModelsRaw = {
@@ -139,7 +139,7 @@ let
   exclusiveModelsArch = import ../platforms/arch/ai {
     inherit lib pkgs;
     config = exclusiveModelsConfig;
-    artifacts = exclusiveModels.artifacts;
+    inherit (exclusiveModels) artifacts;
     tailscale = false;
   };
   preserveOverride = ai {

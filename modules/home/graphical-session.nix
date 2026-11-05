@@ -40,7 +40,7 @@ in
     startServices = "sd-switch";
 
     services = {
-      hyprpolkitagent = lib.mkIf (capabilities.desktop.hyprpolkitagent.enable) {
+      hyprpolkitagent = lib.mkIf capabilities.desktop.hyprpolkitagent.enable {
         Unit = graphicalUnit // {
           Description = "Hyprland Polkit authentication agent";
         };
@@ -51,7 +51,7 @@ in
         Install.WantedBy = [ "graphical-session.target" ];
       };
 
-      vicinae = lib.mkIf (capabilities.programs.vicinae.enable) {
+      vicinae = lib.mkIf capabilities.programs.vicinae.enable {
         Unit = trayConsumerUnit // {
           Description = "Vicinae launcher daemon";
           Documentation = [ "https://docs.vicinae.com" ];
@@ -87,7 +87,7 @@ in
         Install.WantedBy = [ "graphical-session.target" ];
       };
 
-      quickshell-overview = lib.mkIf (capabilities.desktop.overview.enable) {
+      quickshell-overview = lib.mkIf capabilities.desktop.overview.enable {
         Unit = graphicalUnit // {
           Description = "Quickshell workspace overview";
         };
@@ -122,7 +122,7 @@ in
         Install.WantedBy = [ "graphical-session.target" ];
       };
 
-      vesktop = lib.mkIf (capabilities.programs.vesktop.enable) {
+      vesktop = lib.mkIf capabilities.programs.vesktop.enable {
         Unit = trayConsumerUnit // {
           Description = "Vesktop communication client";
         };

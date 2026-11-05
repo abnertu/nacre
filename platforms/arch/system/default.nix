@@ -15,7 +15,7 @@ let
     + lib.concatStrings (
       lib.mapAttrsToList (key: value: "${key}=${toString value}\n") (lib.filterAttrs (_: present) attrs)
     );
-  journal = config.journal;
+  inherit (config) journal;
   unit = suffix: value: if value == null then null else "${toString value}${suffix}";
   files =
     lib.optionalAttrs (present config.timeSync) {

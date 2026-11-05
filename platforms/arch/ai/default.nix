@@ -177,8 +177,8 @@ in
         listen = "127.0.0.1:${toString artifacts.server.port}";
       }
       // switcher;
-      models = artifacts.models;
-      model = artifacts.model;
+      inherit (artifacts) models;
+      inherit (artifacts) model;
       localPort = artifacts.proxy.localPort;
       inherit (config.llama.proxy) httpsPort;
       paths = {

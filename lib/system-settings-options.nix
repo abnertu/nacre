@@ -7,7 +7,7 @@ let
       type = types.nullOr type;
       default = null;
     };
-  enum = types.enum;
+  inherit (types) enum;
   bounded = low: high: types.ints.between low high;
   token = types.strMatching "[a-zA-Z0-9_+-]+";
   localeName = enum [

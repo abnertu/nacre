@@ -1,5 +1,6 @@
-# Source lint beyond formatting: unused Nix bindings, shell script defects and
-# broken relative Markdown links or anchors. External URLs are not fetched.
+# Source lint beyond formatting: unused Nix bindings, Nix anti-patterns that
+# deadnix misses, shell script defects and broken relative Markdown links or
+# anchors. External URLs are not fetched.
 { lib, pkgs }:
 let
   source = lib.fileset.toSource {
@@ -14,6 +15,7 @@ pkgs.runCommand "source-lint"
       pkgs.findutils
       pkgs.lychee
       pkgs.shellcheck
+      pkgs.statix
     ];
     # lychee builds an HTTP client even offline; it never fetches here.
     SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
@@ -21,6 +23,7 @@ pkgs.runCommand "source-lint"
   ''
     cd ${source}
     find . -name '*.nix' -not -path './files/*' -print0 | xargs -0 deadnix --fail
+    statix check .
     shellcheck -x scripts/*.sh lib/cli/nix.sh
     find . -name '*.md' -not -path './files/*' -print0 |
       xargs -0 lychee --offline --no-progress --include-fragments

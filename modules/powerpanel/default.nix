@@ -129,5 +129,5 @@ in
 {
   inherit content;
   configFile = pkgs.writeText "pwrstatd.conf" content;
-  enable = config.enable;
+  inherit (config) enable;
 }

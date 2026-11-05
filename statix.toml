@@ -1,0 +1,3 @@
+# Nested option sets read worse than repeated dotted keys.
+disabled = ["repeated_keys"]
+ignore = ["files", "templates/machine/configuration.nix"]

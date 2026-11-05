@@ -80,7 +80,7 @@ let
   # The minimal role alone drops the graphical session; host defaults beat roles.
   minimalRole = fixtures.deploy [ { role = "minimal"; } ];
   roleBelowHost = evaluate [ { desktop.enable = lib.mkDefault false; } ];
-  overrideModule = (
+  overrideModule =
     { lib, ... }:
     {
       networking.hostname.name = "overridden";
@@ -90,8 +90,7 @@ let
         programs.git.enable = false;
         home.packages = [ pkgs.hello ];
       };
-    }
-  );
+    };
   override = evaluate [ overrideModule ];
   headlessHome = fixtures.home [ { desktop.enable = false; } ] "fixture";
   overriddenHome = (fixtures.deploy [ overrideModule ]).homes."fixture@overridden";

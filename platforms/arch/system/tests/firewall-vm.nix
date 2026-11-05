@@ -24,38 +24,42 @@ let
     Firewall(System(desired)).converge()
   '';
   ufw = import ./package.nix { inherit pkgs; };
-  manifest =
-    (import ../default.nix {
-      inherit pkgs;
-      inherit (pkgs) lib;
-      hostName = "fixture";
-      config = import ../../../../lib/system-settings.nix {
+  inherit
+    (
+      (import ../default.nix {
+        inherit pkgs;
         inherit (pkgs) lib;
-        raw.firewall.rules = [
-          {
-            protocol = "tcp";
-            fromPort = 7777;
-          }
-          {
-            protocol = "udp";
-            fromPort = 7777;
-          }
-          {
-            protocol = "tcp";
-            fromPort = 47990;
-          }
-          {
-            protocol = "udp";
-            fromPort = 27031;
-            toPort = 27036;
-          }
-        ];
-      };
-    }).manifest;
+        hostName = "fixture";
+        config = import ../../../../lib/system-settings.nix {
+          inherit (pkgs) lib;
+          raw.firewall.rules = [
+            {
+              protocol = "tcp";
+              fromPort = 7777;
+            }
+            {
+              protocol = "udp";
+              fromPort = 7777;
+            }
+            {
+              protocol = "tcp";
+              fromPort = 47990;
+            }
+            {
+              protocol = "udp";
+              fromPort = 27031;
+              toPort = 27036;
+            }
+          ];
+        };
+      })
+    )
+    manifest
+    ;
 in
 pkgs.testers.runNixOSTest {
   name = "arch-ufw-coexistence";
-  nodes.machine = { ... }: {
+  nodes.machine = _: {
     networking.firewall.enable = false;
     virtualisation.memorySize = 1024;
     boot.kernel.sysctl."net.ipv4.ip_forward" = 1;

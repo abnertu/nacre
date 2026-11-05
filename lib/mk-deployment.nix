@@ -9,9 +9,9 @@ let
   inherit (nixpkgs) lib;
   mkHomeConfiguration = import ./mk-home-configuration.nix { inherit inputs; };
   configuration = import ./eval-configuration.nix { inherit lib modules; };
-  host = configuration.host;
-  capabilities = configuration.capabilities;
-  system = host.system;
+  inherit (configuration) host;
+  inherit (configuration) capabilities;
+  inherit (host) system;
   pkgs = nixpkgs.legacyPackages.${system};
   homes = lib.mapAttrs' (
     username: user:
@@ -27,7 +27,7 @@ let
       hostName = host.name;
     })
   ) host.users;
-  deployment = host.deployment;
+  inherit (host) deployment;
   deploymentUser =
     host.users.${deployment.username} or (throw "unknown deployment user: ${deployment.username}");
   deploymentName = "${host.name}-${host.role}";
@@ -49,8 +49,8 @@ let
   archAi = import ../platforms/arch/ai {
     inherit lib pkgs;
     config = host.ai;
-    artifacts = ai.artifacts;
-    tailscale = capabilities.tailscale;
+    inherit (ai) artifacts;
+    inherit (capabilities) tailscale;
   };
   powerpanel = import ../modules/powerpanel {
     inherit lib pkgs;
@@ -71,16 +71,16 @@ let
       powerpanel
       adapterPython
       ;
-    username = deployment.username;
-    arch = host.arch;
-    hardware = host.hardware;
+    inherit (deployment) username;
+    inherit (host) arch;
+    inherit (host) hardware;
     inherit (host) sysctl kernelModules nixSettings;
     aiConfig = host.ai;
     aiArtifacts = ai.artifacts;
   };
   llama-prepare = import ../modules/ai/package.nix {
     inherit lib pkgs adapterPython;
-    artifacts = ai.artifacts;
+    inherit (ai) artifacts;
   };
   home-switch = import ./deployment/home/package.nix {
     inherit pkgs;
@@ -109,7 +109,7 @@ in
   noctaliaEnabled = builtins.elem "noctalia-config" deploymentUser.modules;
   noctalia-config = import ../modules/home/noctalia-config/package.nix {
     inherit pkgs adapterPython;
-    username = deployment.username;
+    inherit (deployment) username;
     homeConfiguration = homeConfigurationName;
   };
   deployment = import ./deployment/package.nix {

@@ -6,7 +6,7 @@
   adapterPython,
 }:
 let
-  lib = pkgs.lib;
+  inherit (pkgs) lib;
   fixtures = import ../../checks/lib.nix { inherit inputs lib; };
   desktopPolicy = (fixtures.evaluate [ ]).config.arch;
   headlessPolicy = (fixtures.evaluate [ { desktop.enable = false; } ]).config.arch;

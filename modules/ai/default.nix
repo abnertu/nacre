@@ -25,7 +25,7 @@ let
       configured = configuredModels.${name} or { };
       legacy = if name == legacyName then legacyOverrides else { };
       overrides = clean (builtins.removeAttrs configured [ "enable" ]);
-      fallbackDevice = if legacyModel.device == null then { } else { device = legacyModel.device; };
+      fallbackDevice = if legacyModel.device == null then { } else { inherit (legacyModel) device; };
       effective = declared.artifact // declared.runtime // fallbackDevice // legacy // overrides;
     in
     effective

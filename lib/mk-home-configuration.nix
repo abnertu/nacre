@@ -53,8 +53,8 @@ inputs.home-manager.lib.homeManagerConfiguration {
     {
       home = {
         inherit username;
-        homeDirectory = userNormalized.homeDirectory;
-        stateVersion = userNormalized.stateVersion;
+        inherit (userNormalized) homeDirectory;
+        inherit (userNormalized) stateVersion;
       };
 
       programs.home-manager.enable = true;
