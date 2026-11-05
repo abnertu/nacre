@@ -38,5 +38,4 @@ max-complexity = 10
 "**/adapter.py" = ["E402"]
 
 # Temporary: these functions are split in the readability refactor (S6-S10).
-"modules/ai/benchmark.py" = ["C901", "PLR0912", "PLR0915"]
 "modules/ai/tests/test_router.py" = ["C901"]

@@ -364,6 +364,22 @@ class BenchmarkTests(unittest.TestCase):
             with suppress(ProcessLookupError):
                 os.kill(pid, 9)
 
+    def test_timeout_records_the_final_sample_after_termination(self):
+        self.install_binary(
+            "import signal,sys,time\n"
+            "def stop(*_):\n"
+            f" put({str(self.used_file)!r}, str(9 * 1024 * 1024))\n"
+            " sys.exit(0)\n"
+            "signal.signal(signal.SIGTERM, stop)\n"
+            "print('started', flush=True)\n"
+            "time.sleep(30)\n"
+        )
+        self.assertEqual(self.cli("--timeout", "3", "--min-free-mib", "0"), 1)
+        row = json.loads(self.output.read_text())["rows"][0]
+        self.assertIn("timed out", row["error"])
+        self.assertIn("started", row["stdout"])
+        self.assertEqual(row["peak_vram_used_mib"], 9)
+
     def test_timeout_preserves_partial_output(self):
         self.install_binary(
             "import sys,time\n"
