@@ -60,12 +60,16 @@ class Config(TypedDict):
 
 
 class Failure(Exception):
+    """A deployment stop: the message to print and the exit status."""
+
     def __init__(self, message: str, code: int = 1):
         super().__init__(message)
         self.code = code
 
 
 class Switch:
+    """One arch-switch run: its configuration, terminal and work directory."""
+
     def __init__(self, config: Config, verbose: bool, progress: Progress):
         self.config = config
         self.verbose = verbose
@@ -88,6 +92,11 @@ class Switch:
     def native(
         self, command: str, *args: str, capture: bool = False, check: bool = True
     ) -> subprocess.CompletedProcess[str]:
+        """Run `/usr/bin/<command>` with the terminal released to it.
+
+        Raise `Failure` with the command's exit status when it fails and
+        `check` is set; the command has already printed its own diagnostics.
+        """
         with self.progress.external_output():
             result = subprocess.run(
                 [str(self.bin / command), *args],
@@ -100,26 +109,32 @@ class Switch:
         return result
 
     def root_command(self, command: str, *args: str) -> None:
+        """Run a native command through sudo."""
         self.native("sudo", str(self.bin / command), *args)
 
     def say(self, line: str, *, error: bool = False) -> None:
+        """Print one line, to stderr when `error` is set."""
         with self.progress.external_output():
             print(line, file=sys.stderr if error else sys.stdout, flush=True)
 
     def plan_line(self, kind: str, text: str) -> None:
+        """Print a plan line, colored by its kind on a terminal."""
         line = f"{kind} {text}"
         self.say(f"\033[{STYLES[kind]}m{line}\033[0m" if self.color else line)
 
     def skip(self, name: str, reason: str) -> None:
+        """Report that optional module `name` is skipped, and why."""
         line = f"SKIP optional module {name}: {reason}"
         self.say(f"\033[1;33m{line}\033[0m" if self.color else line, error=True)
 
     def report(self, title: str, details: str) -> None:
+        """Print `details` under the heading `title` on stderr, if there are any."""
         if details.strip():
             heading = f"\033[1;31m{title}:\033[0m" if self.color else f"{title}:"
             self.say(heading + "\n" + details.rstrip("\n"), error=True)
 
     def adapter(self, name: str, phase: str) -> int:
+        """Run phase `phase` of adapter `name` as root; return its exit status."""
         entry = self.config["adapters"][name]
         args = [
             self.config["adapterPython"],
@@ -134,11 +149,17 @@ class Switch:
         return self.native("sudo", *args, check=False).returncode
 
     def require(self, name: str, phase: str) -> None:
+        """Run an adapter phase; raise `Failure` with its status when it fails."""
         status = self.adapter(name, phase)
         if status != 0:
             raise Failure("", status)
 
     def optional_preflight(self, name: str, label: str, reason: str) -> bool:
+        """Preflight an optional module; return whether it is ready.
+
+        Report a skip when its preparation never completed; raise `Failure`
+        on any other failure.
+        """
         status = self.adapter(name, "preflight")
         if status == NOT_READY:
             self.skip(label, reason)
@@ -148,6 +169,10 @@ class Switch:
         return True
 
     def optional_converge(self, name: str, description: str) -> None:
+        """Converge a module that preflight found ready.
+
+        Raise `Failure` if it became not ready since preflight, or if it fails.
+        """
         status = self.adapter(name, "converge")
         if status == NOT_READY:
             raise Failure(f"{description} changed after preflight; deployment stopped")
@@ -168,6 +193,7 @@ class Switch:
         return prepared
 
     def check_kernel(self) -> None:
+        """Raise `Failure` (exit 75) if the running kernel has no installed modules."""
         if not (self.root / "usr/lib/modules" / self.kernel).is_dir():
             raise Failure(
                 f"kernel modules do not match running kernel {self.kernel}; "
@@ -176,12 +202,14 @@ class Switch:
             )
 
     def installed(self) -> set[str]:
+        """Names of every installed pacman package."""
         # One query for every installed name, instead of one per package.
         return set(
             self.native("pacman", "--query", "--quiet", capture=True).stdout.split()
         )
 
     def missing_packages(self) -> list[str]:
+        """Declared packages that are not installed, in declaration order."""
         c = self.config
         installed = self.installed()
         return [
@@ -204,6 +232,7 @@ class Switch:
         return ["--ignore", ",".join(hold), "--", *targets]
 
     def require_multilib(self) -> None:
+        """Raise `Failure` if lib32 packages are declared without multilib."""
         for package in self.config["pacman"]:
             if package.startswith("lib32-"):
                 multilib = self.native(
@@ -222,8 +251,20 @@ class Switch:
                 return
 
     def resolve_inventory(self) -> None:
-        c = self.config
+        """Check that every declared package resolves; change nothing.
+
+        Raise `Failure` with pacman's, the repository's or yay's diagnostics
+        when a package does not resolve.
+        """
         self.require_multilib()
+        self.resolve_pacman()
+        if self.config["lizardbyte"]:
+            self.resolve_lizardbyte()
+        if self.config["aur"]:
+            self.resolve_aur()
+
+    def resolve_pacman(self) -> None:
+        """Resolve the repository packages as the update transaction would."""
         # Simulate the transaction update performs: a full upgrade with the
         # inventory. Resolving it alone would fail on pending upgrades of deps.
         result = self.native(
@@ -232,7 +273,7 @@ class Switch:
             "--sysupgrade",
             "--print",
             "--needed",
-            *self.held_upgrade(c["pacman"]),
+            *self.held_upgrade(self.config["pacman"]),
             capture=True,
             check=False,
         )
@@ -247,56 +288,70 @@ class Switch:
             raise Failure(
                 "Arch package inventory did not resolve; check for package conflicts"
             )
-        if c["lizardbyte"]:
-            server = self.native(
-                "pacman-conf",
-                "--config",
-                c["lizardbyteConf"],
-                "--repo",
-                "lizardbyte",
-                "Server",
-                capture=True,
-            ).stdout.strip()
-            database = self.work / "lizardbyte.db"
-            with self.progress.external_output():
-                fetched = subprocess.run(
-                    [
-                        c["curl"],
-                        "--fail",
-                        "--location",
-                        "--show-error",
-                        "--silent",
-                        "--connect-timeout",
-                        "10",
-                        "--max-time",
-                        "60",
-                        "--output",
-                        str(database),
-                        f"{server}/lizardbyte.db",
-                    ],
-                    check=False,
-                )
-                listing = subprocess.run(
-                    [c["tar"], "-tf", str(database)],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-            if fetched.returncode != 0 or listing.returncode != 0:
-                raise Failure("LizardByte repository database could not be read")
-            for package in c["lizardbyte"]:
-                pattern = re.compile(rf"{re.escape(package)}-[^/]+/desc")
-                if not any(
-                    pattern.fullmatch(line) for line in listing.stdout.splitlines()
-                ):
-                    raise Failure(f"LizardByte package did not resolve: {package}")
-        if c["aur"]:
-            info = self.native(
-                "yay", "--sync", "--info", "--", *c["aur"], capture=True, check=False
+
+    def resolve_lizardbyte(self) -> None:
+        """Find each declared LizardByte package in the repository database."""
+        listing = self.lizardbyte_listing()
+        for package in self.config["lizardbyte"]:
+            pattern = re.compile(rf"{re.escape(package)}-[^/]+/desc")
+            if not any(pattern.fullmatch(line) for line in listing):
+                raise Failure(f"LizardByte package did not resolve: {package}")
+
+    def lizardbyte_listing(self) -> list[str]:
+        """The entries of the LizardByte repository database."""
+        c = self.config
+        server = self.native(
+            "pacman-conf",
+            "--config",
+            c["lizardbyteConf"],
+            "--repo",
+            "lizardbyte",
+            "Server",
+            capture=True,
+        ).stdout.strip()
+        database = self.work / "lizardbyte.db"
+        with self.progress.external_output():
+            fetched = subprocess.run(
+                [
+                    c["curl"],
+                    "--fail",
+                    "--location",
+                    "--show-error",
+                    "--silent",
+                    "--connect-timeout",
+                    "10",
+                    "--max-time",
+                    "60",
+                    "--output",
+                    str(database),
+                    f"{server}/lizardbyte.db",
+                ],
+                check=False,
             )
-            if info.returncode != 0:
-                self.report("AUR package resolution error", info.stderr)
-                raise Failure("AUR package inventory did not resolve")
+            listing = subprocess.run(
+                [c["tar"], "-tf", str(database)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        if fetched.returncode != 0 or listing.returncode != 0:
+            raise Failure("LizardByte repository database could not be read")
+        return listing.stdout.splitlines()
+
+    def resolve_aur(self) -> None:
+        """Ask yay for each declared AUR package."""
+        info = self.native(
+            "yay",
+            "--sync",
+            "--info",
+            "--",
+            *self.config["aur"],
+            capture=True,
+            check=False,
+        )
+        if info.returncode != 0:
+            self.report("AUR package resolution error", info.stderr)
+            raise Failure("AUR package inventory did not resolve")
 
     @contextlib.contextmanager
     def lock(self) -> Generator[None]:
@@ -316,6 +371,7 @@ class Switch:
             yield
 
     def validate_host(self) -> None:
+        """Raise `Failure` unless this is Arch and the expected login user runs it."""
         if not (self.root / "etc/arch-release").exists():
             raise Failure("arch-switch only supports Arch Linux")
         if self.native("id", "-u", capture=True).stdout.strip() == "0":
@@ -335,6 +391,7 @@ class Switch:
                 raise Failure(f"required command is missing: {self.bin / command}")
 
     def user_service_enabled(self, service: str) -> bool:
+        """Whether user unit `service` is enabled."""
         return (
             self.native(
                 "systemctl", "--user", "is-enabled", "--quiet", service, check=False
@@ -343,6 +400,7 @@ class Switch:
         )
 
     def plan(self) -> None:
+        """Print what a deployment would change; change nothing."""
         with self.progress.task("Plan Arch changes", total=1) as task:
             for package in self.missing_packages():
                 self.plan_line("+", f"package {package} (missing; installed by update)")
@@ -378,12 +436,14 @@ class Switch:
             task.update(1)
 
     def check(self) -> None:
+        """Check that the package inventories resolve; change nothing."""
         with self.progress.task("Check package inventories", total=1) as task:
             self.resolve_inventory()
             self.say("Arch, LizardByte, and AUR package inventories resolve")
             task.update(1)
 
     def purge(self) -> None:
+        """Remove the managed Arch state: optional services, drop-ins, then core."""
         with self.progress.task("Purge managed Arch state", total=1) as task:
             self.native("sudo", "-v")
             # Optional services first, then system drop-ins; core removes pending state.
@@ -393,7 +453,12 @@ class Switch:
             task.update(1)
 
     def deploy(self, update: bool) -> None:
-        c = self.config
+        """Converge the host in stages; with `update`, upgrade packages too.
+
+        Read-only checks precede every change: host and package validation,
+        then the preflight of every adapter. Only then do packages, core
+        files, optional modules and runtime state converge, in that order.
+        """
         total = 6 if update else 5
         steps = iter(range(1, total + 1))
 
@@ -401,15 +466,7 @@ class Switch:
             return self.progress.task(f"[{next(steps)}/{total}] {label}")
 
         with step("Validate Arch host, packages, and kernel"):
-            missing = self.missing_packages()
-            if missing and not update:
-                raise Failure(
-                    "declared Arch packages are missing; rerun with --update to install them safely:\n"
-                    + "\n".join(f"  {package}" for package in missing),
-                    3,
-                )
-            self.check_kernel()
-
+            self.validate_packages(update)
         # Read-only ownership preflight precedes package and configuration writes.
         with step("Preflight core and optional modules"):
             self.require("core", "preflight")
@@ -420,62 +477,83 @@ class Switch:
                 "llama.cpp build/model is not prepared; run 'nacre ai prepare'",
             )
             extensions = self.extensions_preflight({"ai": ai_ready})
-
         self.native("sudo", "-v")
         if update:
             with step("Resolve and update native packages"):
-                # Declared repositories first, then one refresh, so resolution
-                # and the upgrade both see the databases the transaction uses.
-                self.require_multilib()
-                self.require("core", "repositories")
-                self.root_command("pacman", "--sync", "--refresh")
-                self.resolve_inventory()
-                self.root_command(
-                    "pacman",
-                    "--sync",
-                    "--sysupgrade",
-                    "--needed",
-                    "--noconfirm",
-                    *self.held_upgrade(
-                        [
-                            *c["pacman"],
-                            *(f"lizardbyte/{name}" for name in c["lizardbyte"]),
-                        ]
-                    ),
-                )
-                self.check_kernel()
-                aur = self.held_upgrade(c["aur"])
-                # Nothing after "--": no AUR package left to install or upgrade.
-                if aur[-1] != "--":
-                    self.native("yay", "--sync", "--needed", "--noconfirm", *aur)
+                self.update_packages()
         else:
             self.require("core", "repositories")
-
         with step("Converge core files and services"):
             self.require("system", "converge")
             self.require("core", "converge")
-
         with step("Converge optional modules"):
-            if ai_ready:
-                self.optional_converge("ai", "AI preparation")
-            labels = {e["name"]: e["label"] for e in c["extensions"]}
-            for name in extensions:
-                self.optional_converge(name, labels[name])
-
+            self.converge_optional(ai_ready, extensions)
         with step("Finish runtime convergence"):
             self.require("core", "finish")
-            # User units belong to the login user's manager: stay unprivileged.
-            actions = 0
-            for service in c["userServices"]:
-                if not self.user_service_enabled(service):
-                    self.native("systemctl", "--user", "enable", service)
-                    actions += 1
-            self.say(
-                f"User services converged: 0 files updated, {actions} runtime actions."
+            self.converge_user_services()
+
+    def validate_packages(self, update: bool) -> None:
+        """Stop with exit 3 when declared packages are missing, unless updating."""
+        missing = self.missing_packages()
+        if missing and not update:
+            raise Failure(
+                "declared Arch packages are missing; rerun with --update to install them safely:\n"
+                + "\n".join(f"  {package}" for package in missing),
+                3,
             )
+        self.check_kernel()
+
+    def update_packages(self) -> None:
+        """Refresh, resolve and upgrade the repository and AUR packages."""
+        c = self.config
+        # Declared repositories first, then one refresh, so resolution and the
+        # upgrade both see the databases the transaction uses.
+        self.require_multilib()
+        self.require("core", "repositories")
+        self.root_command("pacman", "--sync", "--refresh")
+        self.resolve_inventory()
+        repository = [*c["pacman"], *(f"lizardbyte/{name}" for name in c["lizardbyte"])]
+        self.root_command(
+            "pacman",
+            "--sync",
+            "--sysupgrade",
+            "--needed",
+            "--noconfirm",
+            *self.held_upgrade(repository),
+        )
+        self.check_kernel()
+        aur = self.held_upgrade(c["aur"])
+        # Nothing after "--": no AUR package left to install or upgrade.
+        if aur[-1] != "--":
+            self.native("yay", "--sync", "--needed", "--noconfirm", *aur)
+
+    def converge_optional(self, ai_ready: bool, extensions: list[str]) -> None:
+        """Converge the optional modules whose preflight found them ready."""
+        if ai_ready:
+            self.optional_converge("ai", "AI preparation")
+        labels = {e["name"]: e["label"] for e in self.config["extensions"]}
+        for name in extensions:
+            self.optional_converge(name, labels[name])
+
+    def converge_user_services(self) -> None:
+        """Enable the declared user units in the login user's manager."""
+        # User units belong to the login user's manager: stay unprivileged.
+        actions = 0
+        for service in self.config["userServices"]:
+            if not self.user_service_enabled(service):
+                self.native("systemctl", "--user", "enable", service)
+                actions += 1
+        self.say(
+            f"User services converged: 0 files updated, {actions} runtime actions."
+        )
 
 
 def parse(args: list[str]) -> tuple[str, bool]:
+    """The mode and verbosity from arch-switch's own arguments.
+
+    Print usage and exit 0 on `--help`; raise `Failure` (exit 2) on any
+    unknown or conflicting argument.
+    """
     modes = {"--check", "--plan", "--update", "--purge"}
     if "--help" in args:
         print(USAGE)
@@ -489,6 +567,8 @@ def parse(args: list[str]) -> tuple[str, bool]:
 
 
 def main(argv: list[str]) -> int:
+    """Run arch-switch with the packaged `--config FILE` and the operator's
+    arguments; return its exit status."""
     if argv[:1] != ["--config"] or len(argv) < 2:
         print("arch-switch must be started through its package", file=sys.stderr)
         return 2
@@ -526,6 +606,7 @@ def main(argv: list[str]) -> int:
 
 
 def entry() -> NoReturn:
+    """Console entry point."""
     raise SystemExit(main(sys.argv[1:]))
 
 
