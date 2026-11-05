@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2154 # The activation script defines projection_targets and config_home.
 # Read-only preflight before Home Manager changes either external input path.
 for name in "${projection_targets[@]}"; do
   target="$config_home/$name"
