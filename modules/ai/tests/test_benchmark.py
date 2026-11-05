@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 import shutil
+import signal
 import tempfile
 import time
 import unittest
@@ -39,7 +40,17 @@ class BenchmarkTests(unittest.TestCase):
         self.output = self.root / "result.json"
 
     def install_binary(self, body):
-        self.binary.write_text(f"#!{shutil.which('python3')}\n" + body)
+        # put() replaces a cgroup file atomically: the benchmark polls these
+        # files while the fake binary runs, and cgroupfs reads are atomic too.
+        helper = (
+            "import os as _os\n"
+            "def put(path, text):\n"
+            "    temporary = str(path) + '.tmp'\n"
+            "    with open(temporary, 'w') as stream:\n"
+            "        stream.write(text)\n"
+            "    _os.replace(temporary, path)\n"
+        )
+        self.binary.write_text(f"#!{shutil.which('python3')}\n" + helper + body)
         self.binary.chmod(0o755)
         self.server.write_text(
             f"#!{shutil.which('python3')}\nimport sys\nprint('fake llama.cpp build abc123')\n"
@@ -163,8 +174,8 @@ class BenchmarkTests(unittest.TestCase):
             "import os,pathlib\n"
             f"group=pathlib.Path({str(group)!r})\n"
             "assert group.joinpath('cgroup.procs').read_text() == str(os.getpid())\n"
-            f"group.joinpath('dmem.peak').write_text({self.region!r} + ' 2097152\\n')\n"
-            "group.joinpath('cgroup.procs').write_text('')\n"
+            f"put(group / 'dmem.peak', {self.region!r} + ' 2097152\\n')\n"
+            "put(group / 'cgroup.procs', '')\n"
             "print('[{\"avg_ts\":5}]')\n"
         )
         self.server.write_text(
@@ -184,7 +195,9 @@ class BenchmarkTests(unittest.TestCase):
             1,
         )
         row = json.loads(self.output.read_text())["rows"][0]
-        self.assertEqual(row["returncode"], 0)
+        # The binary passed its membership assertion either way: it exits on its
+        # own (0) or the breach monitor terminates it first (-SIGTERM).
+        self.assertIn(row["returncode"], (0, -signal.SIGTERM))
         self.assertIn("ceiling breached", row["error"])
 
     def test_populated_group_is_rejected_before_any_binary_executes(self):
@@ -216,10 +229,10 @@ class BenchmarkTests(unittest.TestCase):
         self.install_binary(
             "import pathlib,time\n"
             f"group=pathlib.Path({str(group)!r})\n"
-            f"group.joinpath('dmem.current').write_text({self.region!r} + ' 1048576\\n')\n"
+            f"put(group / 'dmem.current', {self.region!r} + ' 1048576\\n')\n"
             "time.sleep(1)\n"
-            f"group.joinpath('dmem.current').write_text({self.region!r} + ' 0\\n')\n"
-            "group.joinpath('cgroup.procs').write_text('')\n"
+            f"put(group / 'dmem.current', {self.region!r} + ' 0\\n')\n"
+            "put(group / 'cgroup.procs', '')\n"
             "print('[{\"avg_ts\":5}]')\n"
         )
         self.server.write_text(
@@ -345,8 +358,8 @@ class BenchmarkTests(unittest.TestCase):
                 if time.monotonic() >= deadline:
                     self.fail("benchmark child survived process-group cleanup")
                 time.sleep(0.01)
-        except FileNotFoundError:
-            pass
+        except (FileNotFoundError, ProcessLookupError):
+            pass  # Reaped between the existence check and the read.
         finally:
             with suppress(ProcessLookupError):
                 os.kill(pid, 9)
