@@ -106,6 +106,11 @@
         capabilities = import ./checks/capabilities.nix { inherit lib pkgs inputs; };
         source-format = import ./checks/format.nix { inherit lib pkgs; };
         source-lint = import ./checks/lint.nix { inherit lib pkgs; };
+        option-descriptions = import ./checks/option-descriptions.nix {
+          inherit lib pkgs;
+          nacreOptions = d.configuration.options;
+          homeOptions = d.homes.${d.homeConfigurationName}.options;
+        };
         python-types = import ./checks/python-types.nix {
           inherit lib pkgs;
           inherit (d) nixAdapter;
