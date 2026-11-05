@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.7.0 (2026-11-05)
+
+### Features
+
+- **ai**: Bound model memory and own measured runtime defaults (breaking)
+- **ai**: Install gh and project the gh and abnertu skill sets
+
+### Refactoring
+
+- **checks**: Exercise native ownership and session behavior
+
+### Documentation
+
+- Tighten the README, agent rules and deployment guide
+- **readme**: Fix CI and release badges
+- **readme**: Align the Check badge with Hypr
+- Simplify the check badge label
+- Drop the license badge and section, add a Nix badge and index guides
+- Rewrite README and AGENTS.md to ASD-STE100 writing rules
+- Rewrite the guides to ASD-STE100 writing rules
+- Align writing rules with documentation skill 0.4.1
+
 ## 0.6.2 (2026-10-21)
 
 ### Features
