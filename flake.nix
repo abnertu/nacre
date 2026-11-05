@@ -18,26 +18,6 @@
       flake = false;
     };
 
-    matt-pocock-skills = {
-      url = "github:mattpocock/skills";
-      flake = false;
-    };
-
-    obsidian-skills = {
-      url = "github:kepano/obsidian-skills";
-      flake = false;
-    };
-
-    vercel-skills = {
-      url = "github:vercel-labs/skills";
-      flake = false;
-    };
-
-    abnertu-skills = {
-      url = "github:abnertu/skills";
-      flake = false;
-    };
-
     nix-adapter = {
       url = "github:abnertu/nix-adapter?ref=v0.7.0";
       inputs.nixpkgs.follows = "nixpkgs";

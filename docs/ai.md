@@ -96,7 +96,7 @@ Install newly declared native tools with `nacre update`. A routine switch exits 
 
 ## Agent skills
 
-Home Manager projects selected skill directories from pinned upstream sources:
+Home Manager projects the selected skill directories:
 
 - `~/.agents/skills` follows `programs.ai.enable` and `programs.ai.skillsPresets.enable`.
 - `~/.claude/skills` follows `programs.ai.claude.enable` and `programs.ai.claude.skills.enable`.
@@ -104,20 +104,41 @@ Home Manager projects selected skill directories from pinned upstream sources:
 
 Choose one installation source for each skill. Otherwise, managed links and plugins discover it twice.
 
-[`modules/ai/skills.nix`](../modules/ai/skills.nix) owns the selection from these sources. Activation uses prebuilt sources without downloads or a Skills CLI lockfile.
+The machine flake declares its skill sets. Each set names a source, usually a flake input, and the skills it provides:
 
-- The locked `matt-pocock-skills`, `obsidian-skills` and `vercel-skills` inputs.
-- `gh` and `gh-skill` from the source of the packaged `gh`. `programs.ai.skillSets.gh.enable` selects them.
-- The locked `abnertu-skills` input. `programs.ai.skillSets.abnertu.enable` selects it.
+```nix
+{
+  inputs.nacre.url = "github:abnertu/nacre";
+  inputs.obsidian-skills = {
+    url = "github:kepano/obsidian-skills";
+    flake = false;
+  };
 
-Both skill sets are on by default. The `gh` skills follow the `nixpkgs` lock, so they match the installed `gh`. The development profile installs `gh`.
+  outputs =
+    { nacre, obsidian-skills, ... }:
+    nacre.lib.mkFlake {
+      modules = [
+        ./configuration.nix
+        {
+          programs.ai.skills.sets.obsidian = {
+            source = obsidian-skills;
+            skills.obsidian-markdown = "skills/obsidian-markdown";
+          };
+        }
+      ];
+    };
+}
+```
 
-Review the upstream changes. Then update the skill sources:
+Each skill directory must hold a `SKILL.md`, and each skill name may come from one set only. Evaluation stops on either error. Activation uses the locked sources, without downloads or a Skills CLI lockfile.
+
+Nacre adds one built-in set: `gh` and `gh-skill` from the source of the packaged `gh`, so they match the installed `gh`. `programs.ai.skills.gh.enable` selects them. The development profile installs `gh`.
+
+Review the upstream changes. Then update the skill sources in the machine flake:
 
 ```bash
-nix flake update matt-pocock-skills obsidian-skills vercel-skills abnertu-skills
-just check
-just build
+nix flake update obsidian-skills
+nacre plan
 ```
 
 Review and commit the lock update before deployment. To restore earlier sources, revert it. `nacre update` does not advance skill inputs. Missing selected paths or `SKILL.md` files fail evaluation. Managed skill links are read-only. Update their flake inputs. Do not run a skill updater against them.

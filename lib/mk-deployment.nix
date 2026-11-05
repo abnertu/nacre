@@ -38,13 +38,7 @@ let
   ai = import ../modules/ai {
     inherit lib;
     config = host.ai;
-    skillSources = {
-      matt-pocock = inputs.matt-pocock-skills;
-      obsidian = inputs.obsidian-skills;
-      vercel = inputs.vercel-skills;
-      gh = pkgs.gh.src;
-      abnertu = inputs.abnertu-skills;
-    };
+    ghSource = pkgs.gh.src;
   };
   archAi = import ../platforms/arch/ai {
     inherit lib pkgs;

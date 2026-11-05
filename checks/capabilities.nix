@@ -4,7 +4,18 @@
   inputs,
 }:
 let
+  skillSets = {
+    upstream = {
+      source = ./fixtures/skills/upstream;
+      skills.sample-upstream = "skills/sample-upstream";
+    };
+    personal = {
+      source = ./fixtures/skills/personal;
+      skills.sample-personal = "skills/sample-personal";
+    };
+  };
   aiDefaults = {
+    skills.sets = skillSets;
     llama = {
       enable = true;
       model = {
@@ -22,13 +33,7 @@ let
         inherit lib;
         raw = lib.recursiveUpdate aiDefaults raw;
       };
-      skillSources = {
-        matt-pocock = inputs.matt-pocock-skills;
-        obsidian = inputs.obsidian-skills;
-        vercel = inputs.vercel-skills;
-        gh = pkgs.gh.src;
-        abnertu = inputs.abnertu-skills;
-      };
+      ghSource = pkgs.gh.src;
     };
   evaluate =
     extra:
@@ -164,22 +169,23 @@ let
   homeDisabled = fixtures.home [ { programs.ai.enable = false; } ] "fixture";
   skillRegistry = import ../modules/ai/skills.nix {
     inherit lib;
-    skillSources = {
-      matt-pocock = inputs.matt-pocock-skills;
-      obsidian = inputs.obsidian-skills;
-      vercel = inputs.vercel-skills;
-    };
+    sets = skillSets;
   };
   unknownSkillSelection = builtins.tryEval (skillRegistry.resolve "not-registered");
   missingSkillRegistry = import ../modules/ai/skills.nix {
     inherit lib;
-    skillSources = {
-      matt-pocock = inputs.nixpkgs.outPath;
-      obsidian = inputs.nixpkgs.outPath;
-      vercel = inputs.nixpkgs.outPath;
+    sets.upstream = skillSets.upstream // {
+      skills.absent = "skills/absent";
     };
   };
   missingSkillSource = builtins.tryEval (builtins.deepSeq missingSkillRegistry.selected true);
+  duplicateSkillRegistry = import ../modules/ai/skills.nix {
+    inherit lib;
+    sets = skillSets // {
+      copy = skillSets.upstream;
+    };
+  };
+  duplicateSkill = builtins.tryEval (builtins.deepSeq duplicateSkillRegistry.selected true);
   agentSkillsOnly = ai {
     enable = true;
     claude.skills.enable = false;
@@ -200,15 +206,23 @@ let
       };
     };
   };
-  upstreamSkill = builtins.head (builtins.attrNames skillRegistry.roots);
+  upstreamSkill = "sample-upstream";
   skillSetFiles = raw: (ai ({ enable = true; } // raw)).homeModule.home.file;
   allSkillSets = skillSetFiles { };
-  ghSkillsOff = skillSetFiles { skillSets.gh.enable = false; };
-  abnertuSkillsOff = skillSetFiles { skillSets.abnertu.enable = false; };
+  ghSkillsOff = skillSetFiles { skills.gh.enable = false; };
+  customGh = {
+    skills.sets = lib.mkForce { gh = skillSets.personal; };
+  };
+  conflictingGhSet = builtins.tryEval (builtins.deepSeq (skillSetFiles customGh) true);
+  customGhFiles = skillSetFiles (lib.recursiveUpdate customGh { skills.gh.enable = false; });
+  upstreamOnly = skillSetFiles { skills.sets = lib.mkForce { inherit (skillSets) upstream; }; };
 in
-assert allSkillSets ? ".agents/skills/gh-skill" && allSkillSets ? ".claude/skills/converge";
-assert !(ghSkillsOff ? ".agents/skills/gh") && ghSkillsOff ? ".agents/skills/converge";
-assert !(abnertuSkillsOff ? ".claude/skills/converge") && abnertuSkillsOff ? ".claude/skills/gh";
+assert allSkillSets ? ".agents/skills/gh-skill" && allSkillSets ? ".claude/skills/sample-personal";
+assert !(ghSkillsOff ? ".agents/skills/gh") && ghSkillsOff ? ".agents/skills/sample-personal";
+assert !(upstreamOnly ? ".claude/skills/sample-personal") && upstreamOnly ? ".claude/skills/gh";
+assert !duplicateSkill.success;
+assert !conflictingGhSet.success;
+assert customGhFiles ? ".agents/skills/sample-personal" && !(customGhFiles ? ".agents/skills/gh");
 assert disabled.homeModule.home.file == { };
 assert !(home.config.home.file ? ".codex/config.toml");
 assert !unknownSkillSelection.success;

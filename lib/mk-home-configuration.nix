@@ -68,13 +68,7 @@ inputs.home-manager.lib.homeManagerConfiguration {
     (import ../modules/ai {
       lib = inputs.nixpkgs.lib;
       config = ai;
-      skillSources = {
-        matt-pocock = inputs.matt-pocock-skills;
-        obsidian = inputs.obsidian-skills;
-        vercel = inputs.vercel-skills;
-        gh = pkgs.gh.src;
-        abnertu = inputs.abnertu-skills;
-      };
+      ghSource = pkgs.gh.src;
     }).homeModule
   ]
   ++ [ (userNormalized.homeConfig or { }) ]

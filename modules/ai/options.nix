@@ -155,14 +155,42 @@ in
       description = "Manage a Codex profile for the selected local llama.cpp model.";
     };
   };
-  skillsPresets.enable = enabledByDefault "the registered Codex agent skill presets";
-  skillSets = {
+  skillsPresets.enable = enabledByDefault "the selected agent skills in ~/.agents/skills";
+  skills = {
     gh.enable = enabledByDefault "the gh and gh-skill skills from the packaged GitHub CLI source";
-    abnertu.enable = enabledByDefault "abnertu's agent skills";
+    sets = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            source = lib.mkOption {
+              type = lib.types.path;
+              description = "Source tree of the set, such as a flake input.";
+            };
+            skills = lib.mkOption {
+              type = lib.types.attrsOf (lib.types.strMatching "[^/].*");
+              example = {
+                tdd = "skills/engineering/tdd";
+              };
+              description = "Skills of the set: each name and its directory inside the source, which holds a SKILL.md.";
+            };
+          };
+        }
+      );
+      default = { };
+      example = lib.literalExpression ''
+        {
+          obsidian = {
+            source = inputs.obsidian-skills;
+            skills.obsidian-markdown = "skills/obsidian-markdown";
+          };
+        }
+      '';
+      description = "Agent skill sets of this machine, keyed by set name; each skill name may appear in one set.";
+    };
   };
   claude = {
     enable = enabledByDefault "Claude Code";
-    skills.enable = enabledByDefault "the registered agent skills in ~/.claude/skills";
+    skills.enable = enabledByDefault "the selected agent skills in ~/.claude/skills";
   };
   # Graphical: installed only with the desktop.
   claudeDesktop.enable = enabledByDefault "Claude Desktop";

@@ -28,6 +28,17 @@
       }
     ];
   };
+  # Synthetic skill sets; a machine flake declares its own from flake inputs.
+  programs.ai.skills.sets = {
+    upstream = {
+      source = ./skills/upstream;
+      skills.sample-upstream = "skills/sample-upstream";
+    };
+    personal = {
+      source = ./skills/personal;
+      skills.sample-personal = "skills/sample-personal";
+    };
+  };
   programs.ai.llama = {
     enable = lib.mkDefault true;
     model = {

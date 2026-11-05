@@ -1,7 +1,9 @@
 {
   lib,
   config,
-  skillSources ? { },
+  # Source of the built-in gh skill set: the packaged GitHub CLI source, so the
+  # skills match the installed gh. Null leaves the set out.
+  ghSource ? null,
 }:
 let
   llama = config.enable && config.llama.enable;
@@ -92,7 +94,21 @@ in
           if config.skillsPresets.enable || claudeSkillsEnabled then
             import ./skills.nix {
               inherit lib;
-              skillSources = lib.filterAttrs (source: _: config.skillSets.${source}.enable or true) skillSources;
+              sets =
+                lib.throwIf (config.skills.gh.enable && ghSource != null && config.skills.sets ? gh)
+                  "AI skill set 'gh' conflicts with the built-in set; disable programs.ai.skills.gh.enable to supply your own"
+                  (
+                    config.skills.sets
+                    // lib.optionalAttrs (config.skills.gh.enable && ghSource != null) {
+                      gh = {
+                        source = ghSource;
+                        skills = {
+                          gh = "skills/gh";
+                          gh-skill = "skills/gh-skill";
+                        };
+                      };
+                    }
+                  );
             }
           else
             null;
