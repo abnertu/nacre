@@ -318,31 +318,34 @@ class RouterIntegrationTests(unittest.TestCase):
             except subprocess.TimeoutExpired:
                 os.killpg(self.router.pid, signal.SIGKILL)
                 self.router.wait(timeout=5)
-        for pid in self.child_pids:
+        self.stop_children()
+        if self.router_log:
+            self.router_log.close()
+
+    def stop_children(self):
+        """Terminate the backends the router started; kill those that stay."""
+        for pid in self.living(self.child_pids):
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(pid, signal.SIGTERM)
+        deadline = time.monotonic() + 2
+        alive = self.living(self.child_pids)
+        while alive and time.monotonic() < deadline:
+            time.sleep(0.05)
+            alive = self.living(alive)
+        for pid in alive:
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(pid, signal.SIGKILL)
+
+    @staticmethod
+    def living(pids):
+        alive = []
+        for pid in pids:
             try:
                 os.kill(pid, 0)
             except ProcessLookupError:
                 continue
-            with contextlib.suppress(ProcessLookupError):
-                os.kill(pid, signal.SIGTERM)
-        deadline = time.monotonic() + 2
-        alive = []
-        while time.monotonic() < deadline:
-            alive = []
-            for pid in self.child_pids:
-                try:
-                    os.kill(pid, 0)
-                    alive.append(pid)
-                except ProcessLookupError:
-                    pass
-            if not alive:
-                break
-            time.sleep(0.05)
-        for pid in alive if "alive" in locals() else ():
-            with contextlib.suppress(ProcessLookupError):
-                os.kill(pid, signal.SIGKILL)
-        if self.router_log:
-            self.router_log.close()
+            alive.append(pid)
+        return alive
 
     def test_models_stay_loaded_route_concurrently_and_apply_chat_alias(self):
         self.start_router()
