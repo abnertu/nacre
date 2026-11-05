@@ -232,7 +232,11 @@ class SystemTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.files = Files(self.root, (os.getuid(), os.getgid()))
+        self.files = Files(
+            self.root,
+            (os.getuid(), os.getgid()),
+            pending_template="/var/lib/nix-config/arch/system-{action}.pending",
+        )
         self.native = Fake(self.files)
         # A manifest with every setting unmanaged; tests enable what they cover.
         self.d: dict[str, Any] = {
@@ -272,6 +276,44 @@ class SystemTests(unittest.TestCase):
                 capture_output=True,
             )
             self.assertEqual(sorted(os.listdir(directory)), modules)
+
+    def test_verbose_reaches_the_firewall_runner_through_the_entry_point(self):
+        adapter_spec = importlib.util.spec_from_file_location(
+            "system_adapter", RUNTIME_PATH.with_name("adapter.py")
+        )
+        assert adapter_spec is not None and adapter_spec.loader is not None
+        adapter = importlib.util.module_from_spec(adapter_spec)
+        adapter_spec.loader.exec_module(adapter)
+        manifest = self.root / "manifest.json"
+        manifest.write_text(json.dumps(self.d))
+        built: list[Any] = []
+
+        def build(desired, *, context):
+            # The real factory and context; only the root is the test's.
+            system = System(desired, self.files, context=context)
+            built.append(system)
+            return system
+
+        def no_native_command(*args, **kwargs):
+            raise AssertionError(f"a test reached a native command: {args[0]}")
+
+        with (
+            patch.object(adapter.runtime, "System", build),
+            patch.object(os, "geteuid", return_value=0),
+            patch("subprocess.run", no_native_command),
+        ):
+            for flags, verbose in (([], False), (["--verbose"], True)):
+                with patch.object(
+                    sys, "argv", ["adapter", str(manifest), "plan", *flags]
+                ):
+                    self.assertEqual(adapter.main(), 0)
+                self.assertIs(built[-1].native.verbose, verbose)
+        # The firewall runs its kernel checks on the adapter's runner.
+        self.firewall()
+        system = System(self.d, self.files, context=built[-1].context)
+        system.native = self.native
+        runtime.Firewall(system).kernel_drift([])
+        self.assertTrue(any(call[0] == "iptables" for call in self.native.calls))
 
     def test_purge_removes_owned_dropins_and_keeps_system_values(self):
         names = ("timesyncd", "journald", "logind")
@@ -725,7 +767,7 @@ class SystemTests(unittest.TestCase):
         ):
             self.system.converge()
         self.assertTrue(self.files.pending("locale"))
-        self.assertEqual(list((self.root / "etc").glob(".nix-config.*")), [])
+        self.assertEqual(list((self.root / "etc").glob(".nix-adapter.*")), [])
         self.assertEqual(
             self.files.path(self.files.marker("locale")).stat().st_mode & 0o777, 0o600
         )
@@ -758,13 +800,13 @@ class SystemTests(unittest.TestCase):
             "[Journal]\nStorage=persistent\n",
         )
         self.write("/etc/systemd/journald.conf.d/vendor.conf", text)
-        self.files.dropin("journald", text)
+        self.files.dropin("journald", text, file_name="60-nix-config.conf")
         self.write(
             "/etc/systemd/journald.conf.d/conflict.conf",
             "[Journal]\nStorage=persistent\n",
         )
         with self.assertRaises(Conflict) as caught:
-            self.files.dropin("journald", text)
+            self.files.dropin("journald", text, file_name="60-nix-config.conf")
         self.assertIn(
             "/etc/systemd/journald.conf.d/conflict.conf", str(caught.exception)
         )
@@ -776,7 +818,22 @@ class SystemTests(unittest.TestCase):
             "[Journal]\nStorage=volatile\nStorage=volatile\n",
         )
         with self.assertRaises(Conflict):
-            self.files.dropin("journald", text)
+            self.files.dropin("journald", text, file_name="60-nix-config.conf")
+
+    def test_trim_rejects_other_drop_ins_that_change_timing_or_catch_up(self):
+        self.d["trim"] = {"enable": True}
+        self.d["trimDropin"] = "[Timer]\nPersistent=false\n"
+        override = "/run/systemd/system/fstrim.timer.d/50-local.conf"
+        self.write(override, "[Timer]\nOnCalendar=daily\n")
+        with self.assertRaisesRegex(Conflict, f"custom TRIM timing in {override}"):
+            self.system.preflight()
+        self.write(override, "[Timer]\nPersistent=true\n")
+        with self.assertRaisesRegex(
+            Conflict, r"persistence override .*Persistent=true"
+        ):
+            self.system.preflight()
+        self.write(override, "[Timer]\nPersistent=false\n")
+        self.system.preflight()
 
     def test_trim_pending_retry_and_no_catchup(self):
         self.d["trim"] = {"enable": True}

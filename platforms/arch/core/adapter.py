@@ -14,8 +14,9 @@ from schema import CoreManifest
 if __name__ == "__main__":
     raise SystemExit(
         run_adapter_cli(
-            lambda desired: Core(validate(CoreManifest, desired, "core manifest")),
+            lambda desired, context: Core(
+                validate(CoreManifest, desired, "core manifest"), context=context
+            ),
             "Core",
-            phases=("repositories", "finish"),
         )
     )

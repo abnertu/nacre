@@ -6,23 +6,28 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
-from nix_adapter import BaseAdapter, Change, Conflict, Files, Native
+from nix_adapter import AdapterContext, BaseAdapter, Change, Conflict, Files, Native
 from schema import AIManifest, Model, Unmanaged
 
 
 class AI(BaseAdapter[AIManifest | Unmanaged]):
+    # AI markers share the system adapter's namespace: system-ai-<action>.
+    pending_template = "/var/lib/nix-config/arch/system-{action}.pending"
+
     def __init__(
         self,
         desired: Mapping[str, Any],
         files: Files | None = None,
         native: Native | None = None,
+        context: AdapterContext | None = None,
     ):
         root = files.root if files else Path("/")
         super().__init__(
             desired=cast(AIManifest | Unmanaged, desired),
             root=root,
-            runner=native,
+            native=native,
             files=files,
+            context=context,
         )
 
     def managed(self) -> AIManifest:

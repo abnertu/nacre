@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import os
 import shutil
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
-from nix_adapter import BaseAdapter, Change, Conflict, Files, Native
+from nix_adapter import AdapterContext, BaseAdapter, Change, Conflict, Files, Native
 from schema import Block, CoreManifest
 
 STATE = "/var/lib/nix-config/arch"
@@ -20,16 +20,23 @@ class Core(BaseAdapter[CoreManifest]):
         desired: Mapping[str, Any],
         files: Files | None = None,
         native: Native | None = None,
+        context: AdapterContext | None = None,
     ):
         root = files.root if files else Path("/")
         super().__init__(
             desired=cast(CoreManifest, desired),
             root=root,
-            runner=native,
+            native=native,
             files=files,
+            context=context,
         )
 
     # Pending markers keep their historic names so interrupted runs resume.
+    @property
+    def phases(self) -> dict[str, Callable[[], None]]:
+        """The extra phases arch-switch runs around package installation."""
+        return {"repositories": self.repositories, "finish": self.finish}
+
     def marker(self, action: str) -> str:
         return f"{STATE}/{action}.pending"
 

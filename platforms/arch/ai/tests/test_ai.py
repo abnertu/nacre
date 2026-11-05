@@ -94,7 +94,11 @@ class AITests(unittest.TestCase):
         )
         (self.root / "opt/llama/current").symlink_to("revisions/deadbeef-20000")
         (self.root / "var/lib/llama/models/model.gguf").write_text("model")
-        self.files = Files(self.root, (os.getuid(), os.getgid()))
+        self.files = Files(
+            self.root,
+            (os.getuid(), os.getgid()),
+            pending_template="/var/lib/nix-config/arch/system-{action}.pending",
+        )
         self.native = Native()
         self.desired = {
             "llama": True,

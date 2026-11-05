@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 from nix_adapter import Change, Conflict, Native, assignments
 from schema import Hotspot, Rule
 
+UFW_DEFAULTS = "/etc/default/ufw"
+
 if TYPE_CHECKING:
     from runtime import System
 
@@ -70,14 +72,14 @@ def check_kernel_rule(
     protocol: str,
     port: str,
     v6: bool = False,
-    runner: Native | None = None,
+    *,
+    native: Native,
 ) -> bool:
     """Check if a specific port acceptance rule is loaded in the netfilter chain."""
-    r = runner or Native()
     command = "ip6tables" if v6 else "iptables"
     match = ["-m", "multiport", "--dports", port] if ":" in port else ["--dport", port]
     return (
-        r.run(
+        native.run(
             command,
             "-w",
             "5",
@@ -94,16 +96,15 @@ def check_kernel_rule(
     )
 
 
-def check_kernel_policy(runner: Native | None = None) -> bool:
+def check_kernel_policy(native: Native) -> bool:
     """Verify that default kernel policies for INPUT, OUTPUT, FORWARD match UFW defaults."""
-    r = runner or Native()
     for command in ("iptables", "ip6tables"):
         for chain, policy in (
             ("INPUT", "DROP"),
             ("OUTPUT", "ACCEPT"),
             ("FORWARD", "DROP"),
         ):
-            result = r.run(command, "-w", "5", "-S", chain, check=False)
+            result = native.run(command, "-w", "5", "-S", chain, check=False)
             if (
                 result.returncode
                 or f"-P {chain} {policy}" not in result.stdout.splitlines()
@@ -260,7 +261,7 @@ class Firewall:
         return parse_ufw_status(self.run("ufw", "status", "verbose").stdout)
 
     def preflight(self, installed: bool = False) -> None:
-        defaults = assignments(self.files.read("/etc/default/ufw"))
+        defaults = assignments(self.files.read(UFW_DEFAULTS), source=UFW_DEFAULTS)
         if defaults:
             if defaults.get("IPV6") != "yes" or defaults.get("MANAGE_BUILTINS") != "no":
                 raise Conflict(
@@ -305,11 +306,11 @@ class Firewall:
             protocol=rule["protocol"],
             port=format_port_range(rule["fromPort"], rule.get("toPort")),
             v6=v6,
-            runner=self.system.runner,
+            native=self.system.native,
         )
 
     def kernel_drift(self, rules: list[Rule]) -> bool:
-        return not check_kernel_policy(runner=self.system.runner) or any(
+        return not check_kernel_policy(self.system.native) or any(
             not self.kernel_rule(rule, v6) for rule in rules for v6 in (False, True)
         )
 

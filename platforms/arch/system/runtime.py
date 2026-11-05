@@ -13,11 +13,13 @@ from typing import Any, cast
 from firewall import Firewall
 from hotspot import Hotspot
 from nix_adapter import (
+    AdapterContext,
     BaseAdapter,
     Change,
     Conflict,
     Files,
     Native,
+    ini,
     locale_gen,
     replace_keys,
 )
@@ -31,17 +33,31 @@ from nix_adapter.system import (
 )
 from schema import Console, SystemManifest
 
+# Host identifiers keep the nix-config namespace, so existing machines need no
+# migration.
+DROPIN_FILE = "60-nix-config.conf"
+LOCALE_BLOCK = "nix-config locales"
+TRIM_DROPIN = f"/etc/systemd/system/fstrim.timer.d/{DROPIN_FILE}"
+TIMER_BASES = ("/usr/lib", "/usr/local/lib", "/run", "/etc")
+
 
 class System(BaseAdapter[SystemManifest]):
+    pending_template = "/var/lib/nix-config/arch/system-{action}.pending"
+
     def __init__(
         self,
         desired: Mapping[str, Any],
         files: Files | None = None,
         native: Native | None = None,
+        context: AdapterContext | None = None,
     ):
         root = files.root if files else Path("/")
         super().__init__(
-            desired=cast(SystemManifest, desired), root=root, runner=native, files=files
+            desired=cast(SystemManifest, desired),
+            root=root,
+            native=native,
+            files=files,
+            context=context,
         )
 
     def boot_id(self) -> str:
@@ -96,15 +112,53 @@ class System(BaseAdapter[SystemManifest]):
         )
 
     def localtime(self) -> str | None:
-        return get_timezone(runner=self.native, root=self.files.root)
+        return get_timezone(native=self.native, root=self.files.root)
 
     def console(self, desired: Console) -> str:
         values = {"KEYMAP": desired["keymap"]}
         if desired["font"] is not None:
             values["FONT"] = desired["font"]
-        return replace_keys(
-            self.files.read(self.path_str("vconsole", "/etc/vconsole.conf")), values
+        path = self.path_str("vconsole", "/etc/vconsole.conf")
+        return replace_keys(self.files.read(path), values, source=path)
+
+    def generated_locales(self, path: str, locales: list[str]) -> str:
+        """`path` (locale.gen) with `locales` enabled in the managed block."""
+        return locale_gen(
+            self.files.read(path), locales, block=LOCALE_BLOCK, source=path
         )
+
+    def locale_conf(self, path: str, lang: str) -> str:
+        """`path` (locale.conf) with `LANG` set to `lang`."""
+        return replace_keys(self.files.read(path), {"LANG": lang}, source=path)
+
+    def trim_dropin(self, content: str) -> tuple[str, str]:
+        """The managed fstrim.timer drop-in and its content.
+
+        Raise `Conflict` if another drop-in sets the timer schedule, or sets
+        `Persistent=` to anything but `false`.
+        """
+        self.files.read(TRIM_DROPIN)  # Validate the target path.
+        for base in TIMER_BASES:
+            directory = self.files.path(base + "/systemd/system/fstrim.timer.d")
+            if not directory.exists():
+                continue
+            for file in directory.glob("*.conf"):
+                name = self.files.system_name(file)
+                if name != TRIM_DROPIN:
+                    self.check_trim_override(name)
+        return TRIM_DROPIN, content
+
+    def check_trim_override(self, name: str) -> None:
+        """Raise `Conflict` if drop-in `name` changes TRIM timing or catch-up."""
+        values = ini(self.files.read(name), source=name)
+        if any(section == "Timer" and key.startswith("On") for section, key in values):
+            raise Conflict(f"custom TRIM timing in {name} requires operator review")
+        persistent = values.get(("Timer", "Persistent"))
+        if persistent is not None and persistent != "false":
+            raise Conflict(
+                f"conflicting TRIM timer persistence override in {name} "
+                f"(Persistent={persistent})"
+            )
 
     def check_console_assets(self, desired: Console) -> None:
         for directory, key, suffixes in [
@@ -143,7 +197,7 @@ class System(BaseAdapter[SystemManifest]):
         # Custom servers supplement native defaults; per-link sources are not overridden.
 
     def check_trim(self) -> None:
-        check_discard_support(runner=self.native)
+        check_discard_support(native=self.native)
         # A second custom fstrim timer/cron owner must be resolved by the operator.
         output = self.run(
             "systemctl", "list-timers", "--all", "--no-legend", "--no-pager"
@@ -200,13 +254,11 @@ class System(BaseAdapter[SystemManifest]):
             if d.get(capability) is not None:
                 f.pending(action)
         if (locale := d["locale"]) is not None:
-            locale_gen(
-                f.read(self.path_str("localeGen", "/etc/locale.gen")),
-                locale["generated"],
+            self.generated_locales(
+                self.path_str("localeGen", "/etc/locale.gen"), locale["generated"]
             )
-            replace_keys(
-                f.read(self.path_str("localeConf", "/etc/locale.conf")),
-                {"LANG": locale["lang"]},
+            self.locale_conf(
+                self.path_str("localeConf", "/etc/locale.conf"), locale["lang"]
             )
         if (zone := d["timeZone"]) is not None:
             if installed and not f.zone_exists(zone):
@@ -215,7 +267,7 @@ class System(BaseAdapter[SystemManifest]):
         if d["hostname"] is not None:
             f.read(self.path_str("hostnameFile", "/etc/hostname"))
         for name, text in d["files"].items():
-            f.dropin(name, text)
+            f.dropin(name, text, file_name=DROPIN_FILE)
         if d["timeSync"] is not None:
             self.check_time_provider()
             if installed:
@@ -229,7 +281,7 @@ class System(BaseAdapter[SystemManifest]):
         if d["power"] is not None and not self.boot_id().strip():
             raise Conflict("boot identity is unavailable")
         if d["trim"] is not None:
-            f.timer_dropin(d["trimDropin"])
+            self.trim_dropin(d["trimDropin"])
             self.check_trim()
             if installed:
                 self.ready_unit("fstrim.timer")
@@ -245,7 +297,7 @@ class System(BaseAdapter[SystemManifest]):
             locale_gen_path = self.path_str("localeGen", "/etc/locale.gen")
             self.write(
                 locale_gen_path,
-                locale_gen(f.read(locale_gen_path), value["generated"]),
+                self.generated_locales(locale_gen_path, value["generated"]),
                 "locale",
             )
 
@@ -273,7 +325,7 @@ class System(BaseAdapter[SystemManifest]):
             locale_conf_path = self.path_str("localeConf", "/etc/locale.conf")
             self.write(
                 locale_conf_path,
-                replace_keys(f.read(locale_conf_path), {"LANG": value["lang"]}),
+                self.locale_conf(locale_conf_path, value["lang"]),
                 "locale",
             )
             f.clear("locale")
@@ -292,7 +344,7 @@ class System(BaseAdapter[SystemManifest]):
                 or not f.metadata_matches(localtime_path, symlink=True)
             ):
                 f.mark("timezone")
-                set_timezone(zone, runner=self.native)
+                set_timezone(zone, native=self.native)
                 if not target.is_symlink() and not target.exists():
                     # timedated changes nothing when the zone already matches,
                     # and a missing /etc/localtime already reads as UTC.
@@ -309,21 +361,21 @@ class System(BaseAdapter[SystemManifest]):
         if (hostname := d["hostname"]) is not None:
             hostname_path = self.path_str("hostnameFile", "/etc/hostname")
             for kind in ("--static", "--transient"):
-                actual = get_hostname(runner=self.native, kind=kind)
+                actual = get_hostname(native=self.native, kind=kind)
                 if actual != hostname or (
                     kind == "--static" and f.read(hostname_path).strip() != hostname
                 ):
                     f.mark("hostname")
-                    set_hostname(hostname, runner=self.native, kind=kind)
+                    set_hostname(hostname, native=self.native, kind=kind)
                     self.actions += 1
-                    if get_hostname(runner=self.native, kind=kind) != hostname:
+                    if get_hostname(native=self.native, kind=kind) != hostname:
                         raise Conflict("hostname did not converge")
             if not f.metadata_matches(hostname_path):
                 f.mark("hostname")
                 self.updates += int(f.repair_metadata(hostname_path))
             f.clear("hostname")
         for name, text in d["files"].items():
-            target = f.dropin(name, text)
+            target = f.dropin(name, text, file_name=DROPIN_FILE)
             if name == "logind":
                 self.power(target, text)
                 continue
@@ -331,7 +383,7 @@ class System(BaseAdapter[SystemManifest]):
             pending = f.pending(name)
             if name == "timesyncd":
                 self.service("systemd-timesyncd.service", name, restart=pending)
-                synchronized = is_ntp_synchronized(runner=self.native)
+                synchronized = is_ntp_synchronized(native=self.native)
                 print(
                     "Time synchronization: synchronized."
                     if synchronized
@@ -370,7 +422,7 @@ class System(BaseAdapter[SystemManifest]):
                 print("Console configuration is prepared for the next boot.")
             f.clear("console")
         if d["trim"] is not None:
-            path, text = f.timer_dropin(d["trimDropin"])
+            path, text = self.trim_dropin(d["trimDropin"])
             self.write(path, text, "trim")
             pending = f.pending("trim")
             if pending:
@@ -399,7 +451,7 @@ class System(BaseAdapter[SystemManifest]):
             changes.append(
                 self.plan_file(
                     locale_gen_path,
-                    locale_gen(f.read(locale_gen_path), value["generated"]),
+                    self.generated_locales(locale_gen_path, value["generated"]),
                 )
             )
             available = {
@@ -417,7 +469,7 @@ class System(BaseAdapter[SystemManifest]):
             changes.append(
                 self.plan_file(
                     locale_conf_path,
-                    replace_keys(f.read(locale_conf_path), {"LANG": value["lang"]}),
+                    self.locale_conf(locale_conf_path, value["lang"]),
                 )
             )
         if (zone := d["timeZone"]) is not None:
@@ -428,8 +480,8 @@ class System(BaseAdapter[SystemManifest]):
                 changes.append(Change("=", f"time zone {current}"))
         if (hostname := d["hostname"]) is not None:
             hostname_path = self.path_str("hostnameFile", "/etc/hostname")
-            current = get_hostname(runner=self.native, kind="--static")
-            transient = get_hostname(runner=self.native, kind="--transient")
+            current = get_hostname(native=self.native, kind="--static")
+            transient = get_hostname(native=self.native, kind="--transient")
             if (
                 hostname != current
                 or hostname != transient
@@ -439,7 +491,7 @@ class System(BaseAdapter[SystemManifest]):
             else:
                 changes.append(Change("=", f"hostname {current}"))
         for name, text in d["files"].items():
-            target = f.dropin(name, text)
+            target = f.dropin(name, text, file_name=DROPIN_FILE)
             change = self.plan_file(target, text)
             changes.append(change)
             if name == "logind" and change.kind != "=":
@@ -454,7 +506,7 @@ class System(BaseAdapter[SystemManifest]):
             vconsole_path = self.path_str("vconsole", "/etc/vconsole.conf")
             changes.append(self.plan_file(vconsole_path, self.console(console)))
         if d["trim"] is not None:
-            path, text = f.timer_dropin(d["trimDropin"])
+            path, text = self.trim_dropin(d["trimDropin"])
             changes.append(self.plan_file(path, text))
             changes += self.plan_unit("fstrim.timer")
         if d["firewall"] is not None:
