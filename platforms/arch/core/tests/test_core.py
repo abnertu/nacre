@@ -107,57 +107,78 @@ class Fake(FakeNative):
         if self.fail and args[: len(self.fail)] == self.fail:
             raise Conflict("injected native failure")
         cmd, *rest = args
-        out, code = "", 0
-        if cmd == "id":
-            out = " ".join(sorted(self.groups))
-        elif cmd == "gpasswd":
-            self.groups.add(rest[-1])
-        elif cmd == "systemctl":
-            rest = [value for value in rest if value not in ("--quiet", "--now")]
-            verb, *units = rest
-            unit = self.unit(units[0]) if units else {}
-            if verb == "show":
-                out = "LoadState=loaded\nActiveState={}\nUnitFileState={}\n".format(
-                    "active" if unit["active"] else "inactive",
-                    "enabled" if unit["enabled"] else "disabled",
-                )
-            elif verb == "is-enabled":
-                code = 0 if unit["enabled"] else 1
-            elif verb == "is-active":
-                code = 0 if unit["active"] else 3
-            elif verb == "enable":
-                unit["enabled"] = True
-            elif verb == "disable":
-                unit.update(enabled=False, active=False)
-            elif verb in ("start", "restart"):
-                unit["active"] = units[0] not in self.stay_inactive
-            elif verb != "daemon-reload":
-                raise AssertionError(args)
-        elif cmd == "sysctl":
-            if rest[0] == "-n":
-                out = self.sysctl.get(rest[1], "0")
-            else:
-                key, value = rest[1].split("=", 1)
-                self.sysctl[key] = value
-        elif cmd == "modprobe":
-            (self.root / "sys/module" / rest[0]).mkdir(parents=True)
-        elif cmd == "mkinitcpio":
-            (self.root / "boot/initramfs-linux.img").write_text("image")
-        elif cmd == "getcap":
-            out = f"{rest[0]} cap_sys_admin=p" if rest[0] in self.capabilities else ""
-        elif cmd == "setcap":
-            self.capabilities.add(rest[-1])
-        elif cmd == "pacman-conf":
-            pacman = (self.root / "etc/pacman.conf").read_text()
-            loaded = (
-                "--config" in rest or self.unmanaged_repository or INCLUDE in pacman
-            )
-            out, code = ("https://repo.example", 0) if loaded else ("", 1)
-        else:
+        handler = {
+            "id": lambda _: (0, " ".join(sorted(self.groups))),
+            "gpasswd": self.gpasswd,
+            "systemctl": self.systemctl,
+            "sysctl": self.sysctl_command,
+            "modprobe": self.modprobe,
+            "mkinitcpio": self.mkinitcpio,
+            "getcap": self.getcap,
+            "setcap": self.setcap,
+            "pacman-conf": self.pacman_conf,
+        }.get(cmd)
+        if handler is None:
             raise AssertionError(args)
+        code, out = handler(rest)
         if code and check:
             raise Conflict(f"fake native failed: {args}")
         return FakeProcess(stdout=out, returncode=code)
+
+    def gpasswd(self, rest):
+        self.groups.add(rest[-1])
+        return 0, ""
+
+    def systemctl(self, rest):
+        verb, *units = [value for value in rest if value not in ("--quiet", "--now")]
+        unit = self.unit(units[0]) if units else {}
+        if verb == "show":
+            active = "active" if unit["active"] else "inactive"
+            enabled = "enabled" if unit["enabled"] else "disabled"
+            return (
+                0,
+                f"LoadState=loaded\nActiveState={active}\nUnitFileState={enabled}\n",
+            )
+        if verb == "is-enabled":
+            return (0 if unit["enabled"] else 1), ""
+        if verb == "is-active":
+            return (0 if unit["active"] else 3), ""
+        if verb == "enable":
+            unit["enabled"] = True
+        elif verb == "disable":
+            unit.update(enabled=False, active=False)
+        elif verb in ("start", "restart"):
+            unit["active"] = units[0] not in self.stay_inactive
+        elif verb != "daemon-reload":
+            raise AssertionError(rest)
+        return 0, ""
+
+    def sysctl_command(self, rest):
+        if rest[0] == "-n":
+            return 0, self.sysctl.get(rest[1], "0")
+        key, value = rest[1].split("=", 1)
+        self.sysctl[key] = value
+        return 0, ""
+
+    def modprobe(self, rest):
+        (self.root / "sys/module" / rest[0]).mkdir(parents=True)
+        return 0, ""
+
+    def mkinitcpio(self, _):
+        (self.root / "boot/initramfs-linux.img").write_text("image")
+        return 0, ""
+
+    def getcap(self, rest):
+        return 0, f"{rest[0]} cap_sys_admin=p" if rest[0] in self.capabilities else ""
+
+    def setcap(self, rest):
+        self.capabilities.add(rest[-1])
+        return 0, ""
+
+    def pacman_conf(self, rest):
+        pacman = (self.root / "etc/pacman.conf").read_text()
+        loaded = "--config" in rest or self.unmanaged_repository or INCLUDE in pacman
+        return (0, "https://repo.example") if loaded else (1, "")
 
 
 class CoreTests(unittest.TestCase):

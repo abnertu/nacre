@@ -44,5 +44,3 @@ max-complexity = 10
 "modules/ai/tests/test_router.py" = ["C901"]
 "platforms/arch/ai/dmem_guard.py" = ["C901"]
 "platforms/arch/ai/runtime.py" = ["C901", "PLR0912", "PLR0915"]
-"platforms/arch/core/tests/test_core.py" = ["C901", "PLR0912"]
-"platforms/arch/system/tests/test_system.py" = ["C901", "PLR0912", "PLR0915"]

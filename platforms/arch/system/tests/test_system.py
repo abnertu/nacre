@@ -92,114 +92,131 @@ class Fake(FakeNative):
         self.calls.append(args)
         if self.fail and args[: len(self.fail)] == self.fail:
             raise Conflict("injected native failure")
-        code, out = 0, ""
         cmd, *rest = args
-        if cmd == "systemctl":
-            verb = rest[0]
-            if verb == "show":
-                out = "\n".join(f"{k}={v}" for k, v in self.unit(rest[1]).items())
-            elif verb in ("enable", "start", "restart"):
-                self.unit(rest[1])[
-                    "UnitFileState" if verb == "enable" else "ActiveState"
-                ] = "enabled" if verb == "enable" else "active"
-            elif verb not in ("list-timers", "daemon-reload", "try-restart"):
-                raise AssertionError(args)
-        elif cmd == "timedatectl":
-            if rest[0] == "set-timezone":
-                # timedated changes nothing when the zone already matches; a
-                # missing /etc/localtime already reads as UTC.
-                if rest[1] == self.zone:
-                    return FakeProcess(stdout=out, returncode=code)
+        handler = {
+            "systemctl": self.systemctl,
+            "timedatectl": self.timedatectl,
+            "hostnamectl": self.hostnamectl,
+            "locale": lambda _: (0, "\n".join(self.locales)),
+            "locale-gen": self.locale_gen,
+            "systemd-tmpfiles": lambda _: (0, ""),
+            "journalctl": lambda _: (0, ""),
+            "nmcli": lambda rest: (0, self.nmcli(rest)),
+            "iw": self.iw,
+            "ip": self.ip,
+            "lsblk": lambda _: (0, json.dumps({"blockdevices": self.disks})),
+            "ufw": self.ufw,
+            "iptables": lambda rest: self.iptables(rest, v6=False),
+            "ip6tables": lambda rest: self.iptables(rest, v6=True),
+        }.get(cmd)
+        if handler is None:
+            raise AssertionError(args)
+        code, out = handler(rest)
+        if code and check:
+            raise Conflict("fake native failed")
+        return FakeProcess(stdout=out, returncode=code)
+
+    def systemctl(self, rest):
+        verb = rest[0]
+        if verb == "show":
+            return 0, "\n".join(f"{k}={v}" for k, v in self.unit(rest[1]).items())
+        if verb == "enable":
+            self.unit(rest[1])["UnitFileState"] = "enabled"
+        elif verb in ("start", "restart"):
+            self.unit(rest[1])["ActiveState"] = "active"
+        elif verb not in ("list-timers", "daemon-reload", "try-restart"):
+            raise AssertionError(rest)
+        return 0, ""
+
+    def timedatectl(self, rest):
+        if rest[0] == "set-timezone":
+            # timedated changes nothing when the zone already matches; a
+            # missing /etc/localtime already reads as UTC.
+            if rest[1] != self.zone:
                 self.zone = rest[1]
                 path = self.files.path("/etc/localtime", symlink_leaf=True)
                 path.unlink(missing_ok=True)
                 path.symlink_to("/usr/share/zoneinfo/" + self.zone)
-            elif "--value" in rest:
-                out = "no\n"
-            else:
-                out = f"Timezone={self.zone}\nLocalRTC={self.local_rtc}\n"
-        elif cmd == "hostnamectl":
-            if len(rest) == 1:
-                out = self.host[rest[0]]
-            else:
-                self.host[rest[0]] = rest[-1]
-                if rest[0] == "--static":
-                    self.files.write("/etc/hostname", rest[-1] + "\n")
-        elif cmd == "locale":
-            out = "\n".join(self.locales)
-        elif cmd == "locale-gen":
-            self.locales = ["en_US.utf8", "zh_TW.utf8", "C"]
-        elif cmd in ("systemd-tmpfiles", "journalctl"):
-            pass
-        elif cmd == "nmcli":
-            out = self.nmcli(rest)
-        elif cmd == "iw":
-            if self.radio:
-                out = f"\tssid {self.radio[0]}\n\tchannel {self.radio[1]} (2412 MHz)\n"
-        elif cmd == "ip" and rest[:3] == ["-j", "link", "show"]:
-            out = json.dumps([{"ifname": name} for name in self.links])
-        elif cmd == "ip":
-            info = [{"local": self.radio[2], "prefixlen": 24}] if self.radio else []
-            out = json.dumps([{"addr_info": info}])
-        elif cmd == "lsblk":
-            out = json.dumps({"blockdevices": self.disks})
-        elif cmd == "ufw":
-            if rest[:2] == ["status", "verbose"]:
-                if not self.active:
-                    out = "Status: inactive\n"
-                else:
-                    out = f"Status: active\nLogging: on ({self.logging})\nDefault: deny (incoming), allow (outgoing), deny (routed)\nNew profiles: {self.profiles}\n\nTo Action From\n-- ------ ----\n"
-                    for port, protocol, v6 in sorted(self.rules):
-                        suffix = " (v6)" if v6 else ""
-                        out += f"{port}/{protocol}{suffix}    ALLOW IN    Anywhere{suffix}\n"
-            elif rest[:2] == ["show", "added"]:
-                out = "Added user rules (see 'ufw status' for running firewall):\n"
-                out += "".join("ufw " + " ".join(rule) + "\n" for rule in self.added)
-            elif "on" in rest:
-                self.added.append(list(rest))
-                self.hotspot_kernel.add(self.hotspot_rules[tuple(rest)])
-            elif rest[0] == "allow":
-                port, protocol = rest[-1].split("/")
-                for v6 in (False, True):
-                    self.rules.add((port, protocol, v6))
-                self.kernel = set(self.rules)
-            elif rest[0] == "logging":
-                self.logging = rest[1]
-            elif rest[0] == "app":
-                self.profiles = rest[-1]
-            elif rest[0] in ("--force", "reload"):
-                self.active = True
-                self.policy_ok = True
-                self.kernel = set(self.rules)
-                self.hotspot_kernel = {self.hotspot_rules[tuple(r)] for r in self.added}
-            else:
-                raise AssertionError(args)
-        elif cmd in ("iptables", "ip6tables") and "-i" in rest:
-            code = 0 if tuple(rest[3:]) in self.hotspot_kernel else 1
-        elif cmd in ("iptables", "ip6tables"):
-            if "-S" in rest:
-                chain = rest[-1]
-                policy = "ACCEPT" if chain == "OUTPUT" or not self.policy_ok else "DROP"
-                out = f"-P {chain} {policy}\n"
-            else:
-                code = (
-                    0
-                    if (
-                        rest[
-                            rest.index("--dports" if "--dports" in rest else "--dport")
-                            + 1
-                        ],
-                        rest[rest.index("-p") + 1],
-                        cmd == "ip6tables",
-                    )
-                    in self.kernel
-                    else 1
-                )
+            return 0, ""
+        if "--value" in rest:
+            return 0, "no\n"
+        return 0, f"Timezone={self.zone}\nLocalRTC={self.local_rtc}\n"
+
+    def hostnamectl(self, rest):
+        if len(rest) == 1:
+            return 0, self.host[rest[0]]
+        self.host[rest[0]] = rest[-1]
+        if rest[0] == "--static":
+            self.files.write("/etc/hostname", rest[-1] + "\n")
+        return 0, ""
+
+    def locale_gen(self, _):
+        self.locales = ["en_US.utf8", "zh_TW.utf8", "C"]
+        return 0, ""
+
+    def iw(self, _):
+        if not self.radio:
+            return 0, ""
+        return 0, f"\tssid {self.radio[0]}\n\tchannel {self.radio[1]} (2412 MHz)\n"
+
+    def ip(self, rest):
+        if rest[:3] == ["-j", "link", "show"]:
+            return 0, json.dumps([{"ifname": name} for name in self.links])
+        info = [{"local": self.radio[2], "prefixlen": 24}] if self.radio else []
+        return 0, json.dumps([{"addr_info": info}])
+
+    def ufw(self, rest):
+        if rest[:2] == ["status", "verbose"]:
+            return 0, self.ufw_status()
+        if rest[:2] == ["show", "added"]:
+            out = "Added user rules (see 'ufw status' for running firewall):\n"
+            return 0, out + "".join(
+                "ufw " + " ".join(rule) + "\n" for rule in self.added
+            )
+        if "on" in rest:
+            self.added.append(list(rest))
+            self.hotspot_kernel.add(self.hotspot_rules[tuple(rest)])
+        elif rest[0] == "allow":
+            port, protocol = rest[-1].split("/")
+            for v6 in (False, True):
+                self.rules.add((port, protocol, v6))
+            self.kernel = set(self.rules)
+        elif rest[0] == "logging":
+            self.logging = rest[1]
+        elif rest[0] == "app":
+            self.profiles = rest[-1]
+        elif rest[0] in ("--force", "reload"):
+            self.active = True
+            self.policy_ok = True
+            self.kernel = set(self.rules)
+            self.hotspot_kernel = {self.hotspot_rules[tuple(r)] for r in self.added}
         else:
-            raise AssertionError(args)
-        if code and check:
-            raise Conflict("fake native failed")
-        return FakeProcess(stdout=out, returncode=code)
+            raise AssertionError(rest)
+        return 0, ""
+
+    def ufw_status(self):
+        if not self.active:
+            return "Status: inactive\n"
+        out = (
+            f"Status: active\nLogging: on ({self.logging})\n"
+            "Default: deny (incoming), allow (outgoing), deny (routed)\n"
+            f"New profiles: {self.profiles}\n\nTo Action From\n-- ------ ----\n"
+        )
+        for port, protocol, v6 in sorted(self.rules):
+            suffix = " (v6)" if v6 else ""
+            out += f"{port}/{protocol}{suffix}    ALLOW IN    Anywhere{suffix}\n"
+        return out
+
+    def iptables(self, rest, *, v6):
+        if "-i" in rest:
+            return (0 if tuple(rest[3:]) in self.hotspot_kernel else 1), ""
+        if "-S" in rest:
+            chain = rest[-1]
+            policy = "ACCEPT" if chain == "OUTPUT" or not self.policy_ok else "DROP"
+            return 0, f"-P {chain} {policy}\n"
+        port = rest[rest.index("--dports" if "--dports" in rest else "--dport") + 1]
+        protocol = rest[rest.index("-p") + 1]
+        return (0 if (port, protocol, v6) in self.kernel else 1), ""
 
     def nmcli(self, rest):
         if "UUID,NAME" in rest:
