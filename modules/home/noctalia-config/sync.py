@@ -14,6 +14,7 @@ import sys
 import tempfile
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -437,12 +438,18 @@ class Sync:
     def deploy(
         self, dry_run: bool = False, replace: bool = False, recover: bool = False
     ) -> None:
+        """Build the home, apply the repository preferences, activate and verify.
+
+        The home builds before any mutable override changes. A failed
+        activation restores the journaled settings; `recover` replays an
+        interrupted one.
+        """
         if recover:
             require(not dry_run, "Recovery cannot be combined with dry-run")
             with self.locked():
                 self.recover()
             return
-        wanted, original, replacement = self.plan(replace)
+        wanted, _, _ = self.plan(replace)
         print("Deploy sections: " + ", ".join(sorted(wanted)))
         if dry_run:
             print("Dry run: no Home Manager build, activation or override changes.")
@@ -453,56 +460,12 @@ class Sync:
         ):
             wanted, original, replacement = self.plan(replace)
             artifact = Path(build_directory) / "generation"
-            source = read(self.target)
-            # Build the full home before touching mutable overrides.
-            self.run(
-                [
-                    "/usr/bin/nix",
-                    "build",
-                    "--out-link",
-                    str(artifact),
-                    "--no-update-lock-file",
-                    *self.overrides,
-                    str(self.repo)
-                    + '#homeConfigurations."'
-                    + self.home_configuration
-                    + '".activationPackage',
-                ]
-            )
-            require(
-                read(self.settings) == original,
-                "GUI settings changed during build; retry",
-            )
-            require(
-                read(self.target) == source,
-                "Repository preferences changed during build; retry",
-            )
+            self.build_home(artifact, original)
             changed = original != replacement
             if changed:
-                self.stopped()
-                self.settings.parent.mkdir(parents=True, exist_ok=True)
-                fd, backup = tempfile.mkstemp(
-                    prefix="settings-", suffix=".toml", dir=self.control
-                )
-                os.close(fd)
-                atomic_write(Path(backup), original)
-                mode = stat.S_IMODE(self.settings.stat().st_mode)
-                journal = {
-                    "settings": str(self.settings),
-                    "backup": Path(backup).name,
-                    "before": hashlib.sha256(original).hexdigest(),
-                    "after": hashlib.sha256(replacement).hexdigest(),
-                    "mode": mode,
-                }
-                atomic_write(self.pending, json.dumps(journal).encode())
-                atomic_write(self.settings, replacement, mode)
+                self.replace_settings(original, replacement)
             try:
-                self.run([str(artifact / "activate"), "--driver-version", "0"])
-                effective = self.export()
-                require(
-                    all(effective.get(key) == value for key, value in wanted.items()),
-                    "Effective preferences differ from repository after activation",
-                )
+                self.activate(artifact, wanted)
             except CommandTimeout:
                 raise
             except Exception:
@@ -515,8 +478,69 @@ class Sync:
                 "Home Manager deployment and effective preference verification completed."
             )
 
+    def build_home(self, artifact: Path, original: bytes) -> None:
+        """Build the home generation into `artifact`.
 
-def main() -> int:
+        Raise `RuntimeError` if the GUI settings or the repository snapshot
+        changed while it built.
+        """
+        source = read(self.target)
+        home = f'{self.repo}#homeConfigurations."{self.home_configuration}".activationPackage'
+        self.run(
+            [
+                "/usr/bin/nix",
+                "build",
+                "--out-link",
+                str(artifact),
+                "--no-update-lock-file",
+                *self.overrides,
+                home,
+            ]
+        )
+        require(
+            read(self.settings) == original, "GUI settings changed during build; retry"
+        )
+        require(
+            read(self.target) == source,
+            "Repository preferences changed during build; retry",
+        )
+
+    def replace_settings(self, original: bytes, replacement: bytes) -> None:
+        """Back up and journal the live settings, then write the replacement."""
+        self.stopped()
+        self.settings.parent.mkdir(parents=True, exist_ok=True)
+        fd, backup = tempfile.mkstemp(
+            prefix="settings-", suffix=".toml", dir=self.control
+        )
+        os.close(fd)
+        atomic_write(Path(backup), original)
+        mode = stat.S_IMODE(self.settings.stat().st_mode)
+        journal = {
+            "settings": str(self.settings),
+            "backup": Path(backup).name,
+            "before": hashlib.sha256(original).hexdigest(),
+            "after": hashlib.sha256(replacement).hexdigest(),
+            "mode": mode,
+        }
+        atomic_write(self.pending, json.dumps(journal).encode())
+        atomic_write(self.settings, replacement, mode)
+
+    def activate(self, artifact: Path, wanted: Settings) -> None:
+        """Activate the built home and require the wanted effective preferences."""
+        self.run([str(artifact / "activate"), "--driver-version", "0"])
+        effective = self.export()
+        require(
+            all(effective.get(key) == value for key, value in wanted.items()),
+            "Effective preferences differ from repository after activation",
+        )
+
+
+UNCAPTURED = 3
+"""`capture --check` status when live preferences differ from the snapshot."""
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """The noctalia-config command line."""
     parser = argparse.ArgumentParser(prog="noctalia-config", description=__doc__)
     parser.add_argument("operation", choices=("capture", "deploy"))
     parser.add_argument("--user", required=True, help=argparse.SUPPRESS)
@@ -538,29 +562,58 @@ def main() -> int:
         metavar=("INPUT", "REF"),
         help="deploy only: pass a flake input override to the home build",
     )
-    args = parser.parse_args()
-    home = Path.home()
-    config_root = Path(
-        os.environ.get("NOCTALIA_CONFIG_HOME")
-        or os.environ.get("XDG_CONFIG_HOME")
-        or home / ".config"
-    )
-    state_root = Path(
-        os.environ.get("NOCTALIA_STATE_HOME")
-        or os.environ.get("XDG_STATE_HOME")
-        or home / ".local/state"
-    )
-    control = (
-        Path(os.environ.get("XDG_STATE_HOME") or home / ".local/state")
-        / "nix-config/noctalia-config"
-    )
+    return parser
+
+
+@dataclass(frozen=True)
+class Roots:
+    """Where Noctalia keeps its configuration and state, and where this tool keeps its own."""
+
+    config: Path
+    state: Path
+    control: Path
+
+    @classmethod
+    def from_environment(cls) -> "Roots":
+        """The roots that NOCTALIA_*_HOME and XDG_*_HOME select."""
+        home = Path.home()
+        xdg_state = Path(os.environ.get("XDG_STATE_HOME") or home / ".local/state")
+        return cls(
+            config=Path(
+                os.environ.get("NOCTALIA_CONFIG_HOME")
+                or os.environ.get("XDG_CONFIG_HOME")
+                or home / ".config"
+            ),
+            state=Path(os.environ.get("NOCTALIA_STATE_HOME") or xdg_state),
+            control=xdg_state / "nix-config/noctalia-config",
+        )
+
+    def standard(self) -> bool:
+        """Whether these are the default roots that Home Manager owns."""
+        home = Path.home()
+        return (
+            not os.environ.get("NOCTALIA_CONFIG_HOME")
+            and not os.environ.get("NOCTALIA_STATE_HOME")
+            and self.config == home / ".config"
+            and self.state == home / ".local/state"
+        )
+
+
+def main() -> int:
+    """Run capture or deploy; return 0, 1 on failure, or 3 for a failed --check.
+
+    Failures other than this tool's own messages print no details, because
+    they could include configuration values.
+    """
+    args = build_parser().parse_args()
+    roots = Roots.from_environment()
     sync = Sync(
         args.repo.absolute(),
         args.user,
         args.home_configuration,
-        config_root / "noctalia",
-        state_root / "noctalia",
-        control,
+        roots.config / "noctalia",
+        roots.state / "noctalia",
+        roots.control,
         overrides=[
             word
             for name, ref in args.override_input
@@ -568,27 +621,7 @@ def main() -> int:
         ],
     )
     try:
-        require(
-            args.operation == "deploy" or not (args.replace_overrides or args.recover),
-            "Override replacement/recovery are deploy-only operations",
-        )
-        require(
-            args.operation == "capture" or not args.check,
-            "--check is a capture-only option",
-        )
-        if args.operation == "capture" and args.check:
-            return 0 if sync.check() else 3
-        if args.operation == "capture":
-            sync.capture(args.dry_run)
-        else:
-            require(
-                not os.environ.get("NOCTALIA_CONFIG_HOME")
-                and not os.environ.get("NOCTALIA_STATE_HOME")
-                and config_root == home / ".config"
-                and state_root == home / ".local/state",
-                "Custom Noctalia roots are capture-only until Home Manager ownership is configured",
-            )
-            sync.deploy(args.dry_run, args.replace_overrides, args.recover)
+        return run(args, sync, roots)
     except RuntimeError as error:
         print(str(error), file=sys.stderr)
         return 1
@@ -598,6 +631,28 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+
+
+def run(args: argparse.Namespace, sync: Sync, roots: Roots) -> int:
+    """Check the option combination, then run the operation."""
+    require(
+        args.operation == "deploy" or not (args.replace_overrides or args.recover),
+        "Override replacement/recovery are deploy-only operations",
+    )
+    require(
+        args.operation == "capture" or not args.check,
+        "--check is a capture-only option",
+    )
+    if args.operation == "capture":
+        if args.check:
+            return 0 if sync.check() else UNCAPTURED
+        sync.capture(args.dry_run)
+        return 0
+    require(
+        roots.standard(),
+        "Custom Noctalia roots are capture-only until Home Manager ownership is configured",
+    )
+    sync.deploy(args.dry_run, args.replace_overrides, args.recover)
     return 0
 
 

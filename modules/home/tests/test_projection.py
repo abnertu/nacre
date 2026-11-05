@@ -1,4 +1,6 @@
 # pyright: standard
+"""Exercise home-source projection and UWSM login gates with temporary paths."""
+
 import json
 import shlex
 import shutil
