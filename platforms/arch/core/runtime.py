@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from nix_adapter import AdapterContext, BaseAdapter, Change, Conflict, Files, Native
-from schema import Block, CoreManifest
+from schema import Block, CoreManifest, Repository
 
 STATE = "/var/lib/nix-config/arch"
 
@@ -252,20 +252,29 @@ class Core(BaseAdapter[CoreManifest]):
     def plan(self) -> list[Change]:
         """What converge and finish would change; nothing is changed."""
         self.preflight()
+        return self.plan_files() + self.plan_runtime()
+
+    def plan_files(self) -> list[Change]:
+        """The managed file, managed block and repository changes."""
         d = self.desired
         changes = [self.plan_file(entry["path"], entry["text"]) for entry in d["files"]]
         changes += [
             self.plan_file(block["path"], self.with_block(block))
             for block in d["blocks"]
         ]
-        repository = d["repository"]
-        if repository:
+        if repository := d["repository"]:
             changes.append(self.plan_file(repository["path"], repository["text"]))
             if (
                 repository["include"]
                 not in self.files.read("/etc/pacman.conf").splitlines()
             ):
                 changes.append(Change("~", "/etc/pacman.conf (add repository Include)"))
+        return changes
+
+    def plan_runtime(self) -> list[Change]:
+        """The initramfs, group, unit, kernel and capability changes."""
+        d = self.desired
+        changes: list[Change] = []
         images = d["initramfsImages"]
         if images and (
             self.pending("initramfs") or not all(map(self.nonempty, images))
@@ -281,17 +290,31 @@ class Core(BaseAdapter[CoreManifest]):
             changes.append(Change("~", "reload systemd units"))
         for unit in d["units"]:
             changes += self.plan_unit(unit)
-        for restart in d["restarts"]:
-            if self.pending(restart["action"]):
-                changes.append(Change("~", f"restart {restart['unit']} (pending)"))
-        for module in d["kernelModules"]:
-            if not (self.root / "sys/module" / module).is_dir():
-                changes.append(Change("~", f"load kernel module {module}"))
+        changes += [
+            Change("~", f"restart {restart['unit']} (pending)")
+            for restart in d["restarts"]
+            if self.pending(restart["action"])
+        ]
+        return changes + self.plan_kernel() + self.plan_capabilities()
+
+    def plan_kernel(self) -> list[Change]:
+        """The kernel modules to load and the sysctl values to set."""
+        d = self.desired
+        changes = [
+            Change("~", f"load kernel module {module}")
+            for module in d["kernelModules"]
+            if not (self.root / "sys/module" / module).is_dir()
+        ]
         for key, value in d["sysctl"].items():
-            current_value = self.run("sysctl", "-n", key).stdout.strip()
-            if current_value != value:
-                changes.append(Change("~", f"sysctl {key}: {current_value} -> {value}"))
-        for entry in d["fileCapabilities"]:
+            current = self.run("sysctl", "-n", key).stdout.strip()
+            if current != value:
+                changes.append(Change("~", f"sysctl {key}: {current} -> {value}"))
+        return changes
+
+    def plan_capabilities(self) -> list[Change]:
+        """The file capabilities to set."""
+        changes: list[Change] = []
+        for entry in self.desired["fileCapabilities"]:
             target = self.resolve(entry["path"])
             if (
                 self.run("getcap", target).stdout.strip()
@@ -301,6 +324,25 @@ class Core(BaseAdapter[CoreManifest]):
         return changes
 
     def purge(self) -> None:
+        """Withdraw the managed Arch state; keep packages, accounts and user data.
+
+        Units stop first, then the repository Include goes before its target,
+        then owned files and blocks, and the deployment state last.
+        """
+        self.purge_units()
+        if repository := self.desired["repository"]:
+            self.purge_repository(repository)
+        for entry in self.desired["files"]:
+            self.remove(entry["path"])
+        for block in self.desired["purge"]["blocks"]:
+            self.purge_block(block)
+        state = self.files.path(STATE)
+        if state.exists():
+            shutil.rmtree(state)
+        print("Arch deployment state purged; package and user data were preserved.")
+
+    def purge_units(self) -> None:
+        """Disable the managed units and remove the unit files that Nacre owns."""
         d = self.desired
         for unit in d["units"]:
             if self.systemctl_ok("is-enabled", "--quiet", unit):
@@ -313,28 +355,23 @@ class Core(BaseAdapter[CoreManifest]):
                 reload |= self.remove(owned["path"])
         if reload:
             self.systemd.daemon_reload()
-        repository = d["repository"]
-        if repository:
-            # Drop the Include before its target: pacman cannot load a missing include.
-            pacman = self.files.read("/etc/pacman.conf")
-            lines = pacman.splitlines(keepends=True)
-            kept = [
-                line for line in lines if line.rstrip("\n") != repository["include"]
-            ]
-            if kept != lines:
-                self.files.write("/etc/pacman.conf", "".join(kept))
-            self.remove(repository["path"])
-        for entry in d["files"]:
-            self.remove(entry["path"])
-        for block in d["purge"]["blocks"]:
-            text = self.without_block(block)
-            if text is not None and text != self.files.read(block["path"]):
-                self.files.write(block["path"], text)
-                if block["action"] == "nix-daemon" and self.systemctl_ok(
-                    "is-active", "--quiet", "nix-daemon.service"
-                ):
-                    self.systemd.restart("nix-daemon.service")
-        state = self.files.path(STATE)
-        if state.exists():
-            shutil.rmtree(state)
-        print("Arch deployment state purged; package and user data were preserved.")
+
+    def purge_repository(self, repository: Repository) -> None:
+        """Drop the repository's Include, then its file."""
+        # Drop the Include before its target: pacman cannot load a missing include.
+        lines = self.files.read("/etc/pacman.conf").splitlines(keepends=True)
+        kept = [line for line in lines if line.rstrip("\n") != repository["include"]]
+        if kept != lines:
+            self.files.write("/etc/pacman.conf", "".join(kept))
+        self.remove(repository["path"])
+
+    def purge_block(self, block: Block) -> None:
+        """Remove a managed block; restart nix-daemon after its block changes."""
+        text = self.without_block(block)
+        if text is None or text == self.files.read(block["path"]):
+            return
+        self.files.write(block["path"], text)
+        if block["action"] == "nix-daemon" and self.systemctl_ok(
+            "is-active", "--quiet", "nix-daemon.service"
+        ):
+            self.systemd.restart("nix-daemon.service")

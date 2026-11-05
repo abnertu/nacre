@@ -129,27 +129,35 @@ def canonical_rule(
     result: dict[str, Any] = {"routed": routed, "from": "0.0.0.0/0", "to": "0.0.0.0/0"}
     try:
         while w:
-            key = w.pop(0)
-            if key in ("in", "out"):
-                if w.pop(0) != "on":
-                    return None
-                result[key] = w.pop(0)
-            elif key in ("from", "to"):
-                value = w.pop(0)
-                result[key] = str(
-                    ipaddress.ip_network(
-                        "0.0.0.0/0" if value == "any" else value, strict=False
-                    )
-                )
-            elif key in ("port", "proto"):
-                result[key] = w.pop(0)
-            elif key == "comment":
-                w.pop(0)
-            else:
+            if not read_rule_field(w, result):
                 return None
     except (IndexError, ValueError):
         return None
     return tuple(sorted(result.items()))
+
+
+def read_rule_field(words: list[str], result: dict[str, Any]) -> bool:
+    """Consume one field of a UFW rule into `result`; False if it is unowned.
+
+    Raise `IndexError` when a field lacks its value and `ValueError` on an
+    invalid address.
+    """
+    key = words.pop(0)
+    if key in ("in", "out"):
+        if words.pop(0) != "on":
+            return False
+        result[key] = words.pop(0)
+    elif key in ("from", "to"):
+        value = words.pop(0)
+        network = "0.0.0.0/0" if value == "any" else value
+        result[key] = str(ipaddress.ip_network(network, strict=False))
+    elif key in ("port", "proto"):
+        result[key] = words.pop(0)
+    elif key == "comment":
+        words.pop(0)
+    else:
+        return False
+    return True
 
 
 def hotspot_firewall_rules(
@@ -314,7 +322,31 @@ class Firewall:
             not self.kernel_rule(rule, v6) for rule in rules for v6 in (False, True)
         )
 
+    def existing_rules(self) -> set[tuple[tuple[str, Any], ...] | None]:
+        """The canonical form of every rule that UFW added."""
+        existing: set[tuple[tuple[str, Any], ...] | None] = set()
+        for line in self.run("ufw", "show", "added").stdout.splitlines():
+            with contextlib.suppress(ValueError):
+                existing.add(canonical_rule(shlex.split(line)))
+        return existing
+
+    def plan_hotspot_rules(self) -> list[Change]:
+        """The hotspot forwarding rules that UFW does not have yet."""
+        hotspot = self.system.desired.get("hotspot")
+        if hotspot is None:
+            return []
+        existing = self.existing_rules()
+        rules = hotspot_firewall_rules(
+            hotspot["interface"], hotspot["uplink"], hotspot["address"]
+        )
+        return [
+            Change("+", "ufw " + " ".join(command))
+            for command, _ in rules
+            if canonical_rule(command) not in existing
+        ]
+
     def plan(self) -> list[Change]:
+        """The rule, logging, profile, activation and kernel-rule changes."""
         rules = self.desired["rules"]
         logging = self.desired["logging"]
         state = self.snapshot()
@@ -332,17 +364,7 @@ class Firewall:
             changes.append(Change("~", "enable ufw"))
         elif self.files.pending("firewall") or self.kernel_drift(rules):
             changes.append(Change("~", "reload ufw to restore kernel rules"))
-        hotspot = self.system.desired.get("hotspot")
-        if hotspot is not None:
-            existing: set[tuple[tuple[str, Any], ...] | None] = set()
-            for line in self.run("ufw", "show", "added").stdout.splitlines():
-                with contextlib.suppress(ValueError):
-                    existing.add(canonical_rule(shlex.split(line)))
-            for command, _ in hotspot_firewall_rules(
-                hotspot["interface"], hotspot["uplink"], hotspot["address"]
-            ):
-                if canonical_rule(command) not in existing:
-                    changes.append(Change("+", "ufw " + " ".join(command)))
+        changes += self.plan_hotspot_rules()
         changes += self.system.plan_unit("ufw.service")
         return changes
 
@@ -400,15 +422,11 @@ class Firewall:
             raise Conflict("UFW policy or kernel rules did not converge")
 
     def converge_hotspot_rules(self, hotspot: Hotspot) -> None:
+        """Add the hotspot forwarding rules that UFW does not have yet."""
         rules = hotspot_firewall_rules(
             hotspot["interface"], hotspot["uplink"], hotspot["address"]
         )
-        existing: set[tuple[tuple[str, Any], ...] | None] = set()
-        for line in self.run("ufw", "show", "added").stdout.splitlines():
-            try:
-                existing.add(canonical_rule(shlex.split(line)))
-            except ValueError:
-                continue
+        existing = self.existing_rules()
         for command, _ in rules:
             if canonical_rule(command) not in existing:
                 self.act(*command)
