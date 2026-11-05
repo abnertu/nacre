@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+PACKAGE_SOURCE = Path(sys.argv.pop())
 NACRE = sys.argv.pop()
 
 
@@ -56,6 +57,23 @@ class NacreTests(unittest.TestCase):
 
     def recorded(self):
         return self.calls.read_text().splitlines() if self.calls.exists() else []
+
+    def test_entrypoint_never_writes_bytecode_beside_its_package(self):
+        package = self.root / "nacre"
+        shutil.copytree(PACKAGE_SOURCE, package)
+        package.chmod(0o755)
+        cli = package / "cli.py"
+        cli.chmod(0o644)
+        cli.write_text(cli.read_text().replace("@version@", "fixture-bytecode-check"))
+        # Nix Python loads .pth files from NIX_PYTHONPATH even with -I. Put a
+        # writable package first, so store permissions cannot hide a write.
+        (self.root / "first.pth").write_text(
+            f"import sys; sys.path.insert(0, {str(self.root)!r})\n"
+        )
+        result = self.run_nacre("--version", NIX_PYTHONPATH=str(self.root))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("nacre fixture-bytecode-check", result.stdout)
+        self.assertEqual(list(package.rglob("*.pyc")), [])
 
     def test_checkout_resolution(self):
         nacre = self.home / ".config/nacre"

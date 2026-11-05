@@ -36,7 +36,7 @@
         ];
       }
       ''
-        python ${../lib/cli/nacre/tests/test_nacre.py} ${nacre}/bin/nacre
+        python ${../lib/cli/nacre/tests/test_nacre.py} ${nacre}/bin/nacre ${../lib/cli/nacre/nacre}
         python ${../lib/cli/nacre/tests}/test_completions.py ${nacre}
         touch "$out"
       '';

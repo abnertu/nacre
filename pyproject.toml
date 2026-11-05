@@ -38,7 +38,6 @@ max-complexity = 10
 "**/adapter.py" = ["E402"]
 
 # Temporary: these functions are split in the readability refactor (S6-S10).
-"lib/cli/nacre/nacre.py" = ["C901", "PLR0911", "PLR0912", "PLR0915"]
 "modules/ai/benchmark.py" = ["C901", "PLR0912", "PLR0915"]
 "modules/ai/prepare.py" = ["C901", "PLR0912"]
 "modules/ai/probe.py" = ["C901", "PLR0912"]
