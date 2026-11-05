@@ -1,3 +1,4 @@
+# Noctalia's file-based key storage configuration.
 {
   config,
   lib,

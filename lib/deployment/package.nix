@@ -1,3 +1,4 @@
+# The deployment wrapper: Arch convergence first, then the embedded home.
 {
   lib,
   pkgs,

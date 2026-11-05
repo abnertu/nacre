@@ -1,3 +1,4 @@
+# Tests of the noctalia-config sync logic.
 { pkgs, adapterPython }:
 pkgs.runCommand "noctalia-config-tests" { } ''
   ${adapterPython}/bin/python ${./tests/test_sync.py} ${./sync.py}

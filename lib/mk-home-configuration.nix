@@ -1,3 +1,5 @@
+# The Home Manager configuration of one login account: profiles, home
+# modules, AI home files and the account's own modules.
 { inputs }:
 {
   system,

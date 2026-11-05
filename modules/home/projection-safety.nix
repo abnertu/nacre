@@ -1,3 +1,5 @@
+# Stop activation before Home Manager projects nvim or hypr into a Git
+# worktree or over a leftover backup path.
 {
   targets ? [
     "nvim"

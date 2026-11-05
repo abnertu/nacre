@@ -1,3 +1,4 @@
+# Home settings of the fixture account.
 { lib, ... }:
 {
   workstation.noctalia.preferencesFile = ./noctalia.toml;

@@ -1,3 +1,4 @@
+# Syntax of the projected home assets: JSON, the overview QML and JavaScript.
 { pkgs }:
 pkgs.runCommand "home-source-assets"
   {

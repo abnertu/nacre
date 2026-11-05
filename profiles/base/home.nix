@@ -1,3 +1,4 @@
+# The base profile: shell, Git and command-line tools for every account.
 {
   config,
   lib,

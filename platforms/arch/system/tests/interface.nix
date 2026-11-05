@@ -1,3 +1,5 @@
+# Interface tests of the system settings: which raw settings evaluate, and
+# the manifest they produce.
 { lib, pkgs }:
 let
   parse = raw: import ../../../../lib/system-settings.nix { inherit lib raw; };

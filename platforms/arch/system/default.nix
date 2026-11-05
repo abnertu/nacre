@@ -1,3 +1,5 @@
+# Manifest of the system adapter, built from the native settings of the
+# evaluated configuration.
 {
   lib,
   pkgs,

@@ -1,3 +1,4 @@
+# Evaluate raw native settings against system-settings-options.nix.
 {
   lib,
   raw ? { },

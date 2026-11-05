@@ -1,3 +1,4 @@
+# Neovim configuration projection into ~/.config/nvim.
 {
   config,
   inputs,

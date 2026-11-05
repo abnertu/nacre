@@ -1,3 +1,5 @@
+# Feature capabilities against the fixture: what each feature contributes to
+# the Arch deployment and the home, including AI skills and the AI module.
 {
   lib,
   pkgs,

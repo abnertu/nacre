@@ -1,3 +1,4 @@
+# Reviewed Noctalia preferences and the noctalia-config sync tool.
 {
   config,
   lib,

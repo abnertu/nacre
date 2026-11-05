@@ -1,3 +1,4 @@
+# Typed container, virtual-machine and libvirt feature switches.
 { lib }:
 let
   # An enable option that defaults to true.

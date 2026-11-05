@@ -1,3 +1,4 @@
+# Typed PowerPanel shutdown thresholds and daemon policy.
 { lib }:
 let
   inherit (lib) mkOption types;

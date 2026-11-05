@@ -1,3 +1,5 @@
+# Model inventory: each model's artifacts and checksums, runtime defaults and
+# profile presets, and the llama.cpp build to prepare.
 let
   qwenProfile = enableThinking: temperature: topP: presencePenalty: {
     inherit

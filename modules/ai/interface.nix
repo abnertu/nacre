@@ -1,3 +1,5 @@
+# Evaluate raw AI settings into the typed AI configuration, filling profile
+# presets from the model inventory.
 {
   lib,
   raw ? { },
@@ -40,26 +42,12 @@ let
       ];
     }).config;
   inventory = (import ./artifacts.nix).models;
-  configuredModelNames = builtins.attrNames result.llama.models;
-  selectedModelNames =
-    let
-      enabled = lib.filter (name: result.llama.models.${name}.enable) configuredModelNames;
-    in
-    if configuredModelNames == [ ] then [ result.llama.model.name ] else enabled;
-  effectiveModels = map (
-    name:
-    let
-      configured = result.llama.models.${name} or { };
-      clean = value: lib.filterAttrs (_: item: item != null) value;
-      legacyOverrides = clean (builtins.removeAttrs result.llama.model [ "name" ]);
-      modelOverrides = clean (builtins.removeAttrs configured [ "enable" ]);
-      effective =
-        inventory.${name}.runtime
-        // (if name == result.llama.model.name then legacyOverrides else { })
-        // modelOverrides;
-    in
-    effective
-  ) selectedModelNames;
+  resolvedModels = import ./resolved-models.nix {
+    inherit lib;
+    inherit (result) llama;
+  };
+  selectedModelNames = resolvedModels.selectedNames;
+  effectiveModels = builtins.attrValues resolvedModels.models;
   effectiveDefaultModel = result.llama.model.name;
 in
 assert lib.assertMsg (
@@ -70,10 +58,8 @@ assert lib.assertMsg (
 assert lib.assertMsg
   (
     let
-      names = builtins.attrNames result.llama.models;
-      selected = lib.filter (name: result.llama.models.${name}.enable) names;
-      known = lib.all (name: builtins.hasAttr name (import ./artifacts.nix).models) names;
-      selectedCount = if names == [ ] then 1 else builtins.length selected;
+      known = lib.all (name: builtins.hasAttr name inventory) resolvedModels.configuredNames;
+      selectedCount = builtins.length selectedModelNames;
     in
     known
     && selectedCount > 0
@@ -114,9 +100,7 @@ assert lib.assertMsg (
   lib.all (
     name:
     let
-      model = builtins.elemAt effectiveModels (
-        lib.lists.findFirstIndex (candidate: candidate == name) 0 selectedModelNames
-      );
+      model = resolvedModels.models.${name};
     in
     model.preserveThinking or null != true || inventory.${name}.preserveThinkingSupported
   ) selectedModelNames

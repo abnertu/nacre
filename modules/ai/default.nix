@@ -1,3 +1,5 @@
+# The AI feature: selected llama models and profiles, the artifacts that
+# preparation fetches, and the home files of Codex, Claude and agent skills.
 {
   lib,
   config,
@@ -9,29 +11,12 @@ let
   llama = config.enable && config.llama.enable;
   inventory = import ./artifacts.nix;
   clean = value: lib.filterAttrs (_: item: item != null) value;
-  legacyModel = config.llama.model;
-  legacyName = legacyModel.name;
-  legacyOverrides = clean (builtins.removeAttrs legacyModel [ "name" ]);
-  configuredModels = config.llama.models;
-  explicitlyConfigured = configuredModels != { };
-  selectedNames =
-    let
-      enabled = lib.filterAttrs (_: model: model.enable) configuredModels;
-    in
-    if explicitlyConfigured then builtins.attrNames enabled else [ legacyName ];
-  defaultModelName = legacyName;
-  modelArtifacts = lib.genAttrs selectedNames (
-    name:
-    let
-      declared = inventory.models.${name};
-      configured = configuredModels.${name} or { };
-      legacy = if name == legacyName then legacyOverrides else { };
-      overrides = clean (builtins.removeAttrs configured [ "enable" ]);
-      fallbackDevice = if legacyModel.device == null then { } else { inherit (legacyModel) device; };
-      effective = declared.artifact // declared.runtime // fallbackDevice // legacy // overrides;
-    in
-    effective
-  );
+  resolvedModels = import ./resolved-models.nix {
+    inherit lib;
+    inherit (config) llama;
+  };
+  defaultModelName = config.llama.model.name;
+  modelArtifacts = resolvedModels.models;
   profileInputs = config.llama.profiles // {
     default = {
       model = defaultModelName;

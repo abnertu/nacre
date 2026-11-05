@@ -1,3 +1,4 @@
+# Hyprland configuration projection and its UWSM entry point.
 {
   config,
   inputs,

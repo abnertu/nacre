@@ -1,3 +1,4 @@
+# pyright strict over the production Python, standard over the tests.
 {
   lib,
   pkgs,

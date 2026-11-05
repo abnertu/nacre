@@ -1,3 +1,4 @@
+# The noctalia-config command: capture and deploy reviewed preferences.
 {
   pkgs,
   adapterPython,

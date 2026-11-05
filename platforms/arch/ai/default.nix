@@ -1,3 +1,5 @@
+# Arch realization of the AI module: llama.cpp, llama-swap, Caddy and
+# Tailscale Serve units and the AI adapter's manifest.
 {
   lib,
   pkgs,

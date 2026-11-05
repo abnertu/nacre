@@ -1,3 +1,4 @@
+# Arch contributions of PowerPanel: package, configuration and service.
 { config, lib, ... }:
 let
   enable = config.services.powerpanel.enable;

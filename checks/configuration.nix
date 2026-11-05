@@ -1,3 +1,5 @@
+# Configuration evaluation against the fixture: option types, assertions and
+# the values that the deployment derives from them.
 {
   lib,
   pkgs,

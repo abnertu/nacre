@@ -1,3 +1,4 @@
+# Tests of the Quickshell overview's refresh and query logic.
 { pkgs }:
 pkgs.runCommand "overview-refresh-tests"
   {

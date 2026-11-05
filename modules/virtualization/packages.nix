@@ -1,3 +1,4 @@
+# Arch packages of each virtualization component.
 {
   kvm = [
     "qemu-desktop"

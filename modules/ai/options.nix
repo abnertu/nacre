@@ -1,3 +1,4 @@
+# Typed AI tool, model, profile, preparation and skill-set policy.
 { lib }:
 let
   inventory = import ./artifacts.nix;

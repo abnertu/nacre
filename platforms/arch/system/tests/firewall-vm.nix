@@ -1,3 +1,5 @@
+# Firewall and hotspot integration test in a NixOS VM: the system adapter
+# converges UFW and its hotspot rules against real netfilter.
 {
   pkgs,
   adapterPython ? pkgs.python3,

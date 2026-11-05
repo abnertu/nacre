@@ -1,3 +1,4 @@
+# CyberPower PowerPanel: the pwrstatd.conf that the core adapter installs.
 {
   lib,
   pkgs,

@@ -1,3 +1,5 @@
+# Arch platform checks: adapter manifests and tests, the system-settings
+# interface, the firewall VM test, AI tools and the arch-switch tests.
 {
   pkgs,
   arch-switch,

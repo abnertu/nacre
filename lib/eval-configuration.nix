@@ -1,3 +1,5 @@
+# Evaluate machine modules against the shared options and assertions, and
+# derive the host description that deployment reads.
 {
   lib,
   modules,

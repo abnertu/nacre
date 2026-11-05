@@ -1,3 +1,4 @@
+# The programs.ai options and the AUR packages of the enabled AI tools.
 { config, lib, ... }:
 let
   cfg = config.programs.ai;

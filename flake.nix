@@ -1,3 +1,4 @@
+# Nacre inputs, public machine-flake API, fixture outputs and repository checks.
 {
   description = "Nacre: declarative Arch Linux + Hyprland, layered with Nix";
   inputs = {

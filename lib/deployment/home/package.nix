@@ -1,3 +1,4 @@
+# The home-switch entry point that activates the embedded home.
 { pkgs, activationPackage }:
 pkgs.writeShellApplication {
   name = "home-switch";

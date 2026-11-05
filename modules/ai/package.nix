@@ -1,3 +1,4 @@
+# The llama-prepare package that fetches and verifies prepared AI artifacts.
 {
   lib,
   pkgs,

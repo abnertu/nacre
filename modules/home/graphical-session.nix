@@ -1,3 +1,5 @@
+# systemd user services of the Hyprland session; UWSM starts the session and
+# these units start its applications.
 {
   lib,
   hardware,

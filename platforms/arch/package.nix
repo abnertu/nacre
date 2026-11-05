@@ -1,3 +1,5 @@
+# The arch-switch package: the switch program and the configuration of every
+# Arch adapter, built from the merged `arch` contributions.
 {
   lib,
   pkgs,

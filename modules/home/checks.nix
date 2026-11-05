@@ -1,3 +1,5 @@
+# Home composition checks: projected files, session units and the boundaries
+# of Nacre's home projections.
 {
   pkgs,
   home,

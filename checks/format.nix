@@ -1,3 +1,4 @@
+# Formatting check: nixfmt for Nix, ruff for Python.
 { lib, pkgs }:
 let
   source = lib.fileset.toSource {

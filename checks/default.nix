@@ -1,3 +1,5 @@
+# Repository checks: projected assets, workflows, the nacre CLI, deployment
+# ordering, the arch-switch interface and the Justfile.
 {
   pkgs,
   lib,

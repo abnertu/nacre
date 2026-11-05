@@ -1,3 +1,4 @@
+# The development profile: Neovim, GitHub CLI, Node.js and pass.
 { pkgs, ... }:
 {
   imports = [ ../../modules/home/neovim.nix ];

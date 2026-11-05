@@ -1,3 +1,4 @@
+# Virtualization: KVM, virt-manager and Podman packages and groups.
 { config, lib, ... }:
 let
   cfg = config.virtualization;
