@@ -7,76 +7,109 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
 
-def request(base_url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
-    started = time.monotonic()
+@dataclass
+class Stream:
+    """What a streamed completion delivered, and when, relative to its start."""
+
+    started: float = field(default_factory=time.monotonic)
     first_event: float | None = None
     first_reasoning: float | None = None
     first_content: float | None = None
-    content = reasoning = ""
-    timings: dict[str, Any] = {}
-    usage: dict[str, Any] = {}
+    content: str = ""
+    reasoning: str = ""
+    timings: dict[str, Any] = field(default_factory=dict[str, Any])
+    usage: dict[str, Any] = field(default_factory=dict[str, Any])
+    completed: bool = False
+
+    def elapsed(self) -> float:
+        """Seconds since the request started."""
+        return time.monotonic() - self.started
+
+    def add(self, event: dict[str, Any]) -> None:
+        """Record one server-sent event; raise `RuntimeError` on an error event."""
+        elapsed = self.elapsed()
+        if self.first_event is None:
+            self.first_event = elapsed
+        if "error" in event:
+            raise RuntimeError(str(event["error"]))
+        self.timings.update(event.get("timings", {}))
+        self.usage.update(event.get("usage", {}))
+        for choice in event.get("choices", []):
+            self.add_choice(choice, elapsed)
+
+    def add_choice(self, choice: dict[str, Any], elapsed: float) -> None:
+        """Record the content and reasoning deltas of one choice."""
+        if choice.get("finish_reason") is not None:
+            self.completed = True
+        delta = choice.get("delta", {})
+        text = delta.get("content") or choice.get("text") or ""
+        thought = delta.get("reasoning_content") or delta.get("reasoning") or ""
+        if text and self.first_content is None:
+            self.first_content = elapsed
+        if thought and self.first_reasoning is None:
+            self.first_reasoning = elapsed
+        self.content += text
+        self.reasoning += thought
+
+    def result(self, failure: str | None) -> dict[str, Any]:
+        """The probe row: timings, text, usage, and the failure if any."""
+        return {
+            "elapsed_seconds": self.elapsed(),
+            "first_event_seconds": self.first_event,
+            "first_reasoning_seconds": self.first_reasoning,
+            "first_content_seconds": self.first_content,
+            "content": self.content,
+            "reasoning": self.reasoning,
+            "timings": self.timings,
+            "usage": self.usage,
+        } | ({"error": failure} if failure else {})
+
+
+def request(base_url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
+    """Stream one completion from llama-swap and measure it.
+
+    Failures are recorded in the result, not raised: an HTTP error, a
+    timeout, an error event or a stream without a completion marker.
+    """
+    stream = Stream()
     endpoint = "/v1/chat/completions" if "messages" in payload else "/v1/completions"
     req = urllib.request.Request(
         base_url + endpoint,
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"},
     )
-    completed = False
     failure: str | None = None
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
-            for raw in response:
-                if time.monotonic() - started > timeout:
-                    raise TimeoutError("total request deadline exceeded")
-                if not raw.startswith(b"data: "):
-                    continue
-                data = raw[6:].strip()
-                if data == b"[DONE]":
-                    completed = True
-                    break
-                event = cast("dict[str, Any]", json.loads(data))
-                elapsed = time.monotonic() - started
-                if first_event is None:
-                    first_event = elapsed
-                if "error" in event:
-                    raise RuntimeError(str(event["error"]))
-                timings.update(event.get("timings", {}))
-                usage.update(event.get("usage", {}))
-                for choice in event.get("choices", []):
-                    if choice.get("finish_reason") is not None:
-                        completed = True
-                    delta = choice.get("delta", {})
-                    text = delta.get("content") or choice.get("text") or ""
-                    thought = (
-                        delta.get("reasoning_content") or delta.get("reasoning") or ""
-                    )
-                    if text and first_content is None:
-                        first_content = elapsed
-                    if thought and first_reasoning is None:
-                        first_reasoning = elapsed
-                    content += text
-                    reasoning += thought
-        if not completed:
+            read_events(response, stream, timeout)
+        if not stream.completed:
             failure = "stream ended without a completion marker"
     except urllib.error.HTTPError as error:
         with error:
             failure = f"HTTP {error.code}: {error.read(8192).decode(errors='replace')}"
     except (OSError, ValueError, RuntimeError) as error:
         failure = str(error)
-    return {
-        "elapsed_seconds": time.monotonic() - started,
-        "first_event_seconds": first_event,
-        "first_reasoning_seconds": first_reasoning,
-        "first_content_seconds": first_content,
-        "content": content,
-        "reasoning": reasoning,
-        "timings": timings,
-        "usage": usage,
-    } | ({"error": failure} if failure else {})
+    return stream.result(failure)
+
+
+def read_events(response: Iterable[bytes], stream: Stream, timeout: float) -> None:
+    """Feed the `data:` events of `response` into `stream` until [DONE]."""
+    for raw in response:
+        if stream.elapsed() > timeout:
+            raise TimeoutError("total request deadline exceeded")
+        if not raw.startswith(b"data: "):
+            continue
+        data = raw[6:].strip()
+        if data == b"[DONE]":
+            stream.completed = True
+            return
+        stream.add(cast("dict[str, Any]", json.loads(data)))
 
 
 def main() -> int:

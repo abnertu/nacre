@@ -210,57 +210,21 @@ class Prepare:
             self.model(model, f"model {index} of {len(models)}")
 
     def model(self, model: Model, label: str) -> None:
+        """Download, verify and receipt one model; keep a verified existing file.
+
+        Raise `Failure` on a symlinked path, a file with another checksum, a
+        stale or foreign preparation stage, or a download that does not match.
+        """
         path = Path(model["path"])
         identity = "".join(
             f"{model[key]}\n" for key in ("repository", "revision", "file", "sha256")
         )
         with self.progress.task(f"Check {label}"):
-            if path.is_symlink():
-                raise Failure("model path must not be a symlink")
-            current = sha256(path) if path.is_file() else None
-            if current is not None and current != model["sha256"]:
-                raise Failure(
-                    "existing model checksum differs; preserve or relocate it before preparation"
-                )
+            present = self.verified_existing(path, model)
         downloaded: Path | None = None
-        download = path.parent / f".nix-config-{model['file']}.download"
-        if current is None:
+        if not present:
             with self.progress.task(f"Download {label}"):
-                if path.parent.is_symlink():
-                    raise Failure("model directory must not be a symlink")
-                self.directory(path.parent, 0o755)
-                stage = path.parent / f".nix-config-{model['file']}"
-                if stage.exists() or stage.is_symlink():
-                    raise Failure(
-                        "stale model preparation stage requires operator review"
-                    )
-                marker = download / "nix-config-identity"
-                if download.exists() or download.is_symlink():
-                    if not download.is_dir() or download.is_symlink():
-                        raise Failure("model download stage must be a directory")
-                    if not marker.is_file() or marker.read_text() != identity:
-                        raise Failure(
-                            "model download stage has a different declaration"
-                        )
-                else:
-                    self.directory(download, 0o700)
-                    marker.write_text(identity)
-                    marker.chmod(0o600)
-                self.run(
-                    "hf",
-                    "download",
-                    model["repository"],
-                    model["file"],
-                    "--revision",
-                    model["revision"],
-                    "--local-dir",
-                    str(download),
-                )
-                downloaded = download / model["file"]
-                if not downloaded.is_file() or downloaded.is_symlink():
-                    raise Failure(
-                        "Hugging Face download did not produce the declared file"
-                    )
+                downloaded = self.download(model, path, identity)
             with self.progress.task(f"Verify {label}"):
                 if sha256(downloaded) != model["sha256"]:
                     raise Failure(
@@ -270,26 +234,85 @@ class Prepare:
             if downloaded is not None:
                 downloaded.chmod(0o644)
                 downloaded.replace(path)
-                shutil.rmtree(download)
-            info = path.stat()
-            fingerprint = ":".join(
-                str(value)
-                for value in (
-                    info.st_dev,
-                    info.st_ino,
-                    info.st_size,
-                    int(info.st_mtime),
-                    int(info.st_ctime),
-                )
+                shutil.rmtree(downloaded.parent)
+            self.publish_receipt(path, identity)
+
+    @staticmethod
+    def verified_existing(path: Path, model: Model) -> bool:
+        """Whether `path` already holds the declared model."""
+        if path.is_symlink():
+            raise Failure("model path must not be a symlink")
+        if not path.is_file():
+            return False
+        if sha256(path) != model["sha256"]:
+            raise Failure(
+                "existing model checksum differs; preserve or relocate it before preparation"
             )
-            receipt = Path(f"{path}.nix-config-receipt")
-            stage = Path(f"{receipt}.stage")
-            if receipt.is_symlink() or stage.is_symlink():
-                raise Failure("model receipt path must not be a symlink")
-            stage.write_text(identity + fingerprint + "\n")
-            stage.chmod(0o644)
-            self.own(stage)
-            stage.replace(receipt)
+        return True
+
+    def download(self, model: Model, path: Path, identity: str) -> Path:
+        """Download the model into its stage directory; return the downloaded file.
+
+        A stage left by an interrupted download of the same declaration is
+        resumed; one of another declaration stops the preparation.
+        """
+        if path.parent.is_symlink():
+            raise Failure("model directory must not be a symlink")
+        self.directory(path.parent, 0o755)
+        stage = path.parent / f".nix-config-{model['file']}"
+        if stage.exists() or stage.is_symlink():
+            raise Failure("stale model preparation stage requires operator review")
+        download = path.parent / f".nix-config-{model['file']}.download"
+        self.download_stage(download, identity)
+        self.run(
+            "hf",
+            "download",
+            model["repository"],
+            model["file"],
+            "--revision",
+            model["revision"],
+            "--local-dir",
+            str(download),
+        )
+        downloaded = download / model["file"]
+        if not downloaded.is_file() or downloaded.is_symlink():
+            raise Failure("Hugging Face download did not produce the declared file")
+        return downloaded
+
+    def download_stage(self, download: Path, identity: str) -> None:
+        """Create the download stage marked with `identity`, or check an existing one."""
+        marker = download / "nix-config-identity"
+        if not download.exists() and not download.is_symlink():
+            self.directory(download, 0o700)
+            marker.write_text(identity)
+            marker.chmod(0o600)
+            return
+        if not download.is_dir() or download.is_symlink():
+            raise Failure("model download stage must be a directory")
+        if not marker.is_file() or marker.read_text() != identity:
+            raise Failure("model download stage has a different declaration")
+
+    def publish_receipt(self, path: Path, identity: str) -> None:
+        """Write the receipt that ties `path`'s inode and times to its declaration."""
+        info = path.stat()
+        fingerprint = ":".join(
+            str(value)
+            for value in (
+                info.st_dev,
+                info.st_ino,
+                info.st_size,
+                int(info.st_mtime),
+                int(info.st_ctime),
+            )
+        )
+        receipt = Path(f"{path}.nix-config-receipt")
+        stage = Path(f"{receipt}.stage")
+        if receipt.is_symlink() or stage.is_symlink():
+            raise Failure("model receipt path must not be a symlink")
+        stage.write_text(identity + fingerprint + "\n")
+        stage.chmod(0o644)
+        self.own(stage)
+        stage.replace(receipt)
 
 
 @contextlib.contextmanager

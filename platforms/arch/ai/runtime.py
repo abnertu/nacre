@@ -76,11 +76,31 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
         raise Conflict("existing Caddyfile requires explicit adoption")
 
     def preflight(self, installed: bool = False) -> bool:
+        """Whether the prepared llama.cpp build and models match the declaration.
+
+        Return False while preparation never completed. Raise `Conflict` when
+        prepared assets exist but do not match, or, with `installed`, when a
+        native command or unit that convergence needs is missing.
+        """
         if not self.desired["llama"]:
             return False
-        d, f = self.managed(), self.files
+        d = self.managed()
         if any(not Path(model["path"]).is_absolute() for model in d["models"].values()):
             raise Conflict("model paths must be absolute")
+        if not self.prepared(d, installed):
+            return False
+        self.check_receipts(d)
+        self.check_owned_files(d)
+        if installed:
+            self.check_native(d)
+        return True
+
+    def prepared(self, d: AIManifest, installed: bool) -> bool:
+        """Whether the selector points at a complete prepared revision.
+
+        Raise `Conflict` on a selector or asset set that exists but is wrong.
+        """
+        f = self.files
         install_prefix = d["source"]["installPrefix"]
         current = f.path(install_prefix + "/current", symlink_leaf=True)
         desired_link = (
@@ -99,29 +119,36 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
         executable = f.path(revision_prefix + "/bin/llama-server")
         receipt = f.read(revision_prefix + "/nix-config-build").strip()
         models = [f.path(model["path"]) for model in d["models"].values()]
-        if (
-            not executable.is_file()
-            or any(not model.is_file() for model in models)
-            or not receipt
-        ):
-            if installed:
-                raise Conflict("prepared llama.cpp assets are incomplete")
-            if current.is_symlink():
-                raise Conflict("prepared llama.cpp assets are incomplete")
-            return False
-        expected = (
-            f"{d['source']['revision']} {d['source']['grammarRepetitionThreshold']}"
+        complete = executable.is_file() and all(model.is_file() for model in models)
+        if not complete or not receipt:
+            # The selector exists here, so the assets were prepared once.
+            raise Conflict("prepared llama.cpp assets are incomplete")
+        return True
+
+    def check_receipts(self, d: AIManifest) -> None:
+        """Raise `Conflict` unless the build and model receipts match the declaration."""
+        f = self.files
+        source = d["source"]
+        revision_prefix = (
+            f"{source['installPrefix']}/revisions/"
+            f"{source['revision']}-{source['grammarRepetitionThreshold']}"
         )
-        if receipt != expected:
+        receipt = f.read(revision_prefix + "/nix-config-build").strip()
+        if receipt != f"{source['revision']} {source['grammarRepetitionThreshold']}":
             raise Conflict(
                 "prepared llama-server receipt does not match the declaration"
             )
-        for model, declaration in zip(models, d["models"].values(), strict=True):
+        for declaration in d["models"].values():
+            model = f.path(declaration["path"])
             receipt_path = declaration["path"] + ".nix-config-receipt"
             if not f.metadata_matches(receipt_path) or f.read(
                 receipt_path
             ) != self.model_receipt(model, declaration):
                 raise Conflict("prepared model receipt does not match the declaration")
+
+    def check_owned_files(self, d: AIManifest) -> None:
+        """Read the router and proxy files and their pending markers."""
+        f = self.files
         f.read(self.path_str("switcherConfig", "/etc/llama-swap/config.yaml"))
         f.read(self.path_str("switcherUnit", "/etc/systemd/system/llama-swap.service"))
         f.pending("ai-llama")
@@ -132,18 +159,19 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
             )
             f.pending("ai-caddy")
             f.pending("ai-serve")
-        if installed:
-            required = {"systemctl", "curl"}
-            if d["proxy"]:
-                required |= {"caddy", "stat", "systemd-tmpfiles", "tailscale"}
-            missing = sorted(c for c in required if not self.native.available(c))
-            if missing:
-                raise Conflict(
-                    "required native AI commands are missing: " + " ".join(missing)
-                )
-            if d["proxy"]:
-                self.ready_unit("caddy.service")
-        return True
+
+    def check_native(self, d: AIManifest) -> None:
+        """Raise `Conflict` if a command or unit that convergence uses is missing."""
+        required = {"systemctl", "curl"}
+        if d["proxy"]:
+            required |= {"caddy", "stat", "systemd-tmpfiles", "tailscale"}
+        missing = sorted(c for c in required if not self.native.available(c))
+        if missing:
+            raise Conflict(
+                "required native AI commands are missing: " + " ".join(missing)
+            )
+        if d["proxy"]:
+            self.ready_unit("caddy.service")
 
     def ensure_service(self, name: str, action: str, restart: bool = False) -> None:
         self.converge_unit(
@@ -273,13 +301,28 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
         return changes
 
     def converge(self, preflighted: bool = False) -> None:
+        """Converge llama-swap, then the Caddy proxy and the Tailscale Serve route.
+
+        Skip with a message while preparation never completed.
+        """
         if not self.desired["llama"]:
             print("AI services unmanaged.")
             return
-        d, f = self.managed(), self.files
+        d = self.managed()
         if not preflighted and not self.preflight(installed=True):
             print("AI services skipped: selected model is not prepared.")
             return
+        self.converge_router(d)
+        if d["proxy"]:
+            self.converge_caddy(d)
+            self.converge_serve(d)
+        print(
+            f"AI services converged: {self.updates} files updated, {self.actions} runtime actions."
+        )
+
+    def converge_router(self, d: AIManifest) -> None:
+        """Install the llama-swap config and unit, and run it until it answers."""
+        f = self.files
         generated = d["generated"]
         switcher_config = self.path_str("switcherConfig", "/etc/llama-swap/config.yaml")
         switcher_unit = self.path_str(
@@ -294,73 +337,66 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
             self.run("systemctl", "daemon-reload")
             self.actions += 1
         self.ensure_service(
-            "llama-swap.service",
-            "ai-llama",
-            restart=pending or config_changed,
+            "llama-swap.service", "ai-llama", restart=pending or config_changed
         )
         self._curl_ready(d["server"]["port"])
         f.clear("ai-llama")
-        if d["proxy"]:
-            caddy_file = self.path_str("caddyMain", "/etc/caddy/Caddyfile")
-            caddy_site = self.path_str(
-                "caddySite", "/etc/caddy/conf.d/nix-config-llama.caddy"
-            )
-            self.write(caddy_file, self.caddy_main(), "ai-caddy")
-            self.write(caddy_site, generated["caddySite"], "ai-caddy")
-            pending = f.pending("ai-caddy")
-            runtime_dir = self.run(
-                "stat", "--format=%a:%U:%G", "/run/caddy", check=False
-            )
-            if (
-                runtime_dir.returncode
-                or runtime_dir.stdout.strip() != "750:caddy:caddy"
-            ):
-                self.run(
-                    "systemd-tmpfiles", "--create", "/usr/lib/tmpfiles.d/caddy.conf"
-                )
+
+    def converge_caddy(self, d: AIManifest) -> None:
+        """Install and validate the Caddy site, then reload Caddy when it changed.
+
+        Raise `Conflict` unless Caddy's admin endpoint is a Unix socket.
+        """
+        f = self.files
+        caddy_file = self.path_str("caddyMain", "/etc/caddy/Caddyfile")
+        caddy_site = self.path_str(
+            "caddySite", "/etc/caddy/conf.d/nix-config-llama.caddy"
+        )
+        self.write(caddy_file, self.caddy_main(), "ai-caddy")
+        self.write(caddy_site, d["generated"]["caddySite"], "ai-caddy")
+        pending = f.pending("ai-caddy")
+        runtime_dir = self.run("stat", "--format=%a:%U:%G", "/run/caddy", check=False)
+        if runtime_dir.returncode or runtime_dir.stdout.strip() != "750:caddy:caddy":
+            self.run("systemd-tmpfiles", "--create", "/usr/lib/tmpfiles.d/caddy.conf")
+        self.run("caddy", "validate", "--config", caddy_file, "--adapter", "caddyfile")
+        state = self.ready_unit("caddy.service")
+        self.ensure_service(
+            "caddy.service", "ai-caddy", restart=state.get("ActiveState") != "active"
+        )
+        kind = self.run("stat", "--format=%F", "/run/caddy/admin.socket").stdout.strip()
+        if kind != "socket":
+            raise Conflict("Caddy admin endpoint is not a Unix socket")
+        if pending:
             self.run(
                 "caddy",
-                "validate",
+                "reload",
                 "--config",
                 caddy_file,
-                "--adapter",
-                "caddyfile",
+                "--address",
+                "unix//run/caddy/admin.socket",
             )
-            state = self.ready_unit("caddy.service")
-            repair = state.get("ActiveState") != "active"
-            self.ensure_service("caddy.service", "ai-caddy", restart=repair)
-            kind = self.run(
-                "stat", "--format=%F", "/run/caddy/admin.socket"
-            ).stdout.strip()
-            if kind != "socket":
-                raise Conflict("Caddy admin endpoint is not a Unix socket")
-            if pending:
-                self.run(
-                    "caddy",
-                    "reload",
-                    "--config",
-                    caddy_file,
-                    "--address",
-                    "unix//run/caddy/admin.socket",
+            self.actions += 1
+        f.clear("ai-caddy")
+        self._curl_ready(d["localPort"])
+
+    def converge_serve(self, d: AIManifest) -> None:
+        """Route the tailnet HTTPS port to the proxy with Tailscale Serve.
+
+        Raise `Conflict` instead of replacing another Serve configuration.
+        """
+        f = self.files
+        target = f"http://127.0.0.1:{d['localPort']}"
+        port = str(d["httpsPort"])
+        status = self.run("tailscale", "serve", "status", "--json").stdout
+        if target not in status or port not in status:
+            if status.strip() not in ("", "{}", "null"):
+                raise Conflict(
+                    "existing Tailscale Serve configuration requires explicit adoption"
                 )
-                self.actions += 1
-            f.clear("ai-caddy")
-            self._curl_ready(d["localPort"])
+            f.mark("ai-serve")
+            self.run("tailscale", "serve", "--bg", f"--https={port}", target)
+            self.actions += 1
             status = self.run("tailscale", "serve", "status", "--json").stdout
-            target = f"http://127.0.0.1:{d['localPort']}"
-            port = str(d["httpsPort"])
             if target not in status or port not in status:
-                if status.strip() not in ("", "{}", "null"):
-                    raise Conflict(
-                        "existing Tailscale Serve configuration requires explicit adoption"
-                    )
-                f.mark("ai-serve")
-                self.run("tailscale", "serve", "--bg", f"--https={port}", target)
-                self.actions += 1
-                status = self.run("tailscale", "serve", "status", "--json").stdout
-                if target not in status or port not in status:
-                    raise Conflict("Tailscale Serve route did not converge")
-            f.clear("ai-serve")
-        print(
-            f"AI services converged: {self.updates} files updated, {self.actions} runtime actions."
-        )
+                raise Conflict("Tailscale Serve route did not converge")
+        f.clear("ai-serve")

@@ -9,6 +9,8 @@ import re
 from pathlib import Path
 from typing import TypedDict, cast
 
+MIB = 1024**2
+
 
 class Policy(TypedDict):
     limitsMiB: dict[str, int]
@@ -45,7 +47,38 @@ def counters(path: Path) -> dict[str, str]:
 
 
 def apply(policy: Policy, root: Path, unit: str) -> None:
+    """Set the policy's dmem.max limits on the cgroup of `unit` before it allocates.
+
+    Raise `ValueError` unless the guard runs in its own service cgroup of a
+    unified hierarchy with the dmem controller, the group holds no device
+    memory yet, and the kernel reads the limits back unchanged.
+    """
     hierarchy = root / "sys/fs/cgroup"
+    relative = service_cgroup(root, unit)
+    group = hierarchy / relative
+    if group.is_symlink() or not group.resolve().is_relative_to(hierarchy.resolve()):
+        raise ValueError("service cgroup escapes the hierarchy")
+    enable_dmem(hierarchy, relative)
+    limits = policy["limitsMiB"]
+    current = counters(group / "dmem.current")
+    if not set(limits) <= current.keys():
+        raise ValueError("a declared device-memory region is unavailable")
+    if any(int(current[region]) for region in limits):
+        raise ValueError(
+            "service has device-memory allocations before its startup guard"
+        )
+    target = group / "dmem.max"
+    for region, amount in limits.items():
+        target.write_text(f"{region} {amount * MIB}\n")
+    configured = counters(target)
+    if any(
+        configured.get(region) != str(amount * MIB) for region, amount in limits.items()
+    ):
+        raise ValueError("device-memory limit readback differs from policy")
+
+
+def service_cgroup(root: Path, unit: str) -> Path:
+    """This process's cgroup, relative to the hierarchy; it must be `unit`'s own."""
     entries = (root / "proc/self/cgroup").read_text().splitlines()
     if len(entries) != 1 or not entries[0].startswith("0::/"):
         raise ValueError("a unified cgroup hierarchy is required")
@@ -57,34 +90,19 @@ def apply(policy: Policy, root: Path, unit: str) -> None:
         or any(not part.endswith(".slice") for part in relative.parts[:-1])
     ):
         raise ValueError("guard must run inside its declared service cgroup")
-    group = hierarchy / relative
-    if group.is_symlink() or not group.resolve().is_relative_to(hierarchy.resolve()):
-        raise ValueError("service cgroup escapes the hierarchy")
+    return relative
+
+
+def enable_dmem(hierarchy: Path, relative: Path) -> None:
+    """Enable the dmem controller in every ancestor of the service cgroup."""
     parent = hierarchy
-    for part in (*relative.parts[:-1], relative.name):
+    for part in relative.parts:
         if "dmem" not in (parent / "cgroup.controllers").read_text().split():
             raise ValueError("dmem controller is unavailable in a service ancestor")
         control = parent / "cgroup.subtree_control"
         if "dmem" not in control.read_text().split():
             control.write_text("+dmem\n")
         parent /= part
-    current = counters(group / "dmem.current")
-    limits = policy["limitsMiB"]
-    if not set(limits) <= current.keys():
-        raise ValueError("a declared device-memory region is unavailable")
-    if any(int(current[region]) for region in limits):
-        raise ValueError(
-            "service has device-memory allocations before its startup guard"
-        )
-    target = group / "dmem.max"
-    for region, amount in limits.items():
-        target.write_text(f"{region} {amount * 1024**2}\n")
-    configured = counters(target)
-    if any(
-        configured.get(region) != str(amount * 1024**2)
-        for region, amount in limits.items()
-    ):
-        raise ValueError("device-memory limit readback differs from policy")
 
 
 def main() -> int:
