@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.8.0 (2026-11-06)
+
+### Features
+
+- **ai**: Take agent skill sets from the machine flake (breaking)
+
+### Fixes
+
+- **ai**: Make the benchmark tests independent of process timing
+
+### Refactoring
+
+- Adopt nix-adapter v0.7.0 (breaking)
+- **options**: Declare every option explicitly and describe it
+- **cli**: Split the nacre command into a package by concern
+- **switch**: Name the deployment stages and document every step
+- **adapters**: Split core and system convergence by resource
+- **ai**: Split AI preflight, convergence and preparation into steps
+- **ai**: Split the benchmark into its parser, monitor and matrix
+- **noctalia**: Split the sync command's entry point and deploy
+
+### Documentation
+
+- **nix**: State what each Nix file owns in a header comment
+- Clarify ownership and rewrite the operator guides
+
 ## 0.7.0 (2026-11-05)
 
 ### Features
