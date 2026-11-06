@@ -1,4 +1,4 @@
-name: Arch deployment lifecycle
+name: Test Deployment Lifecycle
 
 # Deploys the container-test configuration into a disposable systemd Arch
 # container on the hosted runner. It is slow, so it runs only when deployment
@@ -15,7 +15,7 @@ on:
       - scripts/**
       - templates/**
       - checks/container/**
-      - .github/workflows/container-test.yml
+      - .github/workflows/test-deployment-lifecycle.yml
   schedule:
     - cron: "17 3 * * 1"
   workflow_dispatch:
@@ -28,18 +28,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    name: Test bootstrap, convergence, purge and installation
+  test_deployment_lifecycle:
+    name: Test Bootstrap, Convergence, Purge and Installation
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     steps:
-      - name: Check out source
+      - name: Check Out Source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       # The full desktop package set needs more space than the image leaves.
-      - name: Free disk space
+      - name: Free Disk Space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
           df -h /
@@ -50,7 +50,7 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
 
-      - name: Restore package caches
+      - name: Restore Package Caches
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/volumes
@@ -58,7 +58,7 @@ jobs:
           restore-keys: container-packages-
 
       # Volume export/import keeps file ownership inside the user namespace.
-      - name: Import package caches into podman volumes
+      - name: Import Package Caches into Podman Volumes
         run: |
           for volume in nacre-container-pacman nacre-container-yay; do
             podman volume create "$volume" >/dev/null
@@ -66,10 +66,10 @@ jobs:
             if [[ -f $archive ]]; then podman volume import "$volume" "$archive"; fi
           done
 
-      - name: Exercise deployment lifecycle in disposable Arch
+      - name: Exercise Deployment Lifecycle in Disposable Arch
         run: nix run --no-update-lock-file .#just -- container-test
 
-      - name: Export package caches
+      - name: Export Package Caches
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/volumes"
@@ -77,7 +77,7 @@ jobs:
             podman volume export "$volume" --output "$RUNNER_TEMP/volumes/$volume.tar"
           done
 
-      - name: Save package caches
+      - name: Save Package Caches
         if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:

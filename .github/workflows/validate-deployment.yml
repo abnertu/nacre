@@ -1,4 +1,4 @@
-name: Nacre deployment validation
+name: Validate Deployment
 
 on:
   push:
@@ -14,12 +14,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: Validate Nix sources and fixture deployment
+  validate_deployment:
+    name: Validate Nix Sources and Fixture Deployment
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - name: Check out source
+      - name: Check Out Source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -30,7 +30,7 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
 
-      - name: Run flake checks and build their deployment dependencies
+      - name: Run Flake Checks and Build Their Deployment Dependencies
         id: check
         shell: bash # adds pipefail, so tee cannot mask a failed check
         run: |
@@ -38,7 +38,7 @@ jobs:
             tee "$RUNNER_TEMP/check.log"
 
       # Annotations are readable without downloading the job log.
-      - name: Report failing checks
+      - name: Report Failing Checks
         if: failure() && steps.check.outcome == 'failure'
         run: |
           report=$(grep -v '^warning:' "$RUNNER_TEMP/check.log" | grep -E -A15 '^error:' | tail -n 80)

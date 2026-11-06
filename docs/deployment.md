@@ -82,7 +82,7 @@ Nacre no longer manages disabled features and does not touch them. Home Manager 
 
 The test disables hardware and kernel features that the container cannot use.
 
-Pacman and yay caches persist in the `nacre-container-pacman` and `nacre-container-yay` volumes. `--keep` keeps the test container. The Arch deployment lifecycle workflow runs on deployment changes to `main`, each week and on request.
+Pacman and yay caches persist in the `nacre-container-pacman` and `nacre-container-yay` volumes. `--keep` keeps the test container. The Test Deployment Lifecycle workflow runs on deployment changes to `main`, each week and on request.
 
 ## Progress and diagnostics
 

@@ -1,4 +1,4 @@
-name: Propose flake input updates
+name: Update Flake Lock
 
 # Proposes a reviewed lock update; merging the pull request is the intentional
 # adoption step. Pull requests opened with GITHUB_TOKEN start no workflows, but
@@ -17,8 +17,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  update:
-    name: Propose lock update and dispatch validation
+  update_flake_lock:
+    name: Propose Lock Update and Dispatch Validation
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -26,7 +26,7 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - name: Check out source
+      - name: Check Out Source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Nix
@@ -35,7 +35,7 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
 
-      - name: Update every input
+      - name: Update Every Input
         id: update
         run: |
           nix flake update 2> update.log
@@ -46,7 +46,7 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Open or refresh the pull request
+      - name: Open or Refresh the Pull Request
         if: steps.update.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,11 +66,11 @@ jobs:
           git switch -C "$branch"
           git commit -m "chore(flake): update inputs" -m "$(sed -n '/Updated input/,$p' update.log)" flake.lock
           git push --force origin "$branch"
-          body="Weekly \`nix flake update\`. The check and Arch deployment lifecycle workflows run on this branch; review the input changes and their results, then merge to adopt them."
+          body="Weekly \`nix flake update\`. The Validate Deployment and Test Deployment Lifecycle workflows run on this branch; review the input changes and their results, then merge to adopt them."
           if gh pr view "$branch" --json state --jq .state 2>/dev/null | grep -q OPEN; then
             gh pr edit "$branch" --body "$body"
           else
             gh pr create --head "$branch" --title "chore(flake): update inputs" --body "$body"
           fi
-          gh workflow run check.yml --ref "$branch"
-          gh workflow run container-test.yml --ref "$branch"
+          gh workflow run validate-deployment.yml --ref "$branch"
+          gh workflow run test-deployment-lifecycle.yml --ref "$branch"
