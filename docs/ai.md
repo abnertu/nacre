@@ -96,33 +96,66 @@ Install newly declared native tools with `nacre update`. A routine switch exits 
 
 ## Agent skills
 
-Home Manager projects the selected skill directories:
+Nacre supplies these built-in skill bundles from locked sources:
 
-- `~/.agents/skills` follows `programs.ai.enable` and `programs.ai.skillsPresets.enable`.
-- `~/.claude/skills` follows `programs.ai.claude.enable` and `programs.ai.claude.skills.enable`.
-- Neither depends on llama.cpp preparation.
+| Bundle | Source |
+| --- | --- |
+| `mattpocock` | `mattpocock/skills` |
+| `obsidian` | `kepano/obsidian-skills` |
+| `vercel` | `vercel-labs/skills` (`find-skills`) |
+| `abnertu` | `abnertu/skills` |
+| `gh` | Packaged GitHub CLI source (`gh` and `gh-skill`) |
 
-Choose one installation source for each skill. Otherwise, managed links and plugins discover it twice.
+All bundles are enabled by default.
+Each bundle contains an explicit selection; upstream additions are not selected automatically.
+The development profile installs `gh`.
+Skills require no llama.cpp preparation or activation downloads.
 
-The machine flake declares its skill sets. Each set names a source, usually a flake input, and the skills it provides:
+`programs.ai.enable` and `programs.ai.skills.enable` control all managed skills.
+Home Manager projects the same selection into these targets:
+
+| Target | Additional switches |
+| --- | --- |
+| `~/.agents/skills` | `programs.ai.skills.agents.enable` |
+| `~/.claude/skills` | `programs.ai.claude.enable` and `programs.ai.skills.claude.enable` |
+
+Target switches default to true.
+Setting `programs.ai.skills.enable = false` preserves other AI configuration, including the local Codex profile.
+Choose one installation source for each skill.
+Otherwise, managed links and marketplace plugins discover it twice.
+
+Disable a bundle or exclude individual skills:
+
+```nix
+programs.ai.skills = {
+  builtins.obsidian.enable = false;
+  exclude = [ "loop-me" ];
+};
+```
+
+Each bundle uses `programs.ai.skills.builtins.<bundle>.enable`.
+Exclusions apply to both targets and include custom sets.
+Unmatched exclusion names are ignored, including names from disabled bundles.
+
+Declare additional sets in the machine flake:
 
 ```nix
 {
   inputs.nacre.url = "github:abnertu/nacre";
-  inputs.obsidian-skills = {
-    url = "github:kepano/obsidian-skills";
+  inputs.personal-skills = {
+    url = "github:your-org/your-skills";
     flake = false;
   };
 
   outputs =
-    { nacre, obsidian-skills, ... }:
+    { nacre, personal-skills, ... }:
     nacre.lib.mkFlake {
       modules = [
         ./configuration.nix
         {
-          programs.ai.skills.sets.obsidian = {
-            source = obsidian-skills;
-            skills.obsidian-markdown = "skills/obsidian-markdown";
+          programs.ai.skills.sets.personal = {
+            source = personal-skills;
+            skills.my-skill = "skills/my-skill";
           };
         }
       ];
@@ -130,18 +163,47 @@ The machine flake declares its skill sets. Each set names a source, usually a fl
 }
 ```
 
-Each skill directory must hold a `SKILL.md`, and each skill name may come from one set only. Evaluation stops on either error. Activation uses the locked sources, without downloads or a Skills CLI lockfile.
+Custom sets default to enabled.
+Set `programs.ai.skills.sets.<set>.enable = false` to disable one.
+Only selected skill directories need a `SKILL.md` file.
+Disabled sets and excluded skills do not resolve their directories.
+Each enabled set owns its key, and each skill name belongs to one enabled set.
+Evaluation rejects ownership conflicts before applying exclusions.
 
-Nacre supplies `gh` and `gh-skill` as one built-in set. They use the packaged `gh` source to match the installed version. `programs.ai.skills.gh.enable` selects them. Disable it before declaring a machine skill set named `gh`. The development profile installs `gh`.
+Restored defaults can conflict with custom sets from earlier Nacre versions.
+Remove redundant custom sets and their machine-owned source inputs.
+Alternatively, disable the corresponding built-in bundles before retaining custom replacements.
+Conflicts include equal set keys and duplicate skill names under different keys.
+Exclusions do not resolve these conflicts.
 
-Review the upstream changes. Then update the skill sources in the machine flake:
+The previous switch paths remain aliases:
+
+| Previous path under `programs.ai` | Canonical path under `programs.ai` |
+| --- | --- |
+| `skillsPresets.enable` | `skills.agents.enable` |
+| `claude.skills.enable` | `skills.claude.enable` |
+| `skills.gh.enable` | `skills.builtins.gh.enable` |
+
+Review upstream changes before updating sources.
+Update Nacre's built-in sources in the Nacre checkout:
 
 ```bash
-nix flake update obsidian-skills
+nix flake update matt-pocock-skills obsidian-skills vercel-skills abnertu-skills
+```
+
+Machine flakes adopt those versions through their locked Nacre input.
+Update machine-owned custom sources in the machine flake:
+
+```bash
+nix flake update personal-skills
 nacre plan
 ```
 
-Review and commit the lock update before deployment. To restore earlier sources, revert it. `nacre update` does not advance skill inputs. Missing selected paths or `SKILL.md` files fail evaluation. Managed skill links are read-only. Update their flake inputs. Do not run a skill updater against them.
+Review and commit lock changes before deployment.
+Revert the lock change to restore earlier sources.
+`nacre update` does not advance skill inputs.
+Managed links are read-only and use no Skills CLI lockfile.
+Do not run a skill updater against managed links.
 
 ## Codex local profile
 

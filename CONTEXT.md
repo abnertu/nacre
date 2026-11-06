@@ -29,7 +29,7 @@ Hyprland and Neovim use one of these sources:
 - Machine-provided `sources.hyprland` / `sources.neovim`.
 - Local worktrees that `development.hyprlandPath` / `development.neovimPath` select.
 
-[Agent skills](docs/ai.md#agent-skills) are directories that the machine flake selects from its pinned inputs. They need no download at activation.
+[Agent skills](docs/ai.md#agent-skills) use Nacre-owned defaults from locked inputs and the packaged GitHub CLI source. Machine flakes can disable bundles, exclude skills, and add custom sets from their own sources. Activation downloads no skills.
 
 ## Deployment flow
 
