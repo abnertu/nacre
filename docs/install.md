@@ -10,7 +10,7 @@ Disk partitioning and base-system installation stay outside Nacre.
 
 ## Steps
 
-Read [the bootstrap](../scripts/bootstrap.sh). Then execute it:
+Read [the bootstrap](../scripts/bootstrap.sh). Then run it:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/abnertu/nacre/main/scripts/bootstrap.sh)
@@ -22,7 +22,7 @@ The script enables `[multilib]`, installs base packages, Nix and yay, and starts
 nix run github:abnertu/nacre#nacre -- install
 ```
 
-Installation asks for user, hostname, role, time zone and locale. Then it does these steps:
+Installation asks for the user, hostname, role, time zone and locale. Then it does these steps:
 
 1. Detects AMD graphics and initramfs images.
 2. Writes the [machine template](../templates/machine/configuration.nix) and a flake that follows Nacre into `~/.config/nacre`.

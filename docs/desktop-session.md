@@ -17,7 +17,7 @@ Application configuration selects theme files that Noctalia rewrites at runtime:
 | Vesktop | `vesktop/themes/noctalia*.css`, `discord-system24.css` |
 | Hyprland | `hypr/noctalia.lua`, writable only with a local worktree |
 
-Select templates in the Noctalia snapshot. The files appear after the first Noctalia run and follow the wallpaper. The pinned Hyprland input keeps its committed theme. The default Ghostty, btop and cava configuration already selects these files. A replacement configuration must also select them. Then hooks can reload programs without edits to read-only declarations.
+Select templates in the Noctalia snapshot. The files appear after the first Noctalia run and follow the wallpaper. The pinned Hyprland input keeps its committed theme. The default Ghostty, btop and cava configuration already selects these files. A replacement configuration must also select them. Hooks can then reload programs without changes to read-only declarations.
 
 ## Application settings
 
@@ -38,7 +38,7 @@ busctl --user call org.freedesktop.DBus /org/freedesktop/DBus \
 systemctl --user show noctalia.service -p MainPID
 ```
 
-The watcher PID must belong to Noctalia. A shell restart must recover the tray without a restart of unrelated applications.
+The watcher PID must belong to Noctalia. A shell restart must recover the tray while unrelated applications keep running.
 
 ## Live development
 

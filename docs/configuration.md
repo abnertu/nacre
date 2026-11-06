@@ -1,6 +1,6 @@
 # Configuration
 
-A machine flake calls `nacre.lib.mkFlake` with its modules. Installation starts with one `configuration.nix`. Imported machine files can define baselines with `lib.mkDefault`. Ordinary definitions override those baselines, in each import order. Unknown options, wrong types and invalid combinations fail during evaluation.
+A machine flake calls `nacre.lib.mkFlake` with its modules. Installation starts with one `configuration.nix`. Imported machine files can define baselines with `lib.mkDefault`. Ordinary definitions override those baselines regardless of import order. Unknown options, wrong types and invalid combinations fail during evaluation.
 
 ```nix
 { ... }:
@@ -53,7 +53,7 @@ Read [local AI](ai.md) before you select models, offload or context under `progr
 
 ## Users and homes
 
-`deployment.username` selects an existing login account declared in `users.users`. To change the user, change both. Modules create their service accounts without home composition. Keep Home Manager's `stateVersion` fixed during routine updates.
+`deployment.username` selects an existing login account declared in `users.users`. To select another user, change both declarations. Modules create their service accounts without home composition. Keep Home Manager's `stateVersion` fixed during routine updates.
 
 Shared profiles provide shell, development tools, themes and default application configuration. Personal settings belong in machine-owned home modules:
 

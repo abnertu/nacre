@@ -48,7 +48,7 @@ nacre noctalia deploy --dry-run
 nacre noctalia deploy
 ```
 
-Deploy builds and activates the selected home. Then it verifies owned Noctalia sections, without Arch convergence. Nacre supplies the machine checkout as `--repo` and forwards input overrides.
+Deploy builds and activates the selected home. Then it verifies owned Noctalia sections. This command does not converge Arch state. Nacre supplies the machine checkout as `--repo` and forwards input overrides.
 
 Conflicting GUI overrides stop deployment. To replace owned overrides deliberately, stop the shell first:
 
@@ -68,4 +68,4 @@ An interrupted replacement leaves receipts and backups under `~/.local/state/nix
 nacre noctalia deploy --recover
 ```
 
-Recovery restores content only while the current state matches the recorded transition. Resolve concurrent edits manually.
+Recovery restores content only if the current state matches the recorded transition. Resolve concurrent edits manually.

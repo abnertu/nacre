@@ -1,6 +1,6 @@
 # Wi-Fi hotspot
 
-Nacre adopts an existing NetworkManager AP connection by unique name and manages its public properties. NetworkManager keeps the UUID, WPA credentials and other fields. The adapter does not read or print the password.
+Nacre adopts an existing NetworkManager AP connection by unique name and manages its public properties. NetworkManager retains the UUID, WPA credentials and other fields. The adapter does not read or print the password.
 
 ## Preparing the connection
 
@@ -27,4 +27,4 @@ Check address assignment, DNS and internet access from a client. `iw dev <interf
 
 ## Recovery
 
-Keep pending markers under `/var/lib/nix-config/arch/`. Fix the reported cause, then run again. When you disable management, the connection and credentials stay. After you change the subnet, interface or uplink, review stale manual rules. Deployment cannot find their owner.
+Keep pending markers under `/var/lib/nix-config/arch/`. Fix the reported cause, then run again. When you disable management, the connection and credentials stay. After you change the subnet, interface or uplink, review stale manual rules. Deployment cannot determine who owns those rules.

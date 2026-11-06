@@ -1,6 +1,6 @@
 # Deployment and recovery
 
-Run as the deployment user on Arch Linux `x86_64`. The login account must exist and belong to `wheel`. Native Nix, yay and the necessary commands must be available. Declared `lib32-*` packages need `[multilib]`. The running kernel needs its matching module directory.
+Run as the deployment user on Arch Linux `x86_64`. The login account must exist and belong to `wheel`. Nix, yay and the required native commands must be available. Declared `lib32-*` packages need `[multilib]`. The running kernel needs its matching module directory.
 
 `nacre` finds `~/.config/nacre` by default. Use `--flake PATH` for another checkout. Before deployment, read the relevant [configuration](configuration.md), [system](system-settings.md) and feature preparation guides.
 
@@ -20,7 +20,7 @@ nacre --verbose switch    # include native diagnostics
 nacre purge               # withdraw managed Arch state without home activation
 ```
 
-| Command | Behaviour |
+| Command | Behavior |
 | --- | --- |
 | `status` | Show checkout revision, last recorded switch, active home and pending markers |
 | `doctor` | Report revision drift, pending work and missing kernel modules. Report failed or unstarted units, uncaptured Noctalia preferences and backup files beside managed home files. Exit 1 on findings. |
@@ -72,7 +72,7 @@ Nacre no longer manages disabled features and does not touch them. Home Manager 
 
 ## Container test
 
-`just container-test` runs the checked-in bootstrap and [container configuration](../checks/container/configuration.nix) in a disposable systemd Arch container. It verifies these behaviours:
+`just container-test` runs the checked-in bootstrap and [container configuration](../checks/container/configuration.nix) in a disposable systemd Arch container. It verifies these behaviors:
 
 - Missing-package rejection and update.
 - Quiet repeat convergence and an unchanged plan.
@@ -86,7 +86,7 @@ Pacman and yay caches persist in the `nacre-container-pacman` and `nacre-contain
 
 ## Progress and diagnostics
 
-Nix reports build progress. Deployment tracks running, finished, skipped and failed tasks. When necessary, it gives way to native tool output. Each of these selects plain logs: verbose mode, redirected stderr, `TERM=dumb`, a `NO_COLOR` value or a non-empty `CI`. Verbose mode reaches Nix, Home Manager and privileged adapters.
+Nix reports build progress. Deployment tracks running, finished, skipped and failed tasks. Deployment displays native tool output when necessary. Each of these selects plain logs: verbose mode, redirected stderr, `TERM=dumb`, a `NO_COLOR` value or a non-empty `CI`. Verbose mode reaches Nix, Home Manager and privileged adapters.
 
 Adapter failures report the command, exit code, stdout, stderr and partial timeout output. Secrets are redacted.
 

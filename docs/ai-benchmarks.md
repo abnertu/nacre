@@ -1,6 +1,6 @@
 # Local AI benchmark record
 
-Measurements from 2026-10-06 used synthetic prompts and checksum-verified GGUFs on the workstation below. They selected a workstation profile at that time. They do not describe the current inventory defaults. Requalify settings for the current hardware and workload.
+Measurements from 2026-10-06 used synthetic prompts and checksum-verified GGUFs on the workstation below. The measurements selected a workstation profile at that time. They do not describe the current inventory defaults. Requalify settings for the current hardware and workload.
 
 ## Measurement environment
 
@@ -41,7 +41,7 @@ With ubatch 1024, 4B PP4096 dropped from 3,277 to 2,979 tok/s. Peak VRAM increas
 | Qwen2.5 Coder 1.5B Q8_0, Vulkan | 6,069 | 9,039 | 145.8 | 3,090 |
 | Qwen2.5 Coder 3B Q4_K_M, Vulkan | 3,295 | 4,804 | 118.4 | 3,382 |
 
-Peaks include the usage of the desktop. The [artifact inventory](../modules/ai/artifacts.nix) pins model identities and checksums.
+Peaks include desktop usage. The [artifact inventory](../modules/ai/artifacts.nix) pins model identities and checksums.
 
 - **That experiment selected 4B as the agent**: 9B missed the 50 tok/s target.
 - **That experiment selected 3B for completion**: it passed all four small Python, JavaScript and Nix tests. 1.5B passed three. The set is too small to rank general coding ability.

@@ -1,6 +1,6 @@
 # Backup and restore
 
-The flake rebuilds configuration. Deployment creates no backups. Keep irreplaceable external state on encrypted media, with its original owner and mode. Keep secrets outside Git and the Nix store.
+The flake rebuilds configuration. Deployment creates no backups. Back up irreplaceable external state to encrypted media with its original owner and mode. Keep secrets outside Git and the Nix store.
 
 ## Required state
 
@@ -12,7 +12,7 @@ The flake rebuilds configuration. Deployment creates no backups. Keep irreplacea
 | Noctalia storage key and encrypted data | Key: `~/.local/share/noctalia/file-key-v1/master-key` | A newly generated key cannot decrypt old data |
 | Hotspot connection | `/etc/NetworkManager/system-connections/` | AP and WPA credentials must be recreated |
 
-Machine extensions can add required state. Follow their own backup procedures.
+Machine extensions can add required state. Follow each extension's backup procedures.
 
 ## Rebuildable state
 

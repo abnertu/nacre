@@ -5,9 +5,8 @@ Declarative configuration and deployment for existing Arch Linux and Hyprland ma
 [![Nacre deployment validation](https://github.com/abnertu/nacre/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/abnertu/nacre/actions/workflows/check.yml)
 [![Release](https://img.shields.io/github/v/release/abnertu/nacre)](https://github.com/abnertu/nacre/releases/latest)
 [![Arch Linux](https://img.shields.io/badge/Arch_Linux-1793D1?logo=archlinux&logoColor=white)](https://archlinux.org/)
-[![Nix](https://img.shields.io/badge/Nix-5277C3?logo=nixos&logoColor=white)](https://nixos.org/)
 
-Nix validates typed options and builds a fixed deployment artifact. Arch adapters converge native files, packages and services. Then the artifact's Home Manager generation activates. Machines keep their own flakes and follow Nacre as an input. Credentials and mutable application data stay outside Git and the Nix store.
+[Nix](https://nixos.org/) validates typed policy and builds a fixed deployment with its [Home Manager](https://github.com/nix-community/home-manager) generation. Arch adapters converge native state before that exact home activates. Keep machine policy in a separate flake that follows Nacre. Credentials and mutable application data stay outside Git and the Nix store.
 
 ![Desktop preview](docs/assets/preview.png)
 
@@ -49,6 +48,19 @@ users.users.alice.home.programs.git.settings.init.defaultBranch = "main";
 ```
 
 The workstation role adds Hyprland through UWSM, Noctalia and shared desktop configuration. Optional features include local AI, virtualization, a NetworkManager hotspot and machine-owned adapters. The [fixture machine](checks/fixtures/configuration.nix) demonstrates the full configuration.
+
+## Ownership
+
+The machine flake supplies identity, existing login accounts, hardware, optional features and personal home modules. Nacre supplies fixed outputs, including `#deployment`, `#nacre` and `lib.configuration`.
+
+| Task | Owner |
+| --- | --- |
+| Typed policy and build artifacts | Nix and Nacre modules |
+| Native files, packages, accounts and services | Arch adapters using [nix-adapter](https://github.com/abnertu/nix-adapter) |
+| User configuration and services | Home Manager |
+| Hyprland startup | UWSM |
+| Hyprland and Neovim sources | Pinned [Hyprland](https://github.com/Orbit-Lua/hypr) and [Neovim](https://github.com/abnertu/orbit.nvim) inputs, or machine-selected sources |
+| Credentials, mutable data and feature preparation | Operator |
 
 | Guide | Use it for |
 | --- | --- |

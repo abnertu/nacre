@@ -1,6 +1,6 @@
 # Composition model
 
-Nacre evaluates machine policy into an immutable deployment that contains the selected Home Manager generation. Arch adapters reconcile native state first. Then that exact home activates.
+Nacre evaluates machine policy into a fixed deployment with the selected Home Manager generation. Arch adapters reconcile native state first. Then that exact home activates.
 
 | Boundary | Owner | Contract |
 | --- | --- | --- |
@@ -15,7 +15,7 @@ Nacre evaluates machine policy into an immutable deployment that contains the se
 
 `lib/eval-configuration.nix` combines the explicit feature registry, the platform module and the machine modules. It validates cross-field assertions and normalizes the result. Feature modules contribute packages, groups and units through `arch`. `lib/mk-deployment.nix` passes the merged policy to the platform. Each resource has one owner.
 
-Role definitions at priority 1100 yield to machine `lib.mkDefault` baselines at 1000. Ordinary definitions override both. Import order does not establish precedence.
+Role definitions at priority 1100 yield to machine `lib.mkDefault` baselines at 1000. Ordinary definitions override both baselines. Import order does not set precedence.
 
 ## Static policy and live convergence
 

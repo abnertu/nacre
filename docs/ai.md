@@ -132,7 +132,7 @@ The machine flake declares its skill sets. Each set names a source, usually a fl
 
 Each skill directory must hold a `SKILL.md`, and each skill name may come from one set only. Evaluation stops on either error. Activation uses the locked sources, without downloads or a Skills CLI lockfile.
 
-Nacre adds one built-in set: `gh` and `gh-skill` from the source of the packaged `gh`, so they match the installed `gh`. `programs.ai.skills.gh.enable` selects them. The development profile installs `gh`.
+Nacre supplies `gh` and `gh-skill` as one built-in set. They use the packaged `gh` source to match the installed version. `programs.ai.skills.gh.enable` selects them. Disable it before declaring a machine skill set named `gh`. The development profile installs `gh`.
 
 Review the upstream changes. Then update the skill sources in the machine flake:
 
@@ -169,7 +169,7 @@ Specify stop tokens for the selected model. When the prefix is ambiguous, add a 
 
 ## Benchmarks
 
-Benchmark tools use the real GPU outside deployment and CI. Stage candidates in scratch space and verify SHA-256. For isolated measurements, you can stop the router. Restore it after the measurement. Keep the managed configuration, the receipts and the prepared selector.
+Benchmark tools use the real GPU outside deployment and CI. Stage candidates in scratch space and verify SHA-256. For isolated measurements, stop the router if necessary. Restore it after the measurement. Keep the managed configuration, the receipts and the prepared selector.
 
 Find the sysfs path of the discrete GPU. Do not assume `card0`:
 

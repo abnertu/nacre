@@ -8,7 +8,7 @@ The system adapter owns locale, timezone, console, hostname, firewall, hotspot a
 | `networking.hostname`, `networking.firewall`, `networking.hotspot` | Hostname, UFW and an existing NetworkManager AP |
 | `services.timesyncd`, `services.journald`, `services.logind`, `services.fstrim`, `services.powerpanel` | Native settings, service state and UPS configuration |
 
-Preflight checks files, ownership, commands and units before mutations. Missing interfaces or resources, conflicting providers and failed queries stop the core stage. Before the first adoption, inspect the current ownership from a recoverable local session. Examine UFW, networking, time sync, storage discard and console settings carefully. See [hotspot](hotspot.md) for AP preparation.
+Preflight checks files, ownership, commands and units before mutations. Missing interfaces or resources, conflicting providers and failed queries stop the core stage. Before the first adoption, inspect current ownership from a local session that permits recovery. Examine UFW, networking, time sync, storage discard and console settings carefully. See [hotspot](hotspot.md) for AP preparation.
 
 When you disable a declaration, Nacre withdraws management. Purge removes owned drop-ins. It keeps the current locale, timezone, hostname, console, firewall rules and hotspot properties.
 
@@ -20,7 +20,7 @@ The deployment user joins `power`. Thus it can run `pwrstat -status` and `pwrsta
 
 ## Changes and recovery
 
-Adapters compare content, owner and mode before atomic replacement. They record intent under `/var/lib/nix-config/arch/` and clear it after success. Healthy reruns rewrite no identical files and restart no healthy services. logind changes wait until reboot. The adapter does not restart an active login session. fstrim keeps the native schedule with catch-up disabled. It refuses conflicting schedules.
+Adapters compare content, owner and mode before atomic replacement. They record intent under `/var/lib/nix-config/arch/` and clear it after success. Healthy reruns keep identical files and leave healthy services running. logind changes wait until reboot. The adapter does not restart an active login session. fstrim keeps the native schedule with catch-up disabled. It refuses conflicting schedules.
 
 Keep pending markers. Fix the reported cause, then run again. `nacre --verbose switch` shows native diagnostics.
 
