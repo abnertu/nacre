@@ -5,6 +5,14 @@ let
   packages = import ./packages.nix;
 in
 {
+  imports = [
+    (import ./skill-aliases.nix {
+      prefix = [
+        "programs"
+        "ai"
+      ];
+    })
+  ];
   options.programs.ai = import ./options.nix { inherit lib; };
   config.arch.aur =
     lib.optionals (cfg.enable && cfg.codex.enable) packages.codex

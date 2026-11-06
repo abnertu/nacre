@@ -156,13 +156,28 @@ in
       description = "Manage a Codex profile for the selected local llama.cpp model.";
     };
   };
-  skillsPresets.enable = enabledByDefault "the selected agent skills in ~/.agents/skills";
   skills = {
-    gh.enable = enabledByDefault "the gh and gh-skill skills from the packaged GitHub CLI source";
+    enable = enabledByDefault "managed agent skills";
+    agents.enable = enabledByDefault "the selected agent skills in ~/.agents/skills";
+    claude.enable = enabledByDefault "the selected agent skills in ~/.claude/skills";
+    builtins = {
+      mattpocock.enable = enabledByDefault "the built-in Matt Pocock skill bundle";
+      obsidian.enable = enabledByDefault "the built-in Obsidian skill bundle";
+      vercel.enable = enabledByDefault "the built-in Vercel skill bundle";
+      abnertu.enable = enabledByDefault "the built-in abnertu skill bundle";
+      gh.enable = enabledByDefault "the gh and gh-skill skills from the packaged GitHub CLI source";
+    };
+    exclude = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "loop-me" ];
+      description = "Skill names omitted from both targets; unmatched names are ignored, including names from disabled bundles.";
+    };
     sets = lib.mkOption {
       type = lib.types.attrsOf (
         lib.types.submodule {
           options = {
+            enable = enabledByDefault "this custom agent skill set";
             source = lib.mkOption {
               type = lib.types.path;
               description = "Source tree of the set, such as a flake input.";
@@ -180,9 +195,9 @@ in
       default = { };
       example = lib.literalExpression ''
         {
-          obsidian = {
-            source = inputs.obsidian-skills;
-            skills.obsidian-markdown = "skills/obsidian-markdown";
+          personal = {
+            source = inputs.personal-skills;
+            skills.my-skill = "skills/my-skill";
           };
         }
       '';
@@ -191,7 +206,6 @@ in
   };
   claude = {
     enable = enabledByDefault "Claude Code";
-    skills.enable = enabledByDefault "the selected agent skills in ~/.claude/skills";
   };
   # Graphical: installed only with the desktop.
   claudeDesktop.enable = enabledByDefault "Claude Desktop";

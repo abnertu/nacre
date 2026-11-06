@@ -35,7 +35,9 @@ let
         inherit lib;
         raw = lib.recursiveUpdate aiDefaults raw;
       };
-      ghSource = pkgs.gh.src;
+      skillSources = inputs // {
+        gh = pkgs.gh.src;
+      };
     };
   evaluate =
     extra:
@@ -219,6 +221,7 @@ let
   customGhFiles = skillSetFiles (lib.recursiveUpdate customGh { skills.gh.enable = false; });
   upstreamOnly = skillSetFiles { skills.sets = lib.mkForce { inherit (skillSets) upstream; }; };
 in
+assert import ./skills.nix { inherit lib inputs; };
 assert allSkillSets ? ".agents/skills/gh-skill" && allSkillSets ? ".claude/skills/sample-personal";
 assert !(ghSkillsOff ? ".agents/skills/gh") && ghSkillsOff ? ".agents/skills/sample-personal";
 assert !(upstreamOnly ? ".claude/skills/sample-personal") && upstreamOnly ? ".claude/skills/gh";

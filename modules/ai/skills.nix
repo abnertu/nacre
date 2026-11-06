@@ -1,25 +1,36 @@
-# Agent skills selected from skill sets. A set is a source tree and the skills
-# it provides, each a directory with a SKILL.md, given by its path inside the
-# source. Machine flakes declare their sets through programs.ai.skills.sets.
-{ lib, sets }:
+# Merge enabled skill sets, reject conflicting ownership, and resolve selected paths.
+{
+  lib,
+  sets,
+  builtinSets ? { },
+  exclude ? [ ],
+}:
 let
+  customSets = lib.filterAttrs (_: set: set.enable or true) sets;
+  collisions = lib.intersectLists (builtins.attrNames builtinSets) (builtins.attrNames customSets);
+  enabledSets =
+    lib.throwIf (collisions != [ ])
+      "AI skill sets conflict with built-in bundles: ${lib.concatStringsSep ", " collisions}; disable programs.ai.skills.builtins.<bundle>.enable to supply replacements"
+      (builtinSets // customSets);
   # Skill name -> { set, path } across all sets; a name may come from one set.
   registry = lib.foldlAttrs (
     acc: setName: set:
-    acc
-    // lib.mapAttrs (
-      name: path:
-      if acc ? ${name} then
-        throw "AI skill '${name}' is provided by both '${acc.${name}.set}' and '${setName}'"
-      else
-        {
+    let
+      duplicates = lib.intersectLists (builtins.attrNames acc) (builtins.attrNames set.skills);
+      name = builtins.head duplicates;
+    in
+    lib.throwIf (duplicates != [ ])
+      "AI skill '${name}' is provided by both '${acc.${name}.set}' and '${setName}'"
+      (
+        acc
+        // lib.mapAttrs (_: path: {
           set = setName;
           inherit path;
-        }
-    ) set.skills
-  ) { } sets;
+        }) set.skills
+      )
+  ) { } enabledSets;
 
-  root = name: "${sets.${registry.${name}.set}.source}/${registry.${name}.path}";
+  root = name: "${enabledSets.${registry.${name}.set}.source}/${registry.${name}.path}";
 
   # The skill directory of `name`, once its SKILL.md is known to exist.
   resolve =
@@ -33,5 +44,5 @@ let
 in
 {
   inherit registry resolve;
-  selected = lib.mapAttrs (name: _: resolve name) registry;
+  selected = lib.mapAttrs (name: _: resolve name) (builtins.removeAttrs registry exclude);
 }

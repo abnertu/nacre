@@ -3,9 +3,8 @@
 {
   lib,
   config,
-  # Source of the built-in gh skill set: the packaged GitHub CLI source, so the
-  # skills match the installed gh. Null leaves the set out.
-  ghSource ? null,
+  # Locked skill inputs and the packaged GitHub CLI source, passed by composition.
+  skillSources ? { },
 }:
 let
   llama = config.enable && config.llama.enable;
@@ -74,31 +73,25 @@ in
   homeModule = {
     home.file = lib.optionalAttrs config.enable (
       let
-        claudeSkillsEnabled = config.claude.enable && config.claude.skills.enable;
+        agentSkillsEnabled = config.skills.enable && config.skills.agents.enable;
+        claudeSkillsEnabled = config.skills.enable && config.claude.enable && config.skills.claude.enable;
         skills =
-          if config.skillsPresets.enable || claudeSkillsEnabled then
+          if agentSkillsEnabled || claudeSkillsEnabled then
             import ./skills.nix {
               inherit lib;
-              sets =
-                lib.throwIf (config.skills.gh.enable && ghSource != null && config.skills.sets ? gh)
-                  "AI skill set 'gh' conflicts with the built-in set; disable programs.ai.skills.gh.enable to supply your own"
-                  (
-                    config.skills.sets
-                    // lib.optionalAttrs (config.skills.gh.enable && ghSource != null) {
-                      gh = {
-                        source = ghSource;
-                        skills = {
-                          gh = "skills/gh";
-                          gh-skill = "skills/gh-skill";
-                        };
-                      };
-                    }
-                  );
+              inherit (config.skills) exclude;
+              sets = config.skills.sets;
+              builtinSets = lib.filterAttrs (name: _: config.skills.builtins.${name}.enable) (
+                import ./skill-inventory.nix {
+                  inherit lib;
+                  sources = skillSources;
+                }
+              );
             }
           else
             null;
         agentSkills =
-          if config.skillsPresets.enable then
+          if agentSkillsEnabled then
             lib.mapAttrs' (
               name: source: lib.nameValuePair ".agents/skills/${name}" { inherit source; }
             ) skills.selected

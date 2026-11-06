@@ -9,6 +9,7 @@ let
     (lib.evalModules {
       modules = [
         { options = import ./options.nix { inherit lib; }; }
+        (import ./skill-aliases.nix { })
         (
           { config, ... }:
           let

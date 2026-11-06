@@ -70,7 +70,15 @@ inputs.home-manager.lib.homeManagerConfiguration {
     (import ../modules/ai {
       lib = inputs.nixpkgs.lib;
       config = ai;
-      ghSource = pkgs.gh.src;
+      skillSources = {
+        inherit (inputs)
+          matt-pocock-skills
+          obsidian-skills
+          vercel-skills
+          abnertu-skills
+          ;
+        gh = pkgs.gh.src;
+      };
     }).homeModule
   ]
   ++ [ (userNormalized.homeConfig or { }) ]
