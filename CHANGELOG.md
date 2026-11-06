@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.0 (2026-11-06)
+
+### Features
+
+- **ai**: Restore configurable built-in agent skills (breaking)
+
+### Documentation
+
+- **ai**: Explain built-in skill selection and migration
+
 ## 0.8.1 (2026-11-06)
 
 ### Refactoring
