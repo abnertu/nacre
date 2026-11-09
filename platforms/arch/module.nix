@@ -60,10 +60,9 @@ in
     extensions = mkOption {
       default = { };
       description = ''
-        Optional privileged adapters that a machine flake adds, such as a
-        service of its own. arch-switch runs each one like a built-in optional
-        module: preflight, convergence, plan and purge, skipped as not ready
-        until its preparation has completed.
+        Optional privileged adapters from features or machine flakes.
+        arch-switch runs preflight, plan and convergence for ready adapters.
+        Explicit purge invokes only adapters that opt in through purge.
       '';
       type = types.attrsOf (
         types.submodule {
@@ -89,6 +88,11 @@ in
               type = types.str;
               default = "preparation has not completed";
               description = "Skip reason while the adapter reports not ready.";
+            };
+            purge = mkOption {
+              type = types.bool;
+              default = false;
+              description = "Run the adapter's purge phase before built-in retirement; failures stop purge.";
             };
             ownedUnits = mkOption {
               type = types.listOf (

@@ -78,7 +78,7 @@ After you edit, run `nacre build`. Then review `nacre plan`.
 
 ## Machine extensions
 
-A machine can add packages, groups and units through `arch.pacman`, `arch.aur`, `arch.groups`, `arch.systemUnits` and `arch.userServices`. Register privileged adapters under `arch.extensions`:
+Features and machine modules contribute native resources through `arch`. A machine can add packages, groups and units through `arch.pacman`, `arch.aur`, `arch.groups`, `arch.systemUnits` and `arch.userServices`. Register privileged adapters under `arch.extensions`:
 
 ```nix
 { my-service }:
@@ -103,6 +103,8 @@ A machine can add packages, groups and units through `arch.pacman`, `arch.aur`, 
 ```
 
 Nacre invokes `adapter MANIFEST PHASE` as root for `preflight`, `plan` and `converge`. Exit 20 means preparation has never completed. [nix-adapter](https://github.com/abnertu/nix-adapter) provides the base adapter classes. Extensions converge after built-in optional modules. Purge retires their declared `ownedUnits`.
+
+Set `arch.extensions.<name>.purge = true` when the adapter owns additional retirement work. The default is false. Explicit purge invokes opted-in adapters before built-in retirement, in extension-name order. It does not check preparation readiness or dependencies. Every failure, including exit 20, stops purge. Keep system-unit retirement in `ownedUnits`. Disabling or removing an extension withdraws management without invoking its purge hook.
 
 Pass external inputs into the module from the `flake.nix` of the machine. `extraOutputs` exposes additional packages, apps and checks:
 

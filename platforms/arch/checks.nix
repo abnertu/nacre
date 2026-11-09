@@ -3,6 +3,7 @@
 {
   pkgs,
   arch-switch,
+  extensionPurgeSwitch,
   llama-prepare,
   adapterPython ? pkgs.python3,
   ...
@@ -86,7 +87,7 @@
     pkgs.runCommand "arch-switch-tests" { nativeBuildInputs = [ adapterPython ]; }
       ''
         python ${./tests}/test_arch_switch.py ${./switch.py}
-        python ${./tests}/test_optional_lifecycle.py ${./switch.py}
+        python ${./tests}/test_optional_lifecycle.py ${arch-switch} ${extensionPurgeSwitch} ${./switch.py}
         touch "$out"
       '';
 }

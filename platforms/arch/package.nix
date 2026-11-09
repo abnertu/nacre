@@ -95,10 +95,15 @@ in
         adapter = "${extension.adapter}";
         manifest = manifests.${name};
       }) arch.extensions;
-      # Machine-provided optional adapters, run after the built-in ones.
+      # Feature and machine adapters converge after built-in optional modules.
       extensions = lib.mapAttrsToList (name: extension: {
         inherit name;
-        inherit (extension) label requires notReady;
+        inherit (extension)
+          label
+          requires
+          notReady
+          purge
+          ;
       }) arch.extensions;
       lizardbyteConf = "${./files/pacman-lizardbyte.conf}";
       curl = "${pkgs.curl}/bin/curl";

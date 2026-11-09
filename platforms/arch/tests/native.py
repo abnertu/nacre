@@ -32,6 +32,7 @@ ADAPTERS = {
     "/fixture/system-adapter": ("/fixture/system-manifest", None),
     "/fixture/ai-adapter": ("/fixture/ai-manifest", "ai"),
     "/fixture/extension-adapter": ("/fixture/extension-manifest", "extension"),
+    "/fixture/second-adapter": ("/fixture/second-manifest", "extension"),
 }
 
 if command == "python":
@@ -50,7 +51,13 @@ if command == "python":
     else:
         assert phase in ("preflight", "plan", "converge", "purge"), args
     optional = ADAPTERS[adapter][1]
-    if optional and state.get(f"{optional}_not_ready"):
+    if optional and phase != "purge" and state.get(f"{optional}_not_ready"):
+        sys.exit(20)
+    if (
+        optional == "extension"
+        and phase == "purge"
+        and state.get("extension_not_ready")
+    ):
         sys.exit(20)
     if optional and phase == "converge" and state.get(f"{optional}_converge_not_ready"):
         sys.exit(20)

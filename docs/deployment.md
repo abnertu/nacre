@@ -57,6 +57,7 @@ A module can skip as `not ready` only before its preparation has ever completed.
 
 Purge withdraws these items:
 
+- Policy retired by explicitly opted-in extension adapters.
 - The AI Tailscale route, Caddy site and llama-swap configuration.
 - System-setting drop-ins.
 - Managed core units, kernel files and repository configuration.
@@ -69,6 +70,8 @@ Purge keeps these items:
 - The initramfs module block, because its removal needs a boot-image rebuild.
 
 Nacre no longer manages disabled features and does not touch them. Home Manager does not activate.
+
+Extension purge hooks run in extension-name order before built-in retirement. A hook failure stops purge before shared pending state is removed. Purge does not skip opted-in hooks because preparation is incomplete.
 
 ## Container test
 

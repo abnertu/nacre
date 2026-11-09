@@ -18,7 +18,7 @@ import sys
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
-from typing import NoReturn, TypedDict
+from typing import NoReturn, NotRequired, TypedDict
 
 from nix_adapter import Progress
 from nix_adapter.plan import STYLES
@@ -34,12 +34,13 @@ class Adapter(TypedDict):
 
 
 class Extension(TypedDict):
-    """A machine-provided optional adapter: platforms/arch/module.nix."""
+    """A feature or machine adapter: platforms/arch/module.nix."""
 
     name: str
     label: str
     requires: list[str]
     notReady: str
+    purge: NotRequired[bool]
 
 
 class Config(TypedDict):
@@ -446,6 +447,10 @@ class Switch:
         """Remove the managed Arch state: optional services, drop-ins, then core."""
         with self.progress.task("Purge managed Arch state", total=1) as task:
             self.native("sudo", "-v")
+            # Retirement is explicit: readiness cannot skip an opted-in hook.
+            for extension in self.config["extensions"]:
+                if extension.get("purge", False):
+                    self.require(extension["name"], "purge")
             # Optional services first, then system drop-ins; core removes pending state.
             self.require("ai", "purge")
             self.require("system", "purge")

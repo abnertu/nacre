@@ -69,6 +69,13 @@
           ./checks/container/configuration.nix
         ];
       };
+      extensionPurge = mkDeployment {
+        inherit inputs;
+        modules = [
+          fixture
+          { arch.extensions.fixture.purge = true; }
+        ];
+      };
     in
     lib.recursiveUpdate machine {
       lib = {
@@ -126,6 +133,7 @@
       // (import ./platforms/arch/checks.nix {
         inherit pkgs;
         inherit (d) arch-switch llama-prepare adapterPython;
+        extensionPurgeSwitch = extensionPurge.arch-switch;
       })
       // (import ./modules/home/checks.nix {
         inherit pkgs inputs;
