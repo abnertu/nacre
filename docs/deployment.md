@@ -99,7 +99,7 @@ Its TLS private key exists only inside the disposable guest.
 The fixture simulates Arch package inventories, unrelated adapters and home activation inside a NixOS VM.
 It does not verify Arch package installation, official image contents, registration or GitLab jobs.
 `just check` requires this native lifecycle test with the published controller from the lock file.
-The Validate Deployment workflow runs the same check set and requires KVM access.
+The Validate workflow runs the same check set and requires KVM access.
 Missing KVM access fails validation.
 
 ## Progress and diagnostics
