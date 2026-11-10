@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0 (2026-11-10)
+
+### Features
+
+- **deployment**: Support opt-in extension purge hooks
+- **runner**: Integrate native deployment and configured operator commands (breaking)
+
 ## 0.9.0 (2026-11-06)
 
 ### Features
