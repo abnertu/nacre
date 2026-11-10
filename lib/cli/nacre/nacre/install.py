@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
 import pwd
 import re
+import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -17,6 +19,7 @@ from .machine import Machine
 # The machine flake template: flake.nix and configuration.nix. Packaging
 # substitutes the store path.
 TEMPLATES = Path("@templates@")
+RUNNER_PUBLIC_FILES = Path("@runner-public-files@")
 
 
 class Installer:
@@ -40,6 +43,9 @@ class Installer:
             "locale": os.environ.get("LANG", "en_US.UTF-8").replace(".utf8", ".UTF-8"),
         }
         self.yes = self.force = False
+        self.runner_configs: list[Path] = []
+        self.runner_source: Path | None = None
+        self.runner_markers: list[Path] = []
         rest = list(args)
         while rest:
             option = rest.pop(0)
@@ -49,6 +55,10 @@ class Installer:
                 self.values[option[2:]] = rest.pop(0)
             elif option == "--yes":
                 self.yes = True
+            elif option == "--runner-config":
+                if not rest:
+                    raise Usage
+                self.runner_configs.append(Path(rest.pop(0)).absolute())
             elif option == "--force":
                 self.force = True
             else:
@@ -59,7 +69,9 @@ class Installer:
         interactive = sys.stdin.isatty()
         if not self.yes and interactive:
             self.ask()
-        self.write_configuration(self.render())
+        content = self.render()
+        runner = self.capture_runner_files()
+        self.write_configuration(content.replace("@runner@", runner))
         status = deploy(self.machine, "plan")
         if status != 0:
             return status
@@ -96,10 +108,12 @@ class Installer:
             raise Refusal(
                 "configuration.nix has uncommitted changes; commit them or pass --force"
             )
+        self.check_runner_destination()
         if created:
             # A new machine flake that follows Nacre; Git tracks it so Nix sees it.
             flake.mkdir(parents=True, exist_ok=True)
             (flake / "flake.nix").write_text((TEMPLATES / "flake.nix").read_text())
+        runner_files = self.copy_runner_files()
         target.write_text(content + "\n")
         if created:
             for args in (
@@ -107,7 +121,122 @@ class Installer:
                 ["add", "flake.nix", "configuration.nix"],
             ):
                 subprocess.run(["git", "-C", str(flake), *args], check=True)
+        if runner_files:
+            subprocess.run(
+                [
+                    "git",
+                    "--literal-pathspecs",
+                    "-C",
+                    str(flake),
+                    "add",
+                    "--",
+                    "configuration.nix",
+                    *runner_files,
+                ],
+                check=True,
+            )
         print(f"Wrote {target}:\n\n{content}\n", file=sys.stderr)
+
+    def copy_runner_files(self) -> list[str]:
+        """Copy absent public files and retain lookup directories in Git."""
+        if self.runner_source is None:
+            return []
+        destination = self.machine.flake / "runners"
+        destination.mkdir(exist_ok=True)
+        files: list[Path] = []
+        for source in sorted(self.runner_source.rglob("*")):
+            relative = source.relative_to(self.runner_source)
+            target = destination / relative
+            if source.is_dir():
+                target.mkdir(exist_ok=True)
+            else:
+                if not target.exists():
+                    shutil.copyfile(source, target)
+                files.append(relative)
+        for marker in self.runner_markers:
+            target = destination / marker
+            if not target.exists():
+                target.touch()
+        return [str(Path("runners") / file) for file in files + self.runner_markers]
+
+    def capture_runner_files(self) -> str:
+        """Capture the same public closure used by the configured controller."""
+        if not self.runner_configs:
+            return ""
+        root = self.runner_configs[0].parent
+        try:
+            selected = [str(file.relative_to(root)) for file in self.runner_configs]
+        except ValueError as error:
+            raise Refusal(
+                "Runner instance files must stay under the first file's directory"
+            ) from error
+        result = subprocess.run(
+            [
+                "nix",
+                *self.machine.log_format,
+                "eval",
+                *self.machine.nix_args,
+                "--impure",
+                "--json",
+                "--file",
+                str(RUNNER_PUBLIC_FILES),
+                "capture",
+                "--argstr",
+                "root",
+                str(root),
+                "--argstr",
+                "configFilesJSON",
+                json.dumps(selected),
+            ],
+            stdout=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise Refusal(
+                "invalid Runner public configuration; no machine files were written"
+            )
+        captured = json.loads(result.stdout)
+        self.runner_source = Path(captured["source"])
+        self.runner_markers = [
+            directory.relative_to(self.runner_source) / ".nix-config-directory"
+            for directory in self.runner_source.rglob("*")
+            if directory.is_dir() and not any(directory.iterdir())
+        ]
+        return str(captured["declaration"])
+
+    def check_runner_destination(self) -> None:
+        """Refuse foreign destination files before changing the checkout."""
+        if self.runner_source is None:
+            return
+        destination = self.machine.flake / "runners"
+        pairs = [(self.runner_source, destination)] + [
+            (source, destination / source.relative_to(self.runner_source))
+            for source in self.runner_source.rglob("*")
+        ]
+        for source, target in pairs:
+            if target.is_symlink():
+                raise Refusal(f"Runner destination must not be a symlink: {target}")
+            if not target.exists():
+                continue
+            if source.is_dir():
+                matches = target.is_dir()
+            else:
+                matches = (
+                    target.is_file() and source.read_bytes() == target.read_bytes()
+                )
+            if not matches:
+                raise Refusal(
+                    f"Runner destination conflicts with public configuration: {target}"
+                )
+        for marker in self.runner_markers:
+            target = destination / marker
+            if target.is_symlink() or (
+                target.exists() and (not target.is_file() or target.stat().st_size != 0)
+            ):
+                raise Refusal(
+                    f"Runner destination directory marker conflicts: {target}"
+                )
 
     def uncommitted(self) -> bool:
         """Whether configuration.nix differs from the committed version."""
@@ -135,7 +264,18 @@ class Installer:
         checks = (
             (NAME.fullmatch(v["user"]), f"invalid user name: {v['user']}"),
             (NAME.fullmatch(v["hostname"]), f"invalid hostname: {v['hostname']}"),
-            (v["role"] in ("minimal", "workstation"), f"unknown role: {v['role']}"),
+            (
+                v["role"] in ("minimal", "workstation", "runner"),
+                f"unknown role: {v['role']}",
+            ),
+            (
+                v["role"] != "runner" or bool(self.runner_configs),
+                "runner role requires --runner-config FILE",
+            ),
+            (
+                not self.runner_configs or v["role"] == "runner",
+                "--runner-config requires --role runner",
+            ),
             (re.fullmatch(r"[A-Za-z0-9_+/-]+", v["timezone"]), "invalid time zone"),
             (re.fullmatch(r"[A-Za-z0-9_@.-]+", v["locale"]), "invalid locale"),
         )

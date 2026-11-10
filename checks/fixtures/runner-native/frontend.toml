@@ -1,0 +1,6 @@
+extends = "shared/common.toml"
+uid = 1001
+subordinate_id_start = 165536
+
+[runner]
+name = "Native frontend fixture"

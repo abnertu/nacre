@@ -1,0 +1,2 @@
+[gitlab]
+ca_certificate = "ca-link.crt"

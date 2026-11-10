@@ -57,6 +57,7 @@ let
         builtins.replaceStrings
           [
             "@role@"
+            "@runner@"
             "@hostname@"
             "@timezone@"
             "@locale@"
@@ -67,6 +68,7 @@ let
           ]
           [
             "workstation"
+            ""
             "box"
             "UTC"
             "en_US.UTF-8"

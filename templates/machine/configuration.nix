@@ -4,6 +4,7 @@
 { ... }:
 {
   role = "@role@";
+@runner@
   networking.hostname.name = "@hostname@";
   time.timeZone = "@timezone@";
   i18n = {

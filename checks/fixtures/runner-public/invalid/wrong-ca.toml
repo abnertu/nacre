@@ -1,0 +1,2 @@
+[gitlab]
+ca_certificate = ["../certs/inherited.crt"]

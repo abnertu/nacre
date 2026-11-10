@@ -7,6 +7,26 @@
 let
   python = pkgs.python3;
   version = lib.trim (builtins.readFile ../../../VERSION);
+  runnerPublicFiles = pkgs.writeText "nacre-runner-public-files.nix" ''
+    { root, configFilesJSON }:
+    let
+      lib = import ${pkgs.path + "/lib"};
+      public = import ${../../../modules/gitlab-runner/public-files.nix} {
+        inherit lib;
+        root = /. + root;
+        configFiles = builtins.fromJSON configFilesJSON;
+      };
+      relative = map (lib.removePrefix "''${public.source}/") public.configFiles;
+    in { capture = {
+      source = toString public.source;
+      declaration = "  services.gitlabRunner.configFiles = [\n"
+        + lib.concatMapStringsSep "\n"
+          (file: "    (./runners + "
+            + lib.replaceStrings [ "\r" ] [ "\\r" ] (lib.generators.toPretty { multiline = false; } ("/" + file))
+            + ")") relative
+        + "\n  ];";
+    }; }
+  '';
 
   # The nacre package, with the version and the machine template substituted.
   package = python.pkgs.toPythonModule (
@@ -16,6 +36,7 @@ let
       cp ${./nacre}/*.py "$package/"
       substituteInPlace "$package/cli.py" --subst-var-by version ${lib.escapeShellArg version}
       substituteInPlace "$package/install.py" --subst-var-by templates ${../../../templates/machine}
+      substituteInPlace "$package/install.py" --subst-var-by runner-public-files ${runnerPublicFiles}
     ''
   );
   environment = python.withPackages (_: [ package ]);

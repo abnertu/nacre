@@ -2,17 +2,22 @@
 """Run the built nacre command against fake nix, sudo and Home Manager state."""
 
 import datetime
+import json
 import os
 import pwd
 import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
 PACKAGE_SOURCE = Path(sys.argv.pop())
 NACRE = sys.argv.pop()
+NIX = shutil.which("nix") or ""
+if not NIX:
+    raise RuntimeError("nix is required for installer fixtures")
 
 
 class NacreTests(unittest.TestCase):
@@ -36,6 +41,13 @@ class NacreTests(unittest.TestCase):
         self.script(
             bin_dir / "nix",
             f'echo "nix $*" >> {self.calls}\n'
+            'if [[ " $* " == *" eval "* && -n ${NACRE_TEST_STORE:-} ]]; then\n'
+            f'  exec {NIX} --store "$NACRE_TEST_STORE" "$@"\n'
+            "fi\n"
+            'if [[ -n ${NACRE_TEST_TRACKED:-} && " $* " == *" build "* ]]; then\n'
+            '  git -C "$NACRE_TEST_TRACKED" ls-files --error-unmatch -- runners/frontend.toml '
+            "runners/base.toml runners/ca/public.crt > /dev/null || exit 91\n"
+            "fi\n"
             '[[ -z ${NIX_STATUS:-} ]] || exit "$NIX_STATUS"\n'
             f'[[ " $* " != *" --print-out-paths "* ]] || echo {self.root / "artifact"}',
         )
@@ -352,11 +364,222 @@ class NacreTests(unittest.TestCase):
             ["deploy --plan"],
         )
 
+    def runner_install(self):
+        env = self.prepare_install()
+        source = self.root / "public"
+        source.mkdir()
+        (source / "ca").mkdir()
+        (source / "ca/public.crt").write_text("synthetic public certificate\n")
+        (source / "lookup").mkdir()
+        (source / "base.toml").write_text(
+            '[gitlab]\nca_certificate = "ca/public.crt"\n'
+        )
+        (source / "frontend.toml").write_text('extends = "lookup/../base.toml"\n')
+        controls = "".join(chr(value) for value in range(1, 32))
+        nested = source / (
+            'nested ${1+1} "quoted" \\ [ab]*? Unicode 台 control' + controls
+        )
+        nested.mkdir()
+        (nested / "dotnet.toml").write_text('extends = "../base.toml"\n')
+        # Unselected files must never enter the captured source or checkout.
+        (source / "unselected.txt").write_text("synthetic excluded payload\n")
+        selected = [source / "frontend.toml", nested / "dotnet.toml"]
+        env |= {
+            "NACRE_TEST_STORE": f"local?store={self.root}/store&state={self.root}/state&log={self.root}/log",
+            "NIX_CONFIG": "experimental-features = nix-command flakes\n",
+        }
+        args = ["install", "--role", "runner"]
+        for file in selected:
+            args += ["--runner-config", str(file)]
+        return source, selected, args, env
+
+    def test_runner_install_captures_public_files_before_building(self):
+        source, selected, args, env = self.runner_install()
+        for machine in (self.root / "fresh", self.flake):
+            with self.subTest(machine=machine):
+                result = self.run_nacre(
+                    "--flake",
+                    str(machine),
+                    *args,
+                    NACRE_TEST_TRACKED=str(machine),
+                    **env,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                expected = [
+                    Path("frontend.toml"),
+                    selected[1].relative_to(source),
+                    Path("base.toml"),
+                    Path("ca/public.crt"),
+                ]
+                actual = sorted(
+                    p.relative_to(machine / "runners")
+                    for p in (machine / "runners").rglob("*")
+                    if p.is_file()
+                )
+                self.assertEqual(
+                    actual, sorted([*expected, Path("lookup/.nix-config-directory")])
+                )
+                self.assertTrue((machine / "runners/lookup").is_dir())
+                for file in expected:
+                    self.assertEqual(
+                        (machine / "runners" / file).read_bytes(),
+                        (source / file).read_bytes(),
+                    )
+                evaluated = subprocess.run(
+                    [
+                        NIX,
+                        "--store",
+                        env["NACRE_TEST_STORE"],
+                        "eval",
+                        "--impure",
+                        "--json",
+                        "--expr",
+                        f'let source = builtins.fetchGit {{ url = "{machine}"; }}; in '
+                        'builtins.map toString ((import (source + "/configuration.nix") {}).services.gitlabRunner.configFiles)',
+                    ],
+                    env=self.env | env,
+                    text=True,
+                    capture_output=True,
+                )
+                self.assertEqual(evaluated.returncode, 0, evaluated.stderr)
+                snapshot_paths = json.loads(evaluated.stdout)
+                snapshot = Path(snapshot_paths[0]).parent
+                self.assertEqual(
+                    [str(Path(p).relative_to(snapshot)) for p in snapshot_paths],
+                    [str(file.relative_to(source)) for file in selected],
+                )
+                # A Git-filtered closure must still pass the real packaged capture helper.
+                roundtrip_args = [
+                    "--flake",
+                    str(self.root / (machine.name + "-roundtrip")),
+                    "install",
+                    "--role",
+                    "runner",
+                ]
+                for copied in snapshot_paths:
+                    roundtrip_args += ["--runner-config", copied]
+                roundtrip = self.run_nacre(*roundtrip_args, **env)
+                self.assertEqual(roundtrip.returncode, 0, roundtrip.stderr)
+                for copied in snapshot_paths:
+                    path = Path(copied)
+                    base = path.parent / tomllib.loads(path.read_text())["extends"]
+                    certificate = (
+                        base.parent
+                        / tomllib.loads(base.read_text())["gitlab"]["ca_certificate"]
+                    )
+                    self.assertEqual(
+                        certificate.read_text(), "synthetic public certificate\n"
+                    )
+                self.assertEqual(
+                    [c for c in self.recorded() if c.startswith("deploy")],
+                    ["deploy --plan", "deploy --plan"],
+                )
+                self.calls.unlink()
+
+    def test_runner_install_rejects_invalid_sources_before_writing(self):
+        source, _, args, env = self.runner_install()
+        original = (self.flake / "configuration.nix").read_bytes()
+        file = source / "frontend.toml"
+        outside = self.root / "outside.toml"
+        outside.write_text("# synthetic outside source\n")
+        (source / "link.toml").symlink_to(outside)
+        for contents in (
+            "[invalid TOML",
+            'extends = "missing.toml"',
+            'extends = "../outside.toml"',
+            'extends = "link.toml"',
+        ):
+            with self.subTest(contents=contents):
+                file.write_text(contents)
+                result = self.run_nacre(*args, "--yes", **env)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(
+                    (self.flake / "configuration.nix").read_bytes(), original
+                )
+                self.assertFalse((self.flake / "runners").exists())
+                self.assertFalse(
+                    any(
+                        c.startswith("deploy") or " build " in c
+                        for c in self.recorded()
+                    )
+                )
+
+    def test_runner_install_stages_only_literal_public_paths(self):
+        source, _, args, env = self.runner_install()
+        selected = source / "glob*/dotnet.toml"
+        selected.parent.mkdir()
+        selected.write_text('extends = "../base.toml"\n')
+        args[-1] = str(selected)
+        unrelated = self.flake / "runners/glob-foreign/dotnet.toml"
+        unrelated.parent.mkdir(parents=True)
+        unrelated.write_text("# unrelated synthetic policy\n")
+        result = self.run_nacre(*args, **env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        tracked = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(self.flake),
+                "ls-files",
+                "--error-unmatch",
+                "--",
+                "runners/glob-foreign/dotnet.toml",
+            ],
+            capture_output=True,
+        )
+        self.assertNotEqual(tracked.returncode, 0)
+        self.assertEqual(unrelated.read_text(), "# unrelated synthetic policy\n")
+
+    def test_runner_install_preserves_identical_files_and_rejects_conflicts(self):
+        source, _, args, env = self.runner_install()
+        destination = self.flake / "runners"
+        destination.mkdir()
+        target = destination / "frontend.toml"
+        target.write_bytes((source / "frontend.toml").read_bytes())
+        os.utime(target, ns=(123456789, 123456789))
+        before = target.stat()
+        result = self.run_nacre(*args, **env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            (target.stat().st_ino, target.stat().st_mtime_ns),
+            (before.st_ino, before.st_mtime_ns),
+        )
+        original = (self.flake / "configuration.nix").read_bytes()
+        for target in (
+            destination / "frontend.toml",
+            destination / "lookup/.nix-config-directory",
+        ):
+            saved = target.read_bytes()
+            for conflict in ("different content", "symlink"):
+                with self.subTest(target=target.name, conflict=conflict):
+                    target.unlink()
+                    if conflict == "symlink":
+                        target.symlink_to(source / "frontend.toml")
+                    else:
+                        target.write_text(conflict)
+                    self.calls.unlink(missing_ok=True)
+                    result = self.run_nacre(*args, "--force", "--yes", **env)
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    self.assertIn("Runner destination", result.stderr)
+                    self.assertEqual(
+                        (self.flake / "configuration.nix").read_bytes(), original
+                    )
+                    self.assertFalse(
+                        any(
+                            c.startswith("deploy") or " build " in c
+                            for c in self.recorded()
+                        )
+                    )
+            target.unlink()
+            target.write_bytes(saved)
+
     def test_install_refuses_before_writing(self):
         cases = (
             ({}, ("--user", "bob")),
             ({}, ("--hostname", "Bad.Name")),
             ({"wheel": "someone"}, ()),
+            ({}, ("--role", "runner")),
+            ({}, ("--runner-config", "/synthetic/frontend.toml")),
         )
         for setup, args in cases:
             with self.subTest(args=args, setup=setup):

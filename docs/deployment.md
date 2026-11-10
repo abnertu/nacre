@@ -46,6 +46,9 @@ Deployment does these steps:
 
 If home activation fails, the Arch changes stay.
 
+Enabled [GitLab Runner](gitlab-runner.md) instances reconcile after core convergence and before Home Manager activation.
+Their preflight does not require registration. Controller errors stop deployment; they never become preparation skips.
+
 A module can skip as `not ready` only before its preparation has ever completed. Nacre does not touch the files and services of a skipped module. Each of these conditions stops the run:
 
 - Invalid receipts.
@@ -86,6 +89,18 @@ Extension purge hooks run in extension-name order before built-in retirement. A 
 The test disables hardware and kernel features that the container cannot use.
 
 Pacman and yay caches persist in the `nacre-container-pacman` and `nacre-container-yay` volumes. `--keep` keeps the test container. The Test Deployment Lifecycle workflow runs on deployment changes to `main`, each week and on request.
+
+## Native Runner test
+
+The [Runner VM fixture](../modules/gitlab-runner/tests/native-vm.nix) exercises real accounts, subordinate allocations, user services, sockets and rootless containers.
+It uses local HTTPS health and a deterministic image containing the locked Nixpkgs Runner binary.
+Its TLS private key exists only inside the disposable guest.
+
+The fixture simulates Arch package inventories, unrelated adapters and home activation inside a NixOS VM.
+It does not verify Arch package installation, official image contents, registration or GitLab jobs.
+`just check` requires this native lifecycle test with the published controller from the lock file.
+The Validate Deployment workflow runs the same check set and requires KVM access.
+Missing KVM access fails validation.
 
 ## Progress and diagnostics
 

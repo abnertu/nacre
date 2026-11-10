@@ -23,6 +23,8 @@ nix eval --json .#lib.configuration.networking.firewall
 
 `minimal` supplies the core system, shell and development tools. `workstation`, the default, adds Hyprland, Sunshine, Vesktop and Vicinae. Role baselines yield to machine defaults and ordinary overrides.
 
+`runner` enables GitLab Runner and Podman, with desktop and KVM tools disabled. Declare public instance files before building this role. Read the [Runner guide](gitlab-runner.md#runner-role) for installation.
+
 A deployment has the name `<hostname>-<role>`. It is also available as `#deployment`.
 
 ## Options
@@ -50,6 +52,7 @@ Kernel defaults support container networking. You can change them in these ways:
 - Replace the module list with `lib.mkForce`.
 
 Read [local AI](ai.md) before you select models, offload or context under `programs.ai.llama.models`.
+Read [GitLab Runner](gitlab-runner.md) before you declare instances under `services.gitlabRunner`.
 
 ## Users and homes
 

@@ -6,6 +6,16 @@ let
   roles = {
     # The option defaults: core system, shell and development tools.
     minimal = { };
+    runner = {
+      services.gitlabRunner.enable = true;
+      desktop.enable = false;
+      virtualization = {
+        enable = true;
+        podman.enable = true;
+        kvm.enable = false;
+        kvm.gui.enable = false;
+      };
+    };
     workstation = {
       desktop.enable = true;
       programs = {
@@ -20,7 +30,7 @@ in
   options.role = lib.mkOption {
     type = lib.types.enum (builtins.attrNames roles);
     default = "workstation";
-    description = "Baseline composition: minimal (no graphical session) or workstation.";
+    description = "Baseline composition: minimal, runner (rootless GitLab Runner), or workstation.";
   };
   config = lib.mkMerge (
     lib.mapAttrsToList (name: values: lib.mkIf (config.role == name) (baseline values)) roles

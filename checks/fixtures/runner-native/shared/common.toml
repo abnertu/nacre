@@ -1,0 +1,12 @@
+provider = "gitlab"
+
+[gitlab]
+url = "https://localhost:8443"
+health_url = "https://localhost:8443/health"
+
+[runner]
+cpus = "1"
+memory = "512m"
+shm_size_bytes = 67108864
+default_job_image = "docker.io/library/alpine:3.22"
+allowed_images = ["docker.io/library/alpine:*"]

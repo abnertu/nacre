@@ -29,6 +29,12 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
+            system-features = nixos-test benchmark big-parallel kvm
+
+      - name: Enable KVM for Native Runner Checks
+        run: |
+          test -c /dev/kvm
+          sudo chmod 0666 /dev/kvm
 
       - name: Run Flake Checks and Build Their Deployment Dependencies
         id: check

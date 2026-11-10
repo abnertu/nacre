@@ -1,0 +1,2 @@
+# Synthetic unselected fixture. Do not include this file in the public closure.
+provider = "gitlab"

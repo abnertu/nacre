@@ -47,7 +47,8 @@ _nacre() {
           _arguments \
             '--user[login account]:user:_users' \
             '--hostname[host name]:hostname:' \
-            '--role[baseline role]:role:(minimal workstation)' \
+            '--role[baseline role]:role:(minimal workstation runner)' \
+            '*--runner-config[public Runner instance file]:file:_files' \
             '--timezone[time zone]:zone:_time_zone' \
             '--locale[locale]:locale:_locales' \
             '--yes[apply without asking]' \

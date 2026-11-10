@@ -16,6 +16,28 @@
         "type": "github"
       }
     },
+    "gitlab-runner": {
+      "inputs": {
+        "nix-adapter": "nix-adapter",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1794272713,
+        "narHash": "sha256-sfBsK6aaAGiLhz/pTAZ9cqG/H3P07IsLP8HGsCD9dJo=",
+        "owner": "abnertu",
+        "repo": "gitlab-runner",
+        "rev": "59d25676079911a1274419ca81524e2c18f93ba2",
+        "type": "github"
+      },
+      "original": {
+        "owner": "abnertu",
+        "ref": "v0.3.0",
+        "repo": "gitlab-runner",
+        "type": "github"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -70,6 +92,28 @@
       }
     },
     "nix-adapter": {
+      "inputs": {
+        "nixpkgs": [
+          "gitlab-runner",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1794017605,
+        "narHash": "sha256-ZanHWKLhCGw39yNjewkcg9kIfg0PDBgWwW+/QA0eQRc=",
+        "owner": "abnertu",
+        "repo": "nix-adapter",
+        "rev": "6aabd12dba72c83427d9a40bc368433eb8965d15",
+        "type": "github"
+      },
+      "original": {
+        "owner": "abnertu",
+        "ref": "v0.8.0",
+        "repo": "nix-adapter",
+        "type": "github"
+      }
+    },
+    "nix-adapter_2": {
       "inputs": {
         "nixpkgs": [
           "nixpkgs"
@@ -141,10 +185,11 @@
     "root": {
       "inputs": {
         "abnertu-skills": "abnertu-skills",
+        "gitlab-runner": "gitlab-runner",
         "home-manager": "home-manager",
         "hypr-config": "hypr-config",
         "matt-pocock-skills": "matt-pocock-skills",
-        "nix-adapter": "nix-adapter",
+        "nix-adapter": "nix-adapter_2",
         "nixpkgs": "nixpkgs",
         "nvim-config": "nvim-config",
         "obsidian-skills": "obsidian-skills",

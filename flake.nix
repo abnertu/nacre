@@ -43,6 +43,11 @@
       url = "github:abnertu/nix-adapter?ref=v0.7.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    gitlab-runner = {
+      url = "github:abnertu/gitlab-runner?ref=v0.3.0";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -61,6 +66,10 @@
         modules = [ fixture ];
       };
       inherit (d) lib pkgs system;
+      runnerFixture = import ./modules/gitlab-runner/tests/integration.nix {
+        inherit inputs pkgs;
+        inherit (d) adapterPython;
+      };
       # Disables hardware and kernel features a rootless container cannot provide.
       container = mkDeployment {
         inherit inputs;
@@ -111,6 +120,9 @@
 
       checks.${system} = {
         configuration = import ./checks/configuration.nix { inherit lib pkgs inputs; };
+        runner-public-files = import ./modules/gitlab-runner/tests/public-files.nix { inherit lib pkgs; };
+        runner-integration = runnerFixture.check;
+        runner-native = import ./modules/gitlab-runner/tests/native-vm.nix { inherit inputs; };
         capabilities = import ./checks/capabilities.nix { inherit lib pkgs inputs; };
         source-format = import ./checks/format.nix { inherit lib pkgs; };
         source-lint = import ./checks/lint.nix { inherit lib pkgs; };
@@ -134,6 +146,7 @@
         inherit pkgs;
         inherit (d) arch-switch llama-prepare adapterPython;
         extensionPurgeSwitch = extensionPurge.arch-switch;
+        runnerManifest = runnerFixture.enabled.packages.${system}.arch-switch.manifests.gitlab-runner;
       })
       // (import ./modules/home/checks.nix {
         inherit pkgs inputs;

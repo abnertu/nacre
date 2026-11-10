@@ -5,7 +5,7 @@ Nacre evaluates machine policy into a fixed deployment with the selected Home Ma
 | Boundary | Owner | Contract |
 | --- | --- | --- |
 | Public policy | `lib/configuration-options.nix`, `modules/*/module.nix` | Typed options, defaults, assertions and native contributions |
-| Role | `roles/` | `minimal` and `workstation` baselines at priority 1100 |
+| Role | `roles/` | `minimal`, `runner` and `workstation` baselines at priority 1100 |
 | Machine | A separate flake based on `templates/machine/` | Identity, existing login accounts, hardware, features and personal home modules |
 | Platform | `platforms/arch/` | Native packages, files, accounts and privileged adapters |
 | Home | `profiles/`, `modules/home/` | Shared user packages, static configuration and user services |
@@ -20,6 +20,9 @@ Role definitions at priority 1100 yield to machine `lib.mkDefault` baselines at 
 ## Static policy and live convergence
 
 Nix generates home files, units, drop-ins, routing and Caddy configuration. Native adapters handle ownership, safe file adoption, accounts, locks, pending markers, package operations, service state and recovery. Machine-owned adapters join through `arch.extensions`.
+
+The [Runner feature](docs/gitlab-runner.md) also contributes through `arch.extensions`.
+Its configured controller owns native instance state. Operator outputs remain available independently of deployment enablement.
 
 Home Manager projects static files into the home. Arch adapters copy or merge native files with native ownership. Prepared llama.cpp binaries and GGUF models stay outside the store.
 

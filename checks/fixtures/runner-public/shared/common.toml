@@ -1,0 +1,6 @@
+provider = "gitlab"
+
+[gitlab]
+url = "https://gitlab.example"
+health_url = "https://gitlab.example/users/sign_in"
+ca_certificate = "../certs/inherited.crt"

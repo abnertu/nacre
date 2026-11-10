@@ -26,7 +26,7 @@ Installation asks for the user, hostname, role, time zone and locale. Then it do
 
 1. Detects AMD graphics and initramfs images.
 2. Writes the [machine template](../templates/machine/configuration.nix) and a flake that follows Nacre into `~/.config/nacre`.
-3. Commits the generated files, so that Nix can see them.
+3. Stages the generated files, so that Nix can see them.
 
 To choose another checkout, use `--flake PATH`.
 
@@ -38,6 +38,18 @@ nix run github:abnertu/nacre#nacre -- install --user alice --hostname box \
 ```
 
 Without a terminal or `--yes`, installation stops after the plan. In an existing flake, installation protects uncommitted `configuration.nix` changes, unless you pass `--force`.
+
+For the `runner` role, select at least one public instance file with `--runner-config FILE`. Repeat that flag for each instance:
+
+```bash
+nacre install --user alice --hostname runner-host --role runner \
+  --runner-config ./public/frontend.toml --runner-config ./public/dotnet.toml
+```
+
+The flag requires the `runner` role. Installation copies the selected public dependency closure into `runners/` and stages its files before building the plan.
+It preserves identical destination files. Conflicting files or symlinks stop installation, including with `--force`.
+Empty `.nix-config-directory` markers preserve required empty lookup directories in Git.
+Keep files within the first instance's directory. Read [Runner configuration](gitlab-runner.md#public-configuration) before selecting files.
 
 ## Restore an existing machine
 

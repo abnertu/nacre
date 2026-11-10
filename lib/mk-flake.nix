@@ -11,7 +11,7 @@
 }:
 let
   d = import ./mk-deployment.nix { inherit inputs modules; };
-  inherit (d) lib system;
+  inherit (d) lib pkgs system;
   app = package: description: {
     type = "app";
     program = lib.getExe package;
@@ -38,7 +38,8 @@ lib.recursiveUpdate extraOutputs {
     ${d.deploymentName} = d.deployment;
     default = d.nacre;
   }
-  // lib.optionalAttrs d.noctaliaEnabled { inherit (d) noctalia-config; };
+  // lib.optionalAttrs d.noctaliaEnabled { inherit (d) noctalia-config; }
+  // lib.optionalAttrs d.runnerDeclared { inherit (d) runnerctl; };
 
   apps.${system} = {
     nacre = app d.nacre "Install, plan, switch and inspect this machine";
@@ -50,5 +51,14 @@ lib.recursiveUpdate extraOutputs {
   }
   // lib.optionalAttrs d.noctaliaEnabled {
     noctalia-config = app d.noctalia-config "Capture or deploy reviewed Noctalia preferences";
+  }
+  // lib.optionalAttrs d.runnerDeclared {
+    runnerctl = app d.runnerctl "Manage the declared GitLab Runner instances";
+  };
+
+  checks.${system} = lib.optionalAttrs d.runnerDeclared {
+    gitlab-runner-config = pkgs.runCommand "gitlab-runner-config" { } ''
+      ${d.runnerctl}/bin/runnerctl validate > "$out"
+    '';
   };
 }

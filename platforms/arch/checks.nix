@@ -4,6 +4,7 @@
   pkgs,
   arch-switch,
   extensionPurgeSwitch,
+  runnerManifest,
   llama-prepare,
   adapterPython ? pkgs.python3,
   ...
@@ -30,9 +31,10 @@
             ("${./core}", "CoreManifest", "${arch-switch.manifests.core}"),
             ("${./system}", "SystemManifest", "${arch-switch.manifests.system}"),
             ("${./ai}", "AIManifest", "${arch-switch.manifests.ai}"),
+            ("${../../modules/gitlab-runner}", "Manifest", "${runnerManifest}"),
         ):
             data = json.load(open(manifest))
-            module = load(directory + "/schema.py", schema)
+            module = load(directory + ("/adapter.py" if schema == "Manifest" else "/schema.py"), schema)
             if schema == "AIManifest" and not data["llama"]:
                 schema = "Unmanaged"
             validate(getattr(module, schema), data, manifest)

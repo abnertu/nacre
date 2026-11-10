@@ -1,0 +1,6 @@
+extends = "shared/common.toml"
+uid = 1002
+subordinate_id_start = 231072
+
+[runner]
+name = "Native dotnet fixture"

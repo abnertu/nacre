@@ -24,7 +24,8 @@ usage: nacre [--flake PATH] [--override-input INPUT REF]... [--verbose] <command
 
 Setup
   install [OPTIONS]        write configuration.nix for this machine, then plan and update
-                           --user NAME --hostname NAME --role minimal|workstation
+                           --user NAME --hostname NAME --role minimal|workstation|runner
+                           --runner-config FILE (repeat for each runner instance)
                            --timezone ZONE --locale LOCALE --yes --force
 
 Deployment

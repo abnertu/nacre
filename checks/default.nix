@@ -33,6 +33,7 @@
           pkgs.bash
           pkgs.git
           pkgs.zsh
+          pkgs.nix
         ];
       }
       ''

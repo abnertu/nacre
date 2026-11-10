@@ -30,9 +30,13 @@ _nacre() {
   case $command in
     install)
       case $prev in
-        --role) words='minimal workstation' ;;
+        --role) words='minimal workstation runner' ;;
+        --runner-config)
+          compopt -o filenames
+          mapfile -t COMPREPLY < <(compgen -f -- "$cur")
+          return ;;
         --user | --hostname | --timezone | --locale) return ;;
-        *) words='--user --hostname --role --timezone --locale --yes --force' ;;
+        *) words='--user --hostname --role --runner-config --timezone --locale --yes --force' ;;
       esac
       ;;
     changes) ((position == 0)) && words='--since' ;;

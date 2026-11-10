@@ -9,6 +9,16 @@ in
 {
   assertions = [
     {
+      assertion = !config.services.gitlabRunner.enable || config.services.gitlabRunner.configFiles != [ ];
+      message = "services.gitlabRunner.enable requires at least one public instance file";
+    }
+    {
+      assertion =
+        !config.services.gitlabRunner.enable
+        || (config.virtualization.enable && config.virtualization.podman.enable);
+      message = "services.gitlabRunner.enable requires virtualization.enable and virtualization.podman.enable";
+    }
+    {
       assertion = lib.all (name: builtins.match "[a-z][a-z0-9_-]*" name != null) (
         builtins.attrNames users
       );

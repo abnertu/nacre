@@ -39,7 +39,7 @@ A routine `switch` installs no packages. To update Nacre itself, in the machine 
 
 ## Configuration
 
-The machine's `configuration.nix` selects a `minimal` or `workstation` role and overrides its baseline:
+The machine's `configuration.nix` selects a `minimal`, `runner` or `workstation` role and overrides its baseline:
 
 ```nix
 role = "workstation";
@@ -48,6 +48,8 @@ users.users.alice.home.programs.git.settings.init.defaultBranch = "main";
 ```
 
 The workstation role adds Hyprland through UWSM, Noctalia and shared desktop configuration. Optional features include local AI, virtualization, a NetworkManager hotspot and machine-owned adapters. The [fixture machine](checks/fixtures/configuration.nix) demonstrates the full configuration.
+
+The [Runner role](docs/gitlab-runner.md#runner-role) enables rootless GitLab Runner instances and Podman without desktop or KVM tools.
 
 ## Ownership
 
@@ -72,6 +74,7 @@ The machine flake supplies identity, existing login accounts, hardware, optional
 | [Noctalia](docs/noctalia-config.md) | Review, capture and deploy UI preferences |
 | [Hotspot](docs/hotspot.md) | Adopt an existing AP connection |
 | [Local AI](docs/ai.md) | Prepare models and serve loopback APIs |
+| [GitLab Runner](docs/gitlab-runner.md) | Declare Runner instances and manage their deployment boundary |
 | [Backup](docs/backup.md) | Preserve state outside the flake |
 
 [CONTEXT.md](CONTEXT.md) explains composition. [CHANGELOG.md](CHANGELOG.md) records releases.
