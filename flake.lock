@@ -3,11 +3,11 @@
     "abnertu-skills": {
       "flake": false,
       "locked": {
-        "lastModified": 1793300429,
-        "narHash": "sha256-/rD8KoBjXKrvTmYgfOTEZpWfPJKw5LudJ4RbjXm1XJw=",
+        "lastModified": 1794318118,
+        "narHash": "sha256-2HaAL5+vfQTsqCdO9d88jJCHemuR13MmA5OmbbWiJXU=",
         "owner": "abnertu",
         "repo": "skills",
-        "rev": "a27ed07af44c4ca8539a00d09824170108b6f877",
+        "rev": "608691c15347712ffe27d52bfcab21d947788581",
         "type": "github"
       },
       "original": {
