@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime
 import re
 
-from .common import ROOT, Refusal, parse_time, pending_work, revision
+from .common import ROOT, Refusal, parse_time, pending_work, revision, styled
 from .generations import current_generation
 from .machine import Machine, record_path
 
@@ -20,20 +20,28 @@ ACTIONS = ("upgraded", "downgraded", "installed", "reinstalled", "removed")
 
 def status(machine: Machine) -> int:
     """Print the checkout, the last switch, the home generation and pending work."""
-    print(f"Checkout     {machine.flake} ({revision(machine.flake)})")
+    print(
+        styled("Checkout     ", "1;36") + f"{machine.flake} ({revision(machine.flake)})"
+    )
     record = record_path("last-switch")
     if record.is_file():
         when, switched, *_ = record.read_text().split()
-        print(f"Last switch  {when} from {switched}")
+        print(styled("Last switch  ", "1;36") + f"{when} from {switched}")
     else:
-        print("Last switch  not recorded by nacre")
+        print(styled("Last switch  ", "1;36") + styled("not recorded by nacre", "33"))
     current = current_generation()
-    print(f"Home         generation {current if current is not None else ''}")
+    print(
+        styled("Home         ", "1;36")
+        + f"generation {current if current is not None else ''}"
+    )
     pending = pending_work()
     if pending:
-        print(f"Pending      {' '.join(pending)} (rerun the interrupted command)")
+        print(
+            styled("Pending      ", "1;36")
+            + styled(f"{' '.join(pending)} (rerun the interrupted command)", "33")
+        )
     else:
-        print("Pending      none")
+        print(styled("Pending      ", "1;36") + styled("none", "32"))
     return 0
 
 

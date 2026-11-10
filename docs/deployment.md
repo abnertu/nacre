@@ -22,6 +22,7 @@ nacre purge               # withdraw managed Arch state without home activation
 
 | Command | Behavior |
 | --- | --- |
+| `build` | Build without activation, then print the deployment artifact path. |
 | `status` | Show checkout revision, last recorded switch, active home and pending markers |
 | `doctor` | Report revision drift, pending work and missing kernel modules. Report failed or unstarted units, uncaptured Noctalia preferences and backup files beside managed home files. Exit 1 on findings. |
 | `changes [--since TIME]` | Read package changes from the pacman log since the start of the last update, or since an explicit ISO date/time |
@@ -103,6 +104,10 @@ The Validate workflow runs the same check set and requires KVM access.
 Missing KVM access fails validation.
 
 ## Progress and diagnostics
+
+Version, status, build results and CLI errors use colors on terminals.
+Redirected output, `NO_COLOR`, `TERM=dumb` and non-empty `CI` disable these colors.
+A successful cached build still prints its deployment artifact.
 
 Nix reports build progress. Deployment tracks running, finished, skipped and failed tasks. Deployment displays native tool output when necessary. Each of these selects plain logs: verbose mode, redirected stderr, `TERM=dumb`, a `NO_COLOR` value or a non-empty `CI`. Verbose mode reaches Nix, Home Manager and privileged adapters.
 

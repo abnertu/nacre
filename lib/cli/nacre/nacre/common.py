@@ -6,12 +6,26 @@ import datetime
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
+from typing import TextIO
 
 # Tests point this at a temporary root.
 ROOT = Path(os.environ.get("NACRE_ROOT") or "/")
 PENDING_DIR = ROOT / "var/lib/nix-config/arch"
 NAME = re.compile(r"[a-z][a-z0-9_-]*")
+
+
+def styled(text: str, code: str, *, stream: TextIO | None = None) -> str:
+    """Use native terminal colors while keeping redirected output plain."""
+    output = sys.stdout if stream is None else stream
+    enabled = (
+        output.isatty()
+        and os.environ.get("TERM", "dumb") != "dumb"
+        and "NO_COLOR" not in os.environ
+        and not os.environ.get("CI")
+    )
+    return f"\033[{code}m{text}\033[0m" if enabled else text
 
 
 class Usage(Exception):

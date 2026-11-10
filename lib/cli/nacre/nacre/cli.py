@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .common import Refusal, Usage, config_home, revision
+from .common import Refusal, Usage, config_home, revision, styled
 from .deploy import MODES, deploy
 from .doctor import doctor
 from .generations import list_generations, rollback
@@ -109,7 +109,7 @@ def run(argv: list[str]) -> int:
         return 0
     flake = find_flake(options.flake)
     if options.version:
-        print(f"nacre {VERSION} ({revision(flake or Path('.'))})")
+        print(styled(f"nacre {VERSION}", "1;36") + f" ({revision(flake or Path('.'))})")
         return 0
     if not argv:
         raise Usage
@@ -153,7 +153,13 @@ def check(machine: Machine) -> int:
 
 def build(machine: Machine) -> int:
     """Build the deployment without activating it."""
-    machine.nix("build", "--no-link", machine.target("deployment"))
+    result, artifact = machine.build_deployment()
+    if result:
+        return result
+    if not artifact:
+        raise Refusal("build returned no deployment path")
+    print(styled("Built deployment", "1;32") + f"\n{artifact}")
+    return 0
 
 
 def changes_command(_: Machine, args: list[str]) -> int:
@@ -215,10 +221,15 @@ def main() -> int:
         print(USAGE, end="", file=sys.stderr)
         return 2
     except Refusal as error:
-        print(f"nacre: {error}", file=sys.stderr)
+        print(styled(f"nacre: {error}", "1;31", stream=sys.stderr), file=sys.stderr)
         return 2
     except FileNotFoundError as error:
-        print(f"nacre: command not found: {error.filename}", file=sys.stderr)
+        print(
+            styled(
+                f"nacre: command not found: {error.filename}", "1;31", stream=sys.stderr
+            ),
+            file=sys.stderr,
+        )
         return 127
     except KeyboardInterrupt:
         return 130

@@ -2,9 +2,12 @@
 """Run the built nacre command against fake nix, sudo and Home Manager state."""
 
 import datetime
+import errno
 import json
 import os
+import pty
 import pwd
+import re
 import shutil
 import subprocess
 import sys
@@ -69,6 +72,67 @@ class NacreTests(unittest.TestCase):
 
     def recorded(self):
         return self.calls.read_text().splitlines() if self.calls.exists() else []
+
+    def run_nacre_tty(self, *args, **env):
+        master, slave = pty.openpty()
+        try:
+            result = subprocess.run(
+                [NACRE, *args],
+                env=(self.env | env),
+                stdin=subprocess.DEVNULL,
+                stdout=slave,
+                stderr=slave,
+                timeout=10,
+            )
+        finally:
+            os.close(slave)
+        output = bytearray()
+        try:
+            while True:
+                try:
+                    chunk = os.read(master, 65536)
+                except OSError as error:
+                    if error.errno != errno.EIO:
+                        raise
+                    break
+                if not chunk:
+                    break
+                output.extend(chunk)
+        finally:
+            os.close(master)
+        return result.returncode, output.decode().replace("\r\n", "\n")
+
+    def test_cached_build_reports_artifact_only_after_success(self):
+        result = self.run_nacre("build")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(str(self.root / "artifact"), result.stdout)
+        failed = self.run_nacre("build", NIX_STATUS="7")
+        self.assertEqual(failed.returncode, 7)
+        self.assertEqual(failed.stdout, "")
+        self.assertFalse(any(call.startswith("deploy") for call in self.recorded()))
+
+    def test_native_output_colors_follow_terminal_policy(self):
+        self.env.pop("NO_COLOR")
+        self.env["TERM"] = "xterm-256color"
+        self.env["NACRE_ROOT"] = str(self.root)
+        for args in (
+            ("--version",),
+            ("status",),
+            ("build",),
+            ("--flake", str(self.root), "build"),
+        ):
+            with self.subTest(args=args):
+                plain = self.run_nacre(*args)
+                expected = plain.stdout + plain.stderr
+                code, colored = self.run_nacre_tty(*args)
+                self.assertEqual(code, plain.returncode)
+                self.assertIn("\033[", colored)
+                self.assertEqual(re.sub(r"\033\[[0-9;]*m", "", colored), expected)
+                self.assertNotIn("\033", expected)
+                for disabled in ({"NO_COLOR": ""}, {"TERM": "dumb"}, {"CI": "1"}):
+                    code, output = self.run_nacre_tty(*args, **disabled)
+                    self.assertEqual(code, plain.returncode)
+                    self.assertEqual(output, expected)
 
     def test_entrypoint_never_writes_bytecode_beside_its_package(self):
         package = self.root / "nacre"
