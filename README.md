@@ -61,7 +61,7 @@ The machine flake supplies identity, existing login accounts, hardware, optional
 | Native files, packages, accounts and services | Arch adapters using [nix-adapter](https://github.com/abnertu/nix-adapter) |
 | User configuration and services | Home Manager |
 | Hyprland startup | UWSM |
-| Hyprland and Neovim sources | Pinned [Hyprland](https://github.com/Orbit-Lua/hypr) and [Neovim](https://github.com/abnertu/orbit.nvim) inputs, or machine-selected sources |
+| Hyprland and Neovim sources | Pinned [Hyprland](https://github.com/abnertu/hypr) and [Neovim](https://github.com/abnertu/orbit.nvim) inputs, or machine-selected sources |
 | Credentials, mutable data and feature preparation | Operator |
 
 | Guide | Use it for |

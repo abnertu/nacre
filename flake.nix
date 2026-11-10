@@ -15,7 +15,7 @@
     };
 
     hypr-config = {
-      url = "github:Orbit-Lua/hypr";
+      url = "github:abnertu/hypr";
       flake = false;
     };
 
