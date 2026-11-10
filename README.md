@@ -10,6 +10,11 @@ Declarative configuration and deployment for existing Arch Linux and Hyprland ma
 
 ![Desktop preview](docs/assets/preview.png)
 
+![Current machine version, status and build](docs/assets/demo.gif)
+
+Recorded from the current machine. Personal identifiers are redacted; timing is edited for readability.
+See the [recording sources](docs/assets/demo/README.md).
+
 ## Install
 
 Start from Arch Linux `x86_64` with network access and an existing login account in `wheel`. Nacre does not install the base operating system.
