@@ -2,7 +2,7 @@
 
 Runner deployment is disabled by default. Public instance files expose a configured `#runnerctl` command even when deployment is disabled.
 
-Nacre pins [gitlab-runnerctl v0.3.0](https://github.com/abnertu/gitlab-runner/releases/tag/v0.3.0) for deployment and configured operator commands.
+Nacre pins [gitlab-runnerctl v0.4.0](https://github.com/abnertu/gitlab-runner/releases/tag/v0.4.0) for deployment and configured operator commands.
 
 ## Public configuration
 
@@ -96,6 +96,48 @@ Disabling the feature or removing declarations only withdraws management.
 Explicit `nacre purge` retires the currently declared Runner services and public policy through the controller.
 Purge keeps accounts, subordinate allocations, registrations, images, caches and mutable data.
 Stopping a managed service can remove its disposable manager container. Purge preserves stopped and unrelated containers.
+
+## Removal
+
+`remove` deletes an instance completely:
+
+- the GitLab runner;
+- the CA copies;
+- the subordinate allocations;
+- linger;
+- the account and its group;
+- the home.
+
+It runs as root and kills every process of the instance, including running containers.
+
+```bash
+sudo nix run .#runnerctl -- remove frontend
+sudo nix run .#runnerctl -- remove frontend --yes
+```
+
+The first command previews the removal and exits with status 1.
+Repeat the second command until it prints `removed` or `unchanged`.
+Use `--keep-gitlab` only after you confirm that the runner is gone in GitLab.
+The [controller guide](https://github.com/abnertu/gitlab-runner/tree/v0.4.0#usage) gives the removal order, refusals and retries.
+
+Delete the declaration only after `remove` prints `removed` or `unchanged`.
+`#runnerctl` knows only declared instances.
+Delete the declaration before the next `nacre switch` or `nacre update`.
+Otherwise deployment creates the account again.
+When you remove the last instance, set `services.gitlabRunner.enable = false`.
+Enabled deployment requires an instance file.
+
+To remove an instance without a declaration, restore the deleted declaration without deploying.
+
+1. Restore the instance file from Git history, with the same `uid` and `subordinate_id_start`.
+2. Restore its `extends` base, its relative CA files and its `services.gitlabRunner.configFiles` entry.
+3. Run `git add` on the restored files, so that Nix sees them.
+4. Run `remove` as above, without a deployment.
+5. Run `git rm -f` on only the files that the restore added.
+6. Delete the restored `configFiles` entry.
+
+Keep base files that other instances use.
+`nacre purge` keeps its contract and does not remove an instance.
 
 ## Migrating machine-owned integration
 

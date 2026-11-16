@@ -95,6 +95,9 @@ let
     runuser = "${pkgs.util-linux}/bin/runuser";
     loginctl = "${pkgs.systemd}/bin/loginctl";
     systemctl = "${pkgs.systemd}/bin/systemctl";
+    userdel = "${pkgs.shadow}/bin/userdel";
+    groupdel = "${pkgs.shadow}/bin/groupdel";
+    rm = "${pkgs.coreutils}/bin/rm";
   };
   setup = pkgs.writeText "native-runner-paths.json" (builtins.toJSON nativePaths);
 in

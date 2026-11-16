@@ -103,6 +103,7 @@ def run(machine: Any, setup: str, fixture: str, image: str, controller: str):
 
     machine.succeed(f"{fixture} preserve")
     purge(machine, user, deploy, activations)
+    remove(machine, user, controller)
 
 
 def check_instances(machine, user, controller):
@@ -219,9 +220,49 @@ def purge(machine, user, deploy, activations):
     assert calls.count("reconcile") >= 6 and calls.count("purge") == 4
 
 
-def container_states(machine, user):
+def remove(machine, user, controller):
+    # Removal ends the live processes of one instance and keeps the other instance.
+    (name, uid), kept = INSTANCES[0], INSTANCES[1:]
+    account = f"gitlab-runner-{name}"
+    linger = f"/var/lib/systemd/linger/{account}"
+    machine.succeed(f"test -f {linger}")
+    live = container_states(machine, user, INSTANCES[:1])
+    survivors = (
+        "getent passwd "
+        + " ".join(f"gitlab-runner-{other}" for other, _ in kept)
+        + "; grep -E '^("
+        + "|".join(f"gitlab-runner-{other}|{other_uid}" for other, other_uid in kept)
+        + "):' /etc/subuid /etc/subgid"
+    )
+    kept_before = (machine.succeed(survivors), container_states(machine, user, kept))
+    state = (
+        "sha256sum /etc/subuid /etc/subgid /etc/passwd /etc/group; "
+        "ls /var/lib/systemd/linger | sort"
+    )
+    before = machine.succeed(state)
+    status, preview = machine.execute(f"{controller} remove {name} 2>&1")
+    assert status == 1, preview
+    assert f"rerun with --yes to remove {name}" in preview
+    assert machine.succeed(state) == before, "removal preview changed host state"
+    assert container_states(machine, user, INSTANCES[:1]) == live, (
+        "removal preview changed a container"
+    )
+    for result in ("removed", "unchanged"):
+        output = machine.succeed(f"{controller} remove {name} --yes")
+        assert output.splitlines()[-1] == f"{name}: {result}", output
+    machine.fail(f"getent passwd {account}")
+    machine.fail(f"getent group {account}")
+    machine.succeed(f"test ! -e /home/{account} && test ! -e {linger}")
+    machine.fail(f"grep -E '^({account}|{uid}):' /etc/subuid /etc/subgid")
+    for other, _ in kept:
+        machine.succeed(f"test -d /home/gitlab-runner-{other}")
+    kept_after = (machine.succeed(survivors), container_states(machine, user, kept))
+    assert kept_after == kept_before, "removal changed another instance"
+
+
+def container_states(machine, user, instances=INSTANCES):
     states = []
-    for name, uid in INSTANCES:
+    for name, uid in instances:
         for container, running in (
             ("preserved-stopped", "false"),
             ("preserved-running", "true"),
