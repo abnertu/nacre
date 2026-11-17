@@ -100,6 +100,14 @@ def run(machine: Any, setup: str, fixture: str, image: str, controller: str):
             )
             + " | grep -Fx true"
         )
+        # Retirement refuses a unit that is still activating; wait for a stable state.
+        machine.wait_until_succeeds(
+            user(
+                instance,
+                instance_uid,
+                f"/usr/bin/systemctl --user is-active gitlab-runner-{instance}.service",
+            )
+        )
 
     machine.succeed(f"{fixture} preserve")
     purge(machine, user, deploy, activations)
