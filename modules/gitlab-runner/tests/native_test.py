@@ -226,6 +226,12 @@ def remove(machine, user, controller):
     account = f"gitlab-runner-{name}"
     linger = f"/var/lib/systemd/linger/{account}"
     machine.succeed(f"test -f {linger}")
+    start, count = map(
+        int,
+        machine.succeed(
+            f'awk -F: \'$1 == "{account}" || $1 == "{uid}" {{ print $2, $3 }}\' /etc/subuid'
+        ).split(),
+    )
     live = container_states(machine, user, INSTANCES[:1])
     survivors = (
         "getent passwd "
@@ -254,6 +260,15 @@ def remove(machine, user, controller):
     machine.fail(f"getent group {account}")
     machine.succeed(f"test ! -e /home/{account} && test ! -e {linger}")
     machine.fail(f"grep -E '^({account}|{uid}):' /etc/subuid /etc/subgid")
+    # Removal matches the real, effective, saved and filesystem UIDs; so does this check.
+    owners = {
+        int(owner)
+        for owner in machine.succeed("ps -e -o ruid=,euid=,suid=,fsuid=").split()
+    }
+    leftover = sorted(
+        owner for owner in owners if owner == uid or start <= owner < start + count
+    )
+    assert not leftover, f"removal left processes of UIDs {leftover}"
     for other, _ in kept:
         machine.succeed(f"test -d /home/gitlab-runner-{other}")
     kept_after = (machine.succeed(survivors), container_states(machine, user, kept))

@@ -2,7 +2,7 @@
 
 Runner deployment is disabled by default. Public instance files expose a configured `#runnerctl` command even when deployment is disabled.
 
-Nacre pins [gitlab-runnerctl v0.4.1](https://github.com/abnertu/gitlab-runner/releases/tag/v0.4.1) for deployment and configured operator commands.
+Nacre pins [gitlab-runnerctl v0.4.2](https://github.com/abnertu/gitlab-runnerctl/releases/tag/v0.4.2) for deployment and configured operator commands.
 
 ## Public configuration
 
@@ -17,7 +17,7 @@ services.gitlabRunner.configFiles = [
 
 Each filename identifies an instance. The first file's directory bounds all selected files, shared `extends` bases and relative CA certificates.
 Keep dependencies within that directory. Nacre copies only those public files and preserves their relative paths.
-Never declare tokens, registration files or private keys. Read the [controller configuration format](https://github.com/abnertu/gitlab-runner#configure) for public TOML fields.
+Never declare tokens, registration files or private keys. Read the [controller configuration format](https://github.com/abnertu/gitlab-runnerctl#configure) for public TOML fields.
 
 The configured package and app supply every declared file on every invocation. Flake checks validate the complete public configuration independently of deployment enablement.
 
@@ -116,14 +116,16 @@ sudo nix run .#runnerctl -- remove frontend --yes
 ```
 
 The first command previews the removal and exits with status 1.
-Repeat the second command until it prints `removed` or `unchanged`.
+If the second command fails, correct the cause that it reports.
+Then repeat it until it prints `removed` or `unchanged`.
 Use `--keep-gitlab` only after you confirm that the runner is gone in GitLab.
-The [controller guide](https://github.com/abnertu/gitlab-runner/tree/v0.4.1#usage) gives the removal order, refusals and retries.
+The [controller guide](https://github.com/abnertu/gitlab-runnerctl/tree/v0.4.2#usage) gives the removal order, refusals and retries.
 
 Delete the declaration only after `remove` prints `removed` or `unchanged`.
 `#runnerctl` knows only declared instances.
 Delete the declaration before the next `nacre switch` or `nacre update`.
 Otherwise deployment creates the account again.
+A manual `runnerctl reconcile` of a declared instance also creates the account again.
 When you remove the last instance, set `services.gitlabRunner.enable = false`.
 Enabled deployment requires an instance file.
 
