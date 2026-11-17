@@ -45,7 +45,7 @@
     };
 
     gitlab-runner = {
-      url = "github:abnertu/gitlab-runnerctl?ref=v0.4.2";
+      url = "github:abnertu/gitlab-runnerctl?ref=v0.4.3";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.nix-adapter.follows = "nix-adapter";
     };

@@ -2,7 +2,7 @@
 
 Runner deployment is disabled by default. Public instance files expose a configured `#runnerctl` command even when deployment is disabled.
 
-Nacre pins [gitlab-runnerctl v0.4.2](https://github.com/abnertu/gitlab-runnerctl/releases/tag/v0.4.2) for deployment and configured operator commands.
+Nacre pins [gitlab-runnerctl v0.4.3](https://github.com/abnertu/gitlab-runnerctl/releases/tag/v0.4.3) for deployment and configured operator commands.
 
 ## Public configuration
 
@@ -96,6 +96,8 @@ Disabling the feature or removing declarations only withdraws management.
 Explicit `nacre purge` retires the currently declared Runner services and public policy through the controller.
 Purge keeps accounts, subordinate allocations, registrations, images, caches and mutable data.
 Stopping a managed service can remove its disposable manager container. Purge preserves stopped and unrelated containers.
+Purge also stops a service that waits to restart after its manager exited.
+If it reports that the unit restarted or the manager still runs, run `nacre purge` again.
 
 ## Removal
 
@@ -119,7 +121,7 @@ The first command previews the removal and exits with status 1.
 If the second command fails, correct the cause that it reports.
 Then repeat it until it prints `removed` or `unchanged`.
 Use `--keep-gitlab` only after you confirm that the runner is gone in GitLab.
-The [controller guide](https://github.com/abnertu/gitlab-runnerctl/tree/v0.4.2#usage) gives the removal order, refusals and retries.
+The [controller guide](https://github.com/abnertu/gitlab-runnerctl/tree/v0.4.3#usage) gives the removal order, refusals and retries.
 
 Delete the declaration only after `remove` prints `removed` or `unchanged`.
 `#runnerctl` knows only declared instances.
