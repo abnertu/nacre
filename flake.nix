@@ -40,13 +40,14 @@
     };
 
     nix-adapter = {
-      url = "github:abnertu/nix-adapter?ref=v0.7.0";
+      url = "github:abnertu/nix-adapter?ref=v0.9.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     gitlab-runner = {
       url = "github:abnertu/gitlab-runner?ref=v0.4.1";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nix-adapter.follows = "nix-adapter";
     };
   };
 
