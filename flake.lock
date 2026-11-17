@@ -24,16 +24,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1794845288,
-        "narHash": "sha256-nKOCvKBNqrYqvmE8JF+bPRzfNxUdi3fYitHIEBDe8uc=",
+        "lastModified": 1794901105,
+        "narHash": "sha256-/X0YLNWtPqvHaxG8EZY5sLvZ3GMoqmC/f78R1SlZeuQ=",
         "owner": "abnertu",
         "repo": "gitlab-runner",
-        "rev": "12571c9d4f95fd67f373737bb766b0d5c8cc8e86",
+        "rev": "39b9fb5248310296facbb2a0f3d754c9a43ba3bf",
         "type": "github"
       },
       "original": {
         "owner": "abnertu",
-        "ref": "v0.4.0",
+        "ref": "v0.4.1",
         "repo": "gitlab-runner",
         "type": "github"
       }

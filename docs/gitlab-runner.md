@@ -2,7 +2,7 @@
 
 Runner deployment is disabled by default. Public instance files expose a configured `#runnerctl` command even when deployment is disabled.
 
-Nacre pins [gitlab-runnerctl v0.4.0](https://github.com/abnertu/gitlab-runner/releases/tag/v0.4.0) for deployment and configured operator commands.
+Nacre pins [gitlab-runnerctl v0.4.1](https://github.com/abnertu/gitlab-runner/releases/tag/v0.4.1) for deployment and configured operator commands.
 
 ## Public configuration
 
@@ -118,7 +118,7 @@ sudo nix run .#runnerctl -- remove frontend --yes
 The first command previews the removal and exits with status 1.
 Repeat the second command until it prints `removed` or `unchanged`.
 Use `--keep-gitlab` only after you confirm that the runner is gone in GitLab.
-The [controller guide](https://github.com/abnertu/gitlab-runner/tree/v0.4.0#usage) gives the removal order, refusals and retries.
+The [controller guide](https://github.com/abnertu/gitlab-runner/tree/v0.4.1#usage) gives the removal order, refusals and retries.
 
 Delete the declaration only after `remove` prints `removed` or `unchanged`.
 `#runnerctl` knows only declared instances.
