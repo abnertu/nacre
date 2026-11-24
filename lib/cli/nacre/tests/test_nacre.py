@@ -849,6 +849,93 @@ class NacreTests(unittest.TestCase):
                 )
                 self.assertEqual(self.recorded(), [])
 
+    def machine_repository(self):
+        """A bare machine repository whose flake pins Nacre v0.9.0."""
+        work = self.root / "machine-work"
+        work.mkdir()
+        (work / "flake.nix").write_text(
+            '{ inputs.nacre.url = "github:abnertu/nacre/v0.9.0"; outputs = _: { }; }\n'
+        )
+        (work / "flake.lock").write_text(self.lock("a" * 40, "v0.9.0"))
+        (work / "configuration.nix").write_text("# restored machine\n")
+        identity = ["-c", "user.name=t", "-c", "user.email=t@t"]
+        for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "machine"]):
+            subprocess.run(["git", "-C", str(work), *identity, *args], check=True)
+        bare = self.root / "machine.git"
+        subprocess.run(
+            ["git", "clone", "-q", "--bare", str(work), str(bare)], check=True
+        )
+        return str(bare)
+
+    def test_install_from_a_repository_clones_upgrades_and_updates(self):
+        env = self.prepare_install()
+        remote, _ = self.release_remote("v0.9.0", "v0.10.0")
+        env["NACRE_TEST_RELEASE_REMOTE"] = remote
+        machine = self.root / "restored"
+        result = self.run_nacre(
+            "--dir",
+            str(machine),
+            "install",
+            "--repo",
+            self.machine_repository(),
+            "--yes",
+            **env,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((machine / ".git").is_dir())
+        self.assertIn("/v0.10.0", (machine / "flake.nix").read_text())
+        self.assertEqual(
+            (machine / "configuration.nix").read_text(), "# restored machine\n"
+        )
+        self.assertEqual(len(self.updates()), 1)
+        self.assertEqual(self.deploys(), ["deploy --plan", "deploy --update"])
+
+    def test_install_from_a_repository_refuses_before_writing(self):
+        env = self.prepare_install()
+        remote, _ = self.release_remote("v0.9.0", "v0.10.0")
+        env["NACRE_TEST_RELEASE_REMOTE"] = remote
+        repository = self.machine_repository()
+        occupied = self.root / "occupied"
+        occupied.mkdir()
+        (occupied / "notes").write_text("keep\n")
+        for machine, args, extra in (
+            (occupied, ("--repo", repository), {}),
+            (self.root / "fresh", ("--repo", repository, "--role", "minimal"), {}),
+            (
+                self.root / "fresh",
+                ("--repo", repository),
+                {"NACRE_TEST_RELEASE_REMOTE": str(self.root / "absent")},
+            ),
+            (
+                self.root / "fresh",
+                (),
+                {
+                    "NACRE_TEST_RELEASE_REMOTE": str(self.root / "absent"),
+                    "NACRE_TEST_REVISION": "b" * 40,
+                },
+            ),
+        ):
+            with self.subTest(machine=machine.name, args=args, extra=sorted(extra)):
+                result = self.run_nacre(
+                    "--dir", str(machine), "install", *args, "--yes", **(env | extra)
+                )
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(self.deploys(), [])
+                if machine == occupied:
+                    self.assertEqual(
+                        sorted(p.name for p in occupied.iterdir()), ["notes"]
+                    )
+                else:
+                    self.assertFalse(machine.exists())
+                    self.assertEqual(
+                        [
+                            p.name
+                            for p in self.root.iterdir()
+                            if "nacre-clone" in p.name
+                        ],
+                        [],
+                    )
+
     def test_install_keeps_uncommitted_configuration(self):
         env = self.prepare_install()
         (self.flake / "configuration.nix").write_text("# local edits\n")

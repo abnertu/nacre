@@ -16,11 +16,21 @@ from . import releases
 from .common import NAME, Refusal, Usage, query
 from .deploy import deploy
 from .machine import Machine
+from .upgrade import pin_newest
 
 # The machine flake template: flake.nix and configuration.nix. Packaging
 # substitutes the store path.
 TEMPLATES = Path("@templates@")
 RUNNER_PUBLIC_FILES = Path("@runner-public-files@")
+VALUE_OPTIONS = (
+    "--user",
+    "--hostname",
+    "--role",
+    "--timezone",
+    "--locale",
+    "--runner-config",
+    "--repo",
+)
 # Packaging substitutes the VERSION file and, for Nacre's own #nacre, the
 # source revision; tests override the revision.
 VERSION = "@version@"
@@ -48,30 +58,46 @@ class Installer:
             "locale": os.environ.get("LANG", "en_US.UTF-8").replace(".utf8", ".UTF-8"),
         }
         self.yes = self.force = False
+        self.repo = ""
+        self.given: set[str] = set()
         self.runner_configs: list[Path] = []
         self.runner_source: Path | None = None
         self.runner_markers: list[Path] = []
         rest = list(args)
         while rest:
             option = rest.pop(0)
-            if option in ("--user", "--hostname", "--role", "--timezone", "--locale"):
+            if option in VALUE_OPTIONS:
                 if not rest:
                     raise Usage
-                self.values[option[2:]] = rest.pop(0)
+                self.option(option[2:], rest.pop(0))
             elif option == "--yes":
                 self.yes = True
-            elif option == "--runner-config":
-                if not rest:
-                    raise Usage
-                self.runner_configs.append(Path(rest.pop(0)).absolute())
             elif option == "--force":
                 self.force = True
+                self.given.add("force")
             else:
                 raise Usage
+        # A cloned machine brings its own configuration.
+        if self.repo and self.given:
+            raise Usage
+
+    def option(self, name: str, value: str) -> None:
+        """Record one option that takes a value."""
+        if name == "repo":
+            self.repo = value
+            return
+        self.given.add(name)
+        if name == "runner-config":
+            self.runner_configs.append(Path(value).absolute())
+        else:
+            self.values[name] = value
 
     def run(self) -> int:
         """Ask for missing values, write the files, plan, and upgrade on consent."""
         interactive = sys.stdin.isatty()
+        if self.repo:
+            self.clone()
+            return self.apply(interactive)
         # Look the release up first: a failure must stop before any write.
         url = (
             self.nacre_url() if not (self.machine.flake / "flake.nix").exists() else ""
@@ -81,6 +107,10 @@ class Installer:
         content = self.render()
         runner = self.capture_runner_files()
         self.write_configuration(content.replace("@runner@", runner), url)
+        return self.apply(interactive)
+
+    def apply(self, interactive: bool) -> int:
+        """Plan, then upgrade system on consent: a new host lacks the packages."""
         status = deploy(self.machine, "plan")
         if status != 0:
             return status
@@ -103,6 +133,30 @@ class Installer:
             return False
         answer = input("Apply this plan with nacre upgrade system? [y/N] ")
         return answer.lower().startswith("y")
+
+    def clone(self) -> None:
+        """Clone the machine repository and pin the newest Nacre, or write nothing."""
+        flake = self.machine.flake
+        if flake.exists() and (not flake.is_dir() or any(flake.iterdir())):
+            raise Refusal(
+                f"{flake} is not empty; --repo clones only into a new checkout"
+            )
+        flake.parent.mkdir(parents=True, exist_ok=True)
+        staging = flake.with_name(f".{flake.name}.nacre-clone")
+        shutil.rmtree(staging, ignore_errors=True)
+        try:
+            result = subprocess.run(
+                ["git", "clone", "--quiet", self.repo, str(staging)], check=False
+            )
+            if result.returncode != 0:
+                raise Refusal(f"git clone {self.repo} failed")
+            pin_newest(Machine(staging, self.machine.verbose, self.machine.overrides))
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        if flake.exists():
+            flake.rmdir()
+        staging.rename(flake)
 
     @staticmethod
     def nacre_url() -> str:

@@ -51,6 +51,7 @@ _nacre() {
             '*--runner-config[public Runner instance file]:file:_files' \
             '--timezone[time zone]:zone:_time_zone' \
             '--locale[locale]:locale:_locales' \
+            '--repo[clone this machine repository]:url:' \
             '--yes[apply without asking]' \
             '--force[overwrite uncommitted configuration.nix]' ;;
         upgrade)

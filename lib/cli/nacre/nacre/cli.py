@@ -28,6 +28,8 @@ Setup
                            --user NAME --hostname NAME --role minimal|workstation|runner
                            --runner-config FILE (repeat for each runner instance)
                            --timezone ZONE --locale LOCALE --yes --force
+  install --repo URL [--yes]
+                           clone the machine repository, pin the newest Nacre, then plan and upgrade system
 
 Deployment
   plan                     show what switch would change; changes nothing

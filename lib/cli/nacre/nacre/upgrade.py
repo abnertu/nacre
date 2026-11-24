@@ -59,6 +59,28 @@ def upgrade_self(machine: Machine, args: list[str]) -> int:
     if args not in ([], ["--yes"]):
         raise Usage
     yes = args == ["--yes"]
+    pin_newest(machine)
+    status = deploy(machine, "plan")
+    if status != 0:
+        return status
+    interactive = sys.stdin.isatty()
+    if not yes and not (
+        interactive
+        and input("Apply this plan with nacre switch? [y/N] ").lower().startswith("y")
+    ):
+        print("Not applied. Run nacre switch when ready.", file=sys.stderr)
+        return 0
+    status = deploy(machine, "switch")
+    if status == MISSING_PACKAGES:
+        print(
+            "Declared packages are missing; run nacre upgrade system to install them.",
+            file=sys.stderr,
+        )
+    return status
+
+
+def pin_newest(machine: Machine) -> None:
+    """Point the checkout's nacre input at the newest Nacre on its channel."""
     flake_file = machine.flake / "flake.nix"
     lock_file = machine.flake / "flake.lock"
     original = flake_file.read_bytes()
@@ -87,23 +109,6 @@ def upgrade_self(machine: Machine, args: list[str]) -> int:
             f"Nacre: {describe(old_rev, old_ref)} -> {describe(new_rev, new_ref)}",
             file=sys.stderr,
         )
-    status = deploy(machine, "plan")
-    if status != 0:
-        return status
-    interactive = sys.stdin.isatty()
-    if not yes and not (
-        interactive
-        and input("Apply this plan with nacre switch? [y/N] ").lower().startswith("y")
-    ):
-        print("Not applied. Run nacre switch when ready.", file=sys.stderr)
-        return 0
-    status = deploy(machine, "switch")
-    if status == MISSING_PACKAGES:
-        print(
-            "Declared packages are missing; run nacre upgrade system to install them.",
-            file=sys.stderr,
-        )
-    return status
 
 
 def refresh(

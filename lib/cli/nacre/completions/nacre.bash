@@ -35,8 +35,8 @@ _nacre() {
           compopt -o filenames
           mapfile -t COMPREPLY < <(compgen -f -- "$cur")
           return ;;
-        --user | --hostname | --timezone | --locale) return ;;
-        *) words='--user --hostname --role --runner-config --timezone --locale --yes --force' ;;
+        --user | --hostname | --timezone | --locale | --repo) return ;;
+        *) words='--user --hostname --role --runner-config --timezone --locale --repo --yes --force' ;;
       esac
       ;;
     upgrade)
