@@ -19,28 +19,36 @@ See the [recording sources](docs/assets/demo/README.md).
 
 Start from Arch Linux `x86_64` with network access and an existing login account in `wheel`. Nacre does not install the base operating system.
 
-Read [the bootstrap script](scripts/bootstrap.sh). Then run:
+Read [the install script](scripts/install.sh). Then run:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/abnertu/nacre/main/scripts/bootstrap.sh)
+bash <(curl -fsSL https://github.com/abnertu/nacre/releases/latest/download/install.sh)
 ```
 
-The script enables `[multilib]` and installs the prerequisites, including Nix and yay. Then it offers to run `nacre install`. Installation creates a machine flake at `~/.config/nacre`, shows a preview of the changes and asks before it deploys. See [installation](docs/install.md) for unattended setup and for the restore of an existing flake.
+The script installs missing prerequisites, including Nix and yay. Then it runs the newest release of `nacre`:
+
+- Without a checkout, `nacre install` creates a machine flake at `~/.config/nacre`. It shows a preview of the changes and asks before it deploys.
+- With `NACRE_REPO` set, `nacre install --repo` clones that machine repository instead.
+- With a checkout, `nacre upgrade self` adopts the newest Nacre.
+
+Run the same command again to upgrade. See [installation](docs/install.md) for unattended setup and restores.
 
 ## Usage
 
 ```bash
-nacre plan       # preview changes
-nacre switch     # converge Arch and activate the built home
-nacre update     # also upgrade declared pacman and AUR packages
-nacre doctor     # report drift and pending work
+nacre plan            # preview changes
+nacre switch          # converge Arch and activate the built home
+nacre upgrade system  # also upgrade declared pacman and AUR packages
+nacre upgrade self    # adopt the newest Nacre, plan, then switch
+nacre doctor          # report drift and pending work
 ```
 
-A routine `switch` installs no packages. To update Nacre itself, in the machine checkout:
+A routine `switch` installs no packages. `nacre upgrade self` follows the channel of the machine flake's `nacre` input:
 
-1. Run `nix flake update nacre`.
-2. Review the lock diff and the output of `nacre plan`.
-3. Run `nacre switch`.
+- `github:abnertu/nacre/vX.Y.Z` moves to the newest release tag.
+- `github:abnertu/nacre` follows `main`.
+
+It prints the old and the new revision, shows the plan and asks before `switch`. Then review and commit `flake.nix` and `flake.lock`.
 
 ## Configuration
 

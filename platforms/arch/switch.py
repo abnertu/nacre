@@ -404,7 +404,10 @@ class Switch:
         """Print what a deployment would change; change nothing."""
         with self.progress.task("Plan Arch changes", total=1) as task:
             for package in self.missing_packages():
-                self.plan_line("+", f"package {package} (missing; installed by update)")
+                self.plan_line(
+                    "+",
+                    f"package {package} (missing; installed by nacre upgrade system)",
+                )
             if (self.bin / "checkupdates").exists():
                 result = self.native("checkupdates", capture=True, check=False)
                 upgrades = (
@@ -413,7 +416,7 @@ class Switch:
                 if upgrades:
                     self.plan_line(
                         "~",
-                        f"{upgrades} repository package upgrades available (installed by update)",
+                        f"{upgrades} repository package upgrades available (installed by nacre upgrade system)",
                     )
             if not (self.root / "usr/lib/modules" / self.kernel).is_dir():
                 self.plan_line(
@@ -458,7 +461,7 @@ class Switch:
             task.update(1)
 
     def deploy(self, update: bool) -> None:
-        """Converge the host in stages; with `update`, upgrade packages too.
+        """Converge the host in stages; with --update, upgrade packages too.
 
         Read-only checks precede every change: host and package validation,
         then the preflight of every adapter. Only then do packages, core
@@ -502,7 +505,7 @@ class Switch:
         missing = self.missing_packages()
         if missing and not update:
             raise Failure(
-                "declared Arch packages are missing; rerun with --update to install them safely:\n"
+                "declared Arch packages are missing; run nacre upgrade system to install them safely:\n"
                 + "\n".join(f"  {package}" for package in missing),
                 3,
             )

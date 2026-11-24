@@ -40,7 +40,7 @@ virtualization.podman.enable = true;
 
 Enabled deployment requires at least one instance file. The virtualization module owns shared Podman packages. The Runner module adds its remaining requirements.
 
-Review `nacre plan` before deployment. Routine `switch` rejects missing packages. Use `nacre update` to install them before reconciliation.
+Review `nacre plan` before deployment. Routine `switch` rejects missing packages. Use `nacre upgrade system` to install them before reconciliation.
 
 Runner preflight inspects public policy without creating accounts, starting services or accessing registration contents.
 Plans report unobserved runtime checks as deferred. Reconciliation rechecks every instance after package convergence and before its first Runner mutation.
@@ -125,7 +125,7 @@ The [controller guide](https://github.com/abnertu/gitlab-runnerctl/tree/v0.4.3#u
 
 Delete the declaration only after `remove` prints `removed` or `unchanged`.
 `#runnerctl` knows only declared instances.
-Delete the declaration before the next `nacre switch` or `nacre update`.
+Delete the declaration before the next `nacre switch` or `nacre upgrade system`.
 Otherwise deployment creates the account again.
 A manual `runnerctl reconcile` of a declared instance also creates the account again.
 When you remove the last instance, set `services.gitlabRunner.enable = false`.

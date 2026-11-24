@@ -2,11 +2,11 @@
 
 Run as the deployment user on Arch Linux `x86_64`. The login account must exist and belong to `wheel`. Nix, yay and the required native commands must be available. Declared `lib32-*` packages need `[multilib]`. The running kernel needs its matching module directory.
 
-`nacre` finds `~/.config/nacre` by default. Use `--flake PATH` for another checkout. Before deployment, read the relevant [configuration](configuration.md), [system](system-settings.md) and feature preparation guides.
+`nacre` finds `~/.config/nacre` by default. Use `--dir PATH` or `NACRE_DIR` for another checkout. Before deployment, read the relevant [configuration](configuration.md), [system](system-settings.md) and feature preparation guides.
 
 ## Bootstrap
 
-On a host without Nix, follow [installation](install.md#steps). For a restore, clone the machine flake first. Before the first home activation, use `nix run .#nacre -- plan`.
+On a host without Nix, follow [installation](install.md#steps). For a restore, set `NACRE_REPO` as [Restore an existing machine](install.md#restore-an-existing-machine) shows. Before the first home activation, use `nix run .#nacre -- plan` in the checkout.
 
 ## Commands
 
@@ -15,7 +15,8 @@ The home generation supplies `nacre` and bash/zsh completions. Before activation
 ```bash
 nacre plan                # preview without mutation
 nacre switch              # converge Arch, then activate the built home
-nacre update              # also upgrade declared pacman and AUR packages
+nacre upgrade system      # also upgrade declared pacman and AUR packages
+nacre upgrade self        # adopt the newest Nacre, plan, then switch
 nacre --verbose switch    # include native diagnostics
 nacre purge               # withdraw managed Arch state without home activation
 ```
@@ -32,7 +33,9 @@ nacre purge               # withdraw managed Arch state without home activation
 
 Plan prefixes are `=` unchanged, `~` changed, `+` added and `!` conflict. System settings show preflight results, not individual changes. The next switch after a rollback activates the current declaration again.
 
-Routine runs install nothing. They exit 3 when packages are missing. `update` fully upgrades pacman and converges AUR. A kernel upgrade can need a reboot. The final doctor report does not change the exit status of the update.
+Routine runs install nothing. They exit 3 when packages are missing. `upgrade system` fully upgrades pacman and converges AUR. A kernel upgrade can need a reboot. The final doctor report does not change the exit status of the upgrade.
+
+`upgrade self` changes only the `nacre` input of the machine flake. A release pin (`github:abnertu/nacre/vX.Y.Z`) moves to the newest tag. A branch pin keeps its URL and refreshes its lock entry. A pin newer than the newest release is refused. A failed lookup or lock update restores `flake.nix` and `flake.lock`. Without `--yes` and without a terminal, it stops after the plan.
 
 To apply an input override to each Nix evaluation, pass `--override-input INPUT REF`. For example, `nacre --override-input nacre path:$HOME/codebase/nacre plan` shows a preview of local Nacre changes. Before routine use, publish the change and adopt it with a lock update.
 
@@ -79,7 +82,7 @@ Extension purge hooks run in extension-name order before built-in retirement. A 
 
 ## Container test
 
-`just container-test` runs the checked-in bootstrap and [container configuration](../checks/container/configuration.nix) in a disposable systemd Arch container. It verifies these behaviors:
+`just container-test` runs the checked-in install script and [container configuration](../checks/container/configuration.nix) in a disposable systemd Arch container. It verifies these behaviors:
 
 - Missing-package rejection and update.
 - Quiet repeat convergence and an unchanged plan.
@@ -118,7 +121,7 @@ Adapter failures report the command, exit code, stdout, stderr and partial timeo
 | Result | Next step |
 | --- | --- |
 | Exit 2 | Correct the arguments |
-| Exit 3 | Review missing packages and run `update` |
+| Exit 3 | Review missing packages and run `upgrade system` |
 | Exit 75 | Wait for the lock or boot a kernel matching installed modules |
 | Module skipped | Complete its preparation |
 | Native or home failure | Fix the reported cause, then run again |
@@ -148,7 +151,7 @@ mkdir ~/machine && cd ~/machine && git init
 cp ~/.config/nacre/templates/machine/flake.nix .
 cp -r ~/.config/nacre/{configuration.nix,hosts,homes} .
 git add -A
-nacre --flake ~/machine plan
+nacre --dir ~/machine plan
 ```
 
 1. Restore the necessary dotfiles with `git show v0.4.0:files/home/...`.

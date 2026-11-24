@@ -10,17 +10,21 @@ Disk partitioning and base-system installation stay outside Nacre.
 
 ## Steps
 
-Read [the bootstrap](../scripts/bootstrap.sh). Then run it:
+Read [the install script](../scripts/install.sh). Then run it:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/abnertu/nacre/main/scripts/bootstrap.sh)
+bash <(curl -fsSL https://github.com/abnertu/nacre/releases/latest/download/install.sh)
 ```
 
-The script enables `[multilib]`, installs base packages, Nix and yay, and starts the Nix daemon. In a terminal, it offers to run `nacre install`. If group membership changed, log in again before you run the installation:
+When a prerequisite is missing, the script enables `[multilib]` and installs base packages, Nix and yay with `pacman -Syu`. It starts the Nix daemon. Then it runs the newest release of `nacre` in the checkout:
 
-```bash
-nix run github:abnertu/nacre#nacre -- install
-```
+| Checkout | Command |
+| --- | --- |
+| `NACRE_DIR`, else `~/.config/nacre`, else `~/.config/nix`, with a `flake.nix` | `nacre upgrade self` |
+| None, `NACRE_REPO` set | `nacre install --repo "$NACRE_REPO"` |
+| None | `nacre install` |
+
+`~/.config` stands for `$XDG_CONFIG_HOME` when it is set. In a terminal, the script asks before it runs the command. Without a terminal, it prints the command. Set `NACRE_YES=1` to run it with `--yes`. If group membership changed, the script prints the command; log in again before you run it.
 
 Installation asks for the user, hostname, role, time zone and locale. Then it does these steps:
 
@@ -28,12 +32,14 @@ Installation asks for the user, hostname, role, time zone and locale. Then it do
 2. Writes the [machine template](../templates/machine/configuration.nix) and a flake that follows Nacre into `~/.config/nacre`.
 3. Stages the generated files, so that Nix can see them.
 
-To choose another checkout, use `--flake PATH`.
+To choose another checkout, use `--dir PATH`.
 
-It shows a preview of the machine and asks before `nacre update`. For unattended installation, supply each value and `--yes`:
+The new flake follows the release tag of the running `nacre`, such as `github:abnertu/nacre/v0.11.0`. A `nacre` from another commit writes `github:abnertu/nacre`, which follows `main`.
+
+It shows a preview of the machine and asks before `nacre upgrade system`. For unattended installation, supply each value and `--yes`. Use the newest release tag, so that the machine flake follows it:
 
 ```bash
-nix run github:abnertu/nacre#nacre -- install --user alice --hostname box \
+nix run github:abnertu/nacre/v0.11.0#nacre -- install --user alice --hostname box \
   --role minimal --timezone Europe/Berlin --locale en_US.UTF-8 --yes
 ```
 
@@ -53,16 +59,18 @@ Keep files within the first instance's directory. Read [Runner configuration](gi
 
 ## Restore an existing machine
 
-Before the bootstrap, clone the machine flake to `~/.config/nacre`. The bootstrap then tells you to run `nix run .#nacre -- plan`. Before deployment, restore the necessary external state with the [backup guide](backup.md).
+Set `NACRE_REPO` to the machine repository, then run the install script:
+
+```bash
+NACRE_REPO=git@github.com:you/machines.git bash <(curl -fsSL https://github.com/abnertu/nacre/releases/latest/download/install.sh)
+```
+
+`nacre install --repo` clones into an absent or empty checkout and pins the newest Nacre on the repository's channel. Then it shows the plan and asks before `nacre upgrade system`. It takes no machine options, such as `--role`. Set up the credentials for a private repository first. Before deployment, restore the necessary external state with the [backup guide](backup.md).
 
 ## Afterwards
 
 The activated home provides `nacre`. Add hardware, home modules and optional features as [configuration](configuration.md) describes. The [fixture](../checks/fixtures/configuration.nix) shows feature composition.
 
-To adopt Nacre changes, in the machine checkout:
-
-1. Run `nix flake update nacre`.
-2. Review the lock diff and the output of `nacre plan`.
-3. Run `nacre switch`.
+To adopt the newest Nacre, run `nacre upgrade self`, or the install script again. It updates only the `nacre` input, shows the plan and asks before `switch`. Missing packages stop `switch` with exit 3; then run `nacre upgrade system`.
 
 Your configuration stays separate from the Nacre source.

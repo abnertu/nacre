@@ -67,6 +67,12 @@
         modules = [ fixture ];
       };
       inherit (d) lib pkgs system;
+      # Nacre's own nacre embeds its source revision, so install can tell a
+      # release build; machine flakes keep the revision-free home package.
+      nacre = import ./lib/cli/nacre {
+        inherit lib pkgs;
+        revision = inputs.self.rev or "";
+      };
       runnerFixture = import ./modules/gitlab-runner/tests/integration.nix {
         inherit inputs pkgs;
         inherit (d) adapterPython;
@@ -99,16 +105,20 @@
 
       packages.${system} = {
         container-deployment = container.deployment;
-        # `nix run github:abnertu/nacre/<tag>#nacre -- install` runs this build.
-        nacre = import ./lib/cli/nacre {
-          inherit lib pkgs;
-          revision = inputs.self.rev or "";
-        };
+        inherit nacre;
       };
-      apps.${system}.just = {
-        type = "app";
-        program = "${pkgs.just}/bin/just";
-        meta.description = "Run development recipes before Home Manager is active";
+      apps.${system} = {
+        # `nix run github:abnertu/nacre/<tag>#nacre -- install` runs this app.
+        nacre = {
+          type = "app";
+          program = "${nacre}/bin/nacre";
+          meta.description = "Install, plan, switch and inspect this machine";
+        };
+        just = {
+          type = "app";
+          program = "${pkgs.just}/bin/just";
+          meta.description = "Run development recipes before Home Manager is active";
+        };
       };
 
       devShells.${system}.default = pkgs.mkShell {

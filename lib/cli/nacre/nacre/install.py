@@ -150,6 +150,8 @@ class Installer:
             )
             if result.returncode != 0:
                 raise Refusal(f"git clone {self.repo} failed")
+            if not (staging / "flake.nix").is_file():
+                raise Refusal(f"{self.repo} has no flake.nix at its root")
             pin_newest(Machine(staging, self.machine.verbose, self.machine.overrides))
         except BaseException:
             shutil.rmtree(staging, ignore_errors=True)

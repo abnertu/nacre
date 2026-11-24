@@ -24,12 +24,15 @@ def locked(lock: Path) -> tuple[str, str]:
     """The locked revision of the nacre input, and its original ref."""
     if not lock.is_file():
         return "", ""
-    data: dict[str, Any] = json.loads(lock.read_text())
-    nodes: dict[str, Any] = data["nodes"]
-    name = nodes[data["root"]].get("inputs", {}).get("nacre")
-    node: dict[str, Any] = nodes.get(name, {}) if isinstance(name, str) else {}
-    rev: str = node.get("locked", {}).get("rev", "")
-    ref: str = node.get("original", {}).get("ref", "")
+    try:
+        data: dict[str, Any] = json.loads(lock.read_text())
+        nodes: dict[str, Any] = data["nodes"]
+        name = nodes[data["root"]].get("inputs", {}).get("nacre")
+        node: dict[str, Any] = nodes.get(name, {}) if isinstance(name, str) else {}
+        rev: str = node.get("locked", {}).get("rev", "")
+        ref: str = node.get("original", {}).get("ref", "")
+    except (ValueError, KeyError, AttributeError, TypeError) as error:
+        raise Refusal(f"{lock} is not a readable flake lock: {error}") from error
     return rev, ref
 
 

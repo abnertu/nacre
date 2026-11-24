@@ -92,7 +92,7 @@ With `programs.ai.enable`, the AI module installs these AUR packages, each with 
 | Claude Desktop (`claude-desktop`, only with the desktop) | `programs.ai.claudeDesktop.enable` |
 | Codex (`openai-codex-bin`) | `programs.ai.codex.enable` |
 
-Install newly declared native tools with `nacre update`. A routine switch exits 3 while they are missing.
+Install newly declared native tools with `nacre upgrade system`. A routine switch exits 3 while they are missing.
 
 ## Agent skills
 
@@ -201,7 +201,7 @@ nacre plan
 
 Review and commit lock changes before deployment.
 Revert the lock change to restore earlier sources.
-`nacre update` does not advance skill inputs.
+`nacre upgrade system` does not advance skill inputs.
 Managed links are read-only and use no Skills CLI lockfile.
 Do not run a skill updater against managed links.
 

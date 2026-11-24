@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy the container-test configuration into a rootless systemd Arch
-# container: bootstrap, update, routine, quiet repeat, purge, store integrity.
+# container: install.sh, update, routine, quiet repeat, purge, store integrity.
 # Package caches persist in podman volumes so later runs skip most downloads.
 set -euo pipefail
 
@@ -122,9 +122,9 @@ show() {
   tail -n 40 "$work/$1" >&2
 }
 
-step 'Bootstrap with the checked-in script'
-podman cp "$source_root/scripts/bootstrap.sh" "$name:/tmp/bootstrap.sh"
-as_user bash /tmp/bootstrap.sh >"$work/bootstrap.log" 2>&1 || { show bootstrap.log; fail 'bootstrap failed'; }
+step 'Prepare prerequisites with the checked-in install.sh'
+podman cp "$source_root/scripts/install.sh" "$name:/tmp/install.sh"
+as_user bash /tmp/install.sh >"$work/install-script.log" 2>&1 || { show install-script.log; fail 'install.sh failed'; }
 
 step 'Import the deployment closure'
 mapfile -t closure < <(nix-store --query --requisites "$deployment")

@@ -177,7 +177,9 @@ class NacreTests(unittest.TestCase):
             ("upgrade",),
         ):
             with self.subTest(removed=removed):
-                self.assertEqual(self.run_nacre(*removed).returncode, 2)
+                result = self.run_nacre(*removed)
+                self.assertEqual(result.returncode, 2)
+                self.assertTrue(result.stderr.startswith("usage: nacre"), result.stderr)
 
     def test_deployment_modes_and_recorded_switches(self):
         state = self.home / ".local/state/nacre/last-switch"
@@ -603,10 +605,13 @@ class NacreTests(unittest.TestCase):
             ("github:other/nacre", None, "inputs.nacre.url = {};"),
             ("github:abnertu/nacre", None, "inputs.nacre.url = {0}; nacre.url = {0};"),
             ("github:abnertu/nacre/v0.11.0", "v0.11.0", "inputs.nacre.url = {};"),
+            ("github:abnertu/nacre", "broken-lock", "inputs.nacre.url = {};"),
         ):
             with self.subTest(url=url, form=form):
                 shutil.rmtree(self.root / "nacre-releases", ignore_errors=True)
                 env, _ = self.upgrade_machine(url, "a" * 40, ref, form)
+                if ref == "broken-lock":
+                    (self.flake / "flake.lock").write_text("{ not json")
                 before = self.snapshot()
                 result = self.run_nacre("upgrade", "self", "--yes", **env)
                 self.assertEqual(result.returncode, 2, result.stderr)
@@ -898,8 +903,19 @@ class NacreTests(unittest.TestCase):
         occupied = self.root / "occupied"
         occupied.mkdir()
         (occupied / "notes").write_text("keep\n")
+        flakeless = self.root / "flakeless-work"
+        flakeless.mkdir()
+        (flakeless / "README").write_text("no flake\n")
+        identity = ["-c", "user.name=t", "-c", "user.email=t@t"]
+        for git_args in (["init", "-q"], ["add", "."], ["commit", "-qm", "x"]):
+            subprocess.run(
+                ["git", "-C", str(flakeless), *identity, *git_args], check=True
+            )
+        before = sorted(p.name for p in self.root.iterdir())
         for machine, args, extra in (
             (occupied, ("--repo", repository), {}),
+            (self.root / "fresh", ("--repo", str(flakeless)), {}),
+            (self.root / "fresh", ("--repo", str(self.root / "absent.git")), {}),
             (self.root / "fresh", ("--repo", repository, "--role", "minimal"), {}),
             (
                 self.root / "fresh",
@@ -927,14 +943,7 @@ class NacreTests(unittest.TestCase):
                     )
                 else:
                     self.assertFalse(machine.exists())
-                    self.assertEqual(
-                        [
-                            p.name
-                            for p in self.root.iterdir()
-                            if "nacre-clone" in p.name
-                        ],
-                        [],
-                    )
+                self.assertEqual(sorted(p.name for p in self.root.iterdir()), before)
 
     def test_install_keeps_uncommitted_configuration(self):
         env = self.prepare_install()

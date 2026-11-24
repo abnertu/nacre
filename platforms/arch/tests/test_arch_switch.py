@@ -333,7 +333,10 @@ class ArchSwitchTests(unittest.TestCase):
         self.state["missing"] = ["extra"]
         self.save()
         result = self.invoke("--plan")
-        self.assertIn("+ package extra (missing; installed by update)", result.stdout)
+        self.assertIn(
+            "+ package extra (missing; installed by nacre upgrade system)",
+            result.stdout,
+        )
         self.assertIn("~ enable user service openrazer-daemon.service", result.stdout)
         self.assertEqual(self.adapter_phases(CORE), ["plan"])
         self.assertEqual(self.adapter_phases(SYSTEM), ["plan"])

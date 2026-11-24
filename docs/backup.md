@@ -28,7 +28,7 @@ Before you reinstall, review uncaptured Noctalia preferences. [Capture](noctalia
 ## Restore order
 
 1. Install Arch and recreate the login account in `wheel`.
-2. Clone the machine flake and run the [bootstrap](deployment.md#bootstrap). For a new machine, use [installation](install.md).
+2. Run the install script with `NACRE_REPO`, as [Restore an existing machine](install.md#restore-an-existing-machine) shows. Answer no when it asks to apply the plan. For a new machine, use [installation](install.md).
 3. Restore required external state with its original metadata, including extension-owned state.
-4. Review `nacre plan`, then run `nacre update`.
+4. Review `nacre plan`, then run `nacre upgrade system`.
 5. Prepare AI and any machine extensions that need a separate setup step.
