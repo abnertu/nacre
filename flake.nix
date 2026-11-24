@@ -97,7 +97,14 @@
         };
       };
 
-      packages.${system}.container-deployment = container.deployment;
+      packages.${system} = {
+        container-deployment = container.deployment;
+        # `nix run github:abnertu/nacre/<tag>#nacre -- install` runs this build.
+        nacre = import ./lib/cli/nacre {
+          inherit lib pkgs;
+          revision = inputs.self.rev or "";
+        };
+      };
       apps.${system}.just = {
         type = "app";
         program = "${pkgs.just}/bin/just";

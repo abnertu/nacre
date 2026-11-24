@@ -416,11 +416,58 @@ class NacreTests(unittest.TestCase):
             ["deploy --plan", "deploy --update"],
         )
 
+    def release_remote(self, *tags):
+        """A local repository with one annotated release tag per commit."""
+        repo = self.root / "nacre-releases"
+        repo.mkdir()
+        identity = ["-c", "user.name=t", "-c", "user.email=t@t"]
+
+        def git(*args):
+            return subprocess.run(
+                ["git", "-C", str(repo), *identity, *args],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+        git("init", "-q")
+        commits = {}
+        for tag in tags:
+            git("commit", "-q", "--allow-empty", "-m", tag)
+            git("tag", "-a", tag, "-m", tag)
+            commits[tag] = git("rev-parse", "HEAD")
+        return str(repo), commits
+
+    def released_tag(self):
+        return "v" + self.run_nacre("--version").stdout.split()[1]
+
     def test_install_into_an_empty_directory_creates_a_machine_flake(self):
         env = self.prepare_install()
-        machine = self.root / "machine-flake"
-        result = self.run_nacre("--dir", str(machine), "install", "--yes", **env)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        tag = self.released_tag()
+        remote, commits = self.release_remote("v0.0.1", tag)
+        env["NACRE_TEST_RELEASE_REMOTE"] = remote
+        for revision, url in (
+            (commits[tag], f"github:abnertu/nacre/{tag}"),
+            (commits["v0.0.1"], "github:abnertu/nacre"),
+        ):
+            with self.subTest(url=url):
+                machine = self.root / f"machine-{revision}"
+                result = self.run_nacre(
+                    "--dir",
+                    str(machine),
+                    "install",
+                    "--yes",
+                    NACRE_TEST_REVISION=revision,
+                    **env,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(
+                    f'inputs.nacre.url = "{url}";', (machine / "flake.nix").read_text()
+                )
+                self.assertEqual(
+                    "not the" in result.stderr, url == "github:abnertu/nacre"
+                )
+        machine = self.root / f"machine-{commits[tag]}"
         self.assertIn("nacre.lib.mkFlake", (machine / "flake.nix").read_text())
         self.assertIn("users.users.alice", (machine / "configuration.nix").read_text())
         tracked = subprocess.run(

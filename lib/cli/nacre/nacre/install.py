@@ -12,6 +12,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from . import releases
 from .common import NAME, Refusal, Usage, query
 from .deploy import deploy
 from .machine import Machine
@@ -20,6 +21,10 @@ from .machine import Machine
 # substitutes the store path.
 TEMPLATES = Path("@templates@")
 RUNNER_PUBLIC_FILES = Path("@runner-public-files@")
+# Packaging substitutes the VERSION file and, for Nacre's own #nacre, the
+# source revision; tests override the revision.
+VERSION = "@version@"
+REVISION = os.environ.get("NACRE_TEST_REVISION") or "@revision@"
 
 
 class Installer:
@@ -67,11 +72,15 @@ class Installer:
     def run(self) -> int:
         """Ask for missing values, write the files, plan, and upgrade on consent."""
         interactive = sys.stdin.isatty()
+        # Look the release up first: a failure must stop before any write.
+        url = (
+            self.nacre_url() if not (self.machine.flake / "flake.nix").exists() else ""
+        )
         if not self.yes and interactive:
             self.ask()
         content = self.render()
         runner = self.capture_runner_files()
-        self.write_configuration(content.replace("@runner@", runner))
+        self.write_configuration(content.replace("@runner@", runner), url)
         status = deploy(self.machine, "plan")
         if status != 0:
             return status
@@ -95,7 +104,28 @@ class Installer:
         answer = input("Apply this plan with nacre upgrade system? [y/N] ")
         return answer.lower().startswith("y")
 
-    def write_configuration(self, content: str) -> None:
+    @staticmethod
+    def nacre_url() -> str:
+        """The nacre input of a new machine flake.
+
+        A release build follows its tag. Any other revision follows the
+        branch, because its template may use options newer than the tag.
+        """
+        tag = f"v{VERSION}"
+        if (
+            REVISION
+            and not REVISION.startswith("@")
+            and releases.tags().get(tag) == REVISION
+        ):
+            return f"{releases.URL}/{tag}"
+        print(
+            f"This nacre is not the {tag} release; the machine flake follows "
+            f"{releases.URL} (main).",
+            file=sys.stderr,
+        )
+        return releases.URL
+
+    def write_configuration(self, content: str, url: str = "") -> None:
         """Write configuration.nix, and create the machine flake if it is new.
 
         Raise `Refusal` instead of overwriting uncommitted changes, unless
@@ -112,7 +142,8 @@ class Installer:
         if created:
             # A new machine flake that follows Nacre; Git tracks it so Nix sees it.
             flake.mkdir(parents=True, exist_ok=True)
-            (flake / "flake.nix").write_text((TEMPLATES / "flake.nix").read_text())
+            template = (TEMPLATES / "flake.nix").read_text()
+            (flake / "flake.nix").write_text(template.replace("@url@", url))
         runner_files = self.copy_runner_files()
         target.write_text(content + "\n")
         if created:

@@ -3,6 +3,9 @@
 {
   lib,
   pkgs,
+  # Nacre's own #nacre passes its source revision, so install can tell a
+  # release build. The home package omits it and stays the same across commits.
+  revision ? "",
 }:
 let
   python = pkgs.python3;
@@ -36,6 +39,8 @@ let
       cp ${./nacre}/*.py "$package/"
       substituteInPlace "$package/cli.py" --subst-var-by version ${lib.escapeShellArg version}
       substituteInPlace "$package/install.py" --subst-var-by templates ${../../../templates/machine}
+      substituteInPlace "$package/install.py" --subst-var-by version ${lib.escapeShellArg version}
+      substituteInPlace "$package/install.py" --subst-var-by revision ${lib.escapeShellArg revision}
       substituteInPlace "$package/install.py" --subst-var-by runner-public-files ${runnerPublicFiles}
     ''
   );
