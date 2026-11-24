@@ -39,7 +39,12 @@ _nacre() {
         *) words='--user --hostname --role --runner-config --timezone --locale --yes --force' ;;
       esac
       ;;
-    upgrade) ((position == 0)) && words='system' ;;
+    upgrade)
+      case ${args[0]:-} in
+        '') words='system self' ;;
+        self) words='--yes' ;;
+      esac
+      ;;
     changes) ((position == 0)) && words='--since' ;;
     rollback)
       local profiles=${XDG_STATE_HOME:-$HOME/.local/state}/nix/profiles link

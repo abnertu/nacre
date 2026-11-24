@@ -53,7 +53,9 @@ _nacre() {
             '--locale[locale]:locale:_locales' \
             '--yes[apply without asking]' \
             '--force[overwrite uncommitted configuration.nix]' ;;
-        upgrade) _arguments '1:target:(system)' ;;
+        upgrade)
+          _arguments -C '1:target:(system self)' '*::option:->option' && return
+          [[ $words[1] == self ]] && _arguments '--yes[switch without asking]' ;;
         changes) _arguments '--since[ISO date or time]:time:' ;;
         rollback) _arguments '1:generation:_nacre_generations' ;;
         ai) _arguments '1:action:(prepare)' '2:part:(build model)' ;;

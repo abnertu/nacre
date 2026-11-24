@@ -15,6 +15,7 @@ from .generations import list_generations, rollback
 from .install import Installer
 from .machine import Machine, find_flake
 from .status import changes, status
+from .upgrade import upgrade_self
 
 # Packaging substitutes the VERSION file.
 VERSION = "@version@"
@@ -32,6 +33,7 @@ Deployment
   plan                     show what switch would change; changes nothing
   switch                   converge Arch, then activate the home generation
   upgrade system           switch, also upgrading declared pacman and AUR packages
+  upgrade self [--yes]     pin the newest Nacre on the checkout's channel, plan, then switch
   purge                    remove managed Arch state; skips Home Manager
 
 Inspection
@@ -202,9 +204,11 @@ def noctalia_command(machine: Machine, args: list[str]) -> int:
 
 
 def upgrade_command(machine: Machine, args: list[str]) -> int:
-    """upgrade system: switch and upgrade the declared packages."""
+    """upgrade system | upgrade self [--yes]."""
     if args == ["system"]:
         return deploy(machine, "update")
+    if args[:1] == ["self"]:
+        return upgrade_self(machine, args[1:])
     raise Usage
 
 

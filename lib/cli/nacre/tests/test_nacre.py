@@ -39,7 +39,9 @@ class NacreTests(unittest.TestCase):
         artifact.mkdir(parents=True)
         self.script(
             artifact / "fixture-deployment",
-            f'echo "deploy $*" >> {self.calls}\nexit "${{DEPLOY_STATUS:-0}}"',
+            f'echo "deploy $*" >> {self.calls}\n'
+            '[[ $# -ne 0 || -z ${SWITCH_STATUS:-} ]] || exit "$SWITCH_STATUS"\n'
+            'exit "${DEPLOY_STATUS:-0}"',
         )
         self.script(
             bin_dir / "nix",
@@ -50,6 +52,11 @@ class NacreTests(unittest.TestCase):
             'if [[ -n ${NACRE_TEST_TRACKED:-} && " $* " == *" build "* ]]; then\n'
             '  git -C "$NACRE_TEST_TRACKED" ls-files --error-unmatch -- runners/frontend.toml '
             "runners/base.toml runners/ca/public.crt > /dev/null || exit 91\n"
+            "fi\n"
+            'if [[ " $* " == *" flake update "* ]]; then\n'
+            "  prev=; for a; do [[ $prev == --flake ]] && dir=$a; prev=$a; done\n"
+            '  [[ -z ${FAKE_LOCK:-} ]] || cp "$FAKE_LOCK" "$dir/flake.lock"\n'
+            '  exit "${FAKE_UPDATE_STATUS:-0}"\n'
             "fi\n"
             '[[ -z ${NIX_STATUS:-} ]] || exit "$NIX_STATUS"\n'
             f'[[ " $* " != *" --print-out-paths "* ]] || echo {self.root / "artifact"}',
@@ -483,6 +490,135 @@ class NacreTests(unittest.TestCase):
             [call for call in self.recorded() if call.startswith("deploy")],
             ["deploy --plan"],
         )
+
+    @staticmethod
+    def lock(rev, ref=None):
+        original = {"owner": "abnertu", "repo": "nacre", "type": "github"}
+        if ref:
+            original["ref"] = ref
+        nodes = {
+            "root": {"inputs": {"nacre": "nacre"}},
+            "nacre": {"locked": {"rev": rev, "type": "github"}, "original": original},
+        }
+        return json.dumps({"nodes": nodes, "root": "root", "version": 7}) + "\n"
+
+    def upgrade_machine(self, url, rev, ref=None, form="inputs.nacre.url = {};"):
+        """A machine flake whose nacre input is `url`, locked at `rev`."""
+        line = form.format(json.dumps(url))
+        (self.flake / "flake.nix").write_text(
+            '{\n  description = "machine";\n  ' + line + "\n  outputs = _: { };\n}\n"
+        )
+        (self.flake / "flake.lock").write_text(self.lock(rev, ref))
+        remote, commits = self.release_remote("v0.9.0", "v0.10.0")
+        env = {"NACRE_TEST_RELEASE_REMOTE": remote}
+        return env, commits
+
+    def deploys(self):
+        return [call.rstrip() for call in self.recorded() if call.startswith("deploy")]
+
+    def updates(self):
+        return [
+            call for call in self.recorded() if " flake update nacre " in call + " "
+        ]
+
+    def snapshot(self):
+        return {
+            name: (self.flake / name).read_bytes()
+            for name in ("flake.nix", "flake.lock")
+        }
+
+    def test_upgrade_self_moves_a_release_pin_then_plans_and_switches(self):
+        for form in ("inputs.nacre.url = {};", "inputs = {{ nacre.url = {}; }};"):
+            with self.subTest(form=form):
+                shutil.rmtree(self.root / "nacre-releases", ignore_errors=True)
+                self.calls.unlink(missing_ok=True)
+                env, commits = self.upgrade_machine(
+                    "github:abnertu/nacre/v0.9.0", "a" * 40, "v0.9.0", form
+                )
+                before = (self.flake / "flake.nix").read_text()
+                new_lock = self.root / "new.lock"
+                new_lock.write_text(self.lock(commits["v0.10.0"], "v0.10.0"))
+                result = self.run_nacre(
+                    "upgrade", "self", "--yes", FAKE_LOCK=str(new_lock), **env
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(
+                    (self.flake / "flake.nix").read_text(),
+                    before.replace("/v0.9.0", "/v0.10.0"),
+                )
+                self.assertEqual(len(self.updates()), 1)
+                self.assertIn(f"--flake {self.flake}", self.updates()[0])
+                self.assertIn("a" * 12, result.stderr)
+                self.assertIn(commits["v0.10.0"][:12], result.stderr)
+                self.assertEqual(self.deploys(), ["deploy --plan", "deploy"])
+
+    def test_upgrade_self_follows_a_branch_pin(self):
+        env, _ = self.upgrade_machine("github:abnertu/nacre", "a" * 40)
+        before = (self.flake / "flake.nix").read_bytes()
+        result = self.run_nacre("upgrade", "self", "--yes", **env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.flake / "flake.nix").read_bytes(), before)
+        self.assertEqual(len(self.updates()), 1)
+        self.assertEqual(self.deploys(), ["deploy --plan", "deploy"])
+
+    def test_upgrade_self_without_yes_only_plans_when_not_interactive(self):
+        env, _ = self.upgrade_machine("github:abnertu/nacre/v0.9.0", "a" * 40, "v0.9.0")
+        result = self.run_nacre("upgrade", "self", **env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("/v0.10.0", (self.flake / "flake.nix").read_text())
+        self.assertEqual(self.deploys(), ["deploy --plan"])
+
+    def test_upgrade_self_at_the_newest_release_keeps_the_flake(self):
+        env, commits = self.upgrade_machine(
+            "github:abnertu/nacre/v0.10.0", "a" * 40, "v0.10.0"
+        )
+        (self.flake / "flake.lock").write_text(self.lock(commits["v0.10.0"], "v0.10.0"))
+        before = self.snapshot()
+        result = self.run_nacre("upgrade", "self", "--yes", **env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.updates(), [])
+        self.assertEqual(self.deploys(), ["deploy --plan", "deploy"])
+
+    def test_upgrade_self_restores_the_flake_on_failure(self):
+        env, _ = self.upgrade_machine("github:abnertu/nacre/v0.9.0", "a" * 40, "v0.9.0")
+        with (self.flake / "flake.nix").open("a") as flake:
+            flake.write("# uncommitted edit\n")
+        before = self.snapshot()
+        broken = self.root / "broken.lock"
+        broken.write_text("partial")
+        for case in (
+            {"FAKE_UPDATE_STATUS": "1", "FAKE_LOCK": str(broken)},
+            {"NACRE_TEST_RELEASE_REMOTE": str(self.root / "absent")},
+        ):
+            with self.subTest(case=sorted(case)):
+                result = self.run_nacre("upgrade", "self", "--yes", **(env | case))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.snapshot(), before)
+                self.assertEqual(self.deploys(), [])
+
+    def test_upgrade_self_refuses_before_changing_the_flake(self):
+        for url, ref, form in (
+            ("path:/src/nacre", None, "inputs.nacre.url = {};"),
+            ("github:other/nacre", None, "inputs.nacre.url = {};"),
+            ("github:abnertu/nacre", None, "inputs.nacre.url = {0}; nacre.url = {0};"),
+            ("github:abnertu/nacre/v0.11.0", "v0.11.0", "inputs.nacre.url = {};"),
+        ):
+            with self.subTest(url=url, form=form):
+                shutil.rmtree(self.root / "nacre-releases", ignore_errors=True)
+                env, _ = self.upgrade_machine(url, "a" * 40, ref, form)
+                before = self.snapshot()
+                result = self.run_nacre("upgrade", "self", "--yes", **env)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(self.snapshot(), before)
+                self.assertEqual(self.updates(), [])
+                self.assertEqual(self.deploys(), [])
+
+    def test_upgrade_self_points_to_upgrade_system_for_missing_packages(self):
+        env, _ = self.upgrade_machine("github:abnertu/nacre", "a" * 40)
+        result = self.run_nacre("upgrade", "self", "--yes", SWITCH_STATUS="3", **env)
+        self.assertEqual(result.returncode, 3)
+        self.assertIn("nacre upgrade system", result.stderr)
 
     def runner_install(self):
         env = self.prepare_install()
