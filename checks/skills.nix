@@ -11,15 +11,24 @@ let
   hasNeither = home: name: lib.all (target: !(builtins.hasAttr "${target}${name}" home)) targets;
   skillFiles =
     home: lib.filterAttrs (name: _: lib.any (target: lib.hasPrefix target name) targets) home;
-  valid = raw: (builtins.tryEval (builtins.deepSeq (skillFiles (files raw)) true)).success;
+  forced = raw: builtins.deepSeq (skillFiles (files raw)) true;
+  valid = raw: (builtins.tryEval (forced raw)).success;
+  # Read built-in names from the inventory, so upstream renames need no test edit.
+  inventory = import ../modules/ai/skill-inventory.nix {
+    inherit lib;
+    sources = inputs;
+  };
+  abnertuSkills = builtins.attrNames inventory.abnertu.skills;
+  abnertuSkill = builtins.elemAt abnertuSkills 0;
+  otherAbnertuSkill = builtins.elemAt abnertuSkills 1;
 
   bundleOff = files {
     skills.builtins.abnertu.enable = false;
-    skills.exclude = [ "converge" ];
+    skills.exclude = [ abnertuSkill ];
   };
   excluded = files {
     skills.exclude = [
-      "converge"
+      abnertuSkill
       "unmatched-exclusion"
     ];
   };
@@ -115,8 +124,10 @@ let
     in
     works machine && works standalone;
 in
-assert hasNeither bundleOff "converge" && hasBoth bundleOff "gh";
-assert hasNeither excluded "converge" && hasBoth excluded "setup-agent-prefs";
+# Every built-in selection exists in its locked source; failures name the skill.
+assert forced { };
+assert hasNeither bundleOff abnertuSkill && hasBoth bundleOff "gh";
+assert hasNeither excluded abnertuSkill && hasBoth excluded otherAbnertuSkill;
 assert hasNeither customOff "sample-personal" && hasBoth customOff "sample-upstream";
 assert skillFiles allOff == { } && allOff ? ".codex/llama-cpp.config.toml";
 assert lib.filterAttrs (name: _: lib.hasPrefix ".agents/skills/" name) agentsOff == { };
@@ -126,14 +137,14 @@ assert claudeOff ? ".agents/skills/sample-personal";
 assert lib.filterAttrs (name: _: lib.hasPrefix ".claude/skills/" name) claudeToolOff == { };
 assert claudeToolOff ? ".agents/skills/sample-personal";
 assert !(valid { skills.sets.abnertu = replacement; });
-assert hasBoth replaced "replacement" && hasNeither replaced "converge";
+assert hasBoth replaced "replacement" && hasNeither replaced abnertuSkill;
 assert
   !(valid {
     skills.sets.copy = {
       source = ./fixtures/skills/personal;
-      skills.converge = "skills/sample-personal";
+      skills.${abnertuSkill} = "skills/sample-personal";
     };
-    skills.exclude = [ "converge" ];
+    skills.exclude = [ abnertuSkill ];
   });
 assert !(valid { skills.sets.missing = missing; });
 assert valid {

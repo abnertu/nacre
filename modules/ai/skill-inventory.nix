@@ -53,7 +53,7 @@ let
     "gh-skill"
   ] (name: "skills/${name}");
   bySource.abnertu = lib.genAttrs [
-    "converge"
+    "blueprint"
     "setup-agent-prefs"
     "setup-repo-docs"
   ] (name: "skills/${name}");
