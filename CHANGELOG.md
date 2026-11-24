@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.11.0 (2026-11-24)
+
+### Features
+
+- **cli**: Color terminal output and print the built deployment
+- **runner**: Adopt complete Runner removal
+- **install**: Pin a new machine flake to the running release
+- **cli**: Add upgrade self to adopt the newest Nacre
+- **install**: Restore a machine from its repository with --repo
+- **install**: Replace bootstrap.sh with a release install.sh (breaking)
+
+### Fixes
+
+- **runner**: Adopt gitlab-runnerctl v0.4.1
+- **runner**: Adopt gitlab-runnerctl v0.4.2
+- **runner**: Adopt gitlab-runnerctl v0.4.3
+- **ai**: Select the renamed blueprint skill
+
+### Refactoring
+
+- Adopt nix-adapter v0.9.0 (breaking)
+- **cli**: Rename update to upgrade system and --flake to --dir (breaking)
+
+### Documentation
+
+- **demo**: Show the current machine workflow
+
 ## 0.10.0 (2026-11-10)
 
 ### Features
