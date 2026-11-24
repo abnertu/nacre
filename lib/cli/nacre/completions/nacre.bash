@@ -3,12 +3,12 @@
 
 _nacre() {
   local cur=${COMP_WORDS[COMP_CWORD]} prev=${COMP_WORDS[COMP_CWORD - 1]}
-  local commands="install plan switch update purge status doctor changes generations rollback check build ai noctalia"
+  local commands="install plan switch upgrade purge status doctor changes generations rollback check build ai noctalia"
   local i command='' args=()
   # The command follows the global options; collect its positional arguments.
   for ((i = 1; i < COMP_CWORD; i++)); do
     case ${COMP_WORDS[i]} in
-      --flake) ((i++)) ;;
+      --dir) ((i++)) ;;
       --override-input) ((i += 2)) ;;
       -*) ;;
       *) if [[ -z $command ]]; then command=${COMP_WORDS[i]}; else args+=("${COMP_WORDS[i]}"); fi ;;
@@ -16,12 +16,12 @@ _nacre() {
   done
   local position=${#args[@]}
 
-  if [[ $prev == --flake ]]; then
+  if [[ $prev == --dir ]]; then
     mapfile -t COMPREPLY < <(compgen -d -- "$cur")
     return
   fi
   if [[ -z $command ]]; then
-    [[ $cur == -* ]] && commands='--flake --override-input --verbose --help --version'
+    [[ $cur == -* ]] && commands='--dir --override-input --verbose --help --version'
     mapfile -t COMPREPLY < <(compgen -W "$commands" -- "$cur")
     return
   fi
@@ -39,6 +39,7 @@ _nacre() {
         *) words='--user --hostname --role --runner-config --timezone --locale --yes --force' ;;
       esac
       ;;
+    upgrade) ((position == 0)) && words='system' ;;
     changes) ((position == 0)) && words='--since' ;;
     rollback)
       local profiles=${XDG_STATE_HOME:-$HOME/.local/state}/nix/profiles link

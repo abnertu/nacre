@@ -116,7 +116,7 @@ class CompletionTests(unittest.TestCase):
         for shell in (self.bash, self.zsh):
             with self.subTest(shell.__name__):
                 self.assertEqual(shell("nacre "), commands)
-                self.assertEqual(shell("nacre --flake /tmp sw"), {"switch"})
+                self.assertEqual(shell("nacre --dir /tmp sw"), {"switch"})
 
     def test_shells_agree_on_arguments(self):
         # Both scripts are written by hand; they must offer the same words.

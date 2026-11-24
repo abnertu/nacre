@@ -14,10 +14,10 @@ _nacre() {
   typeset -A opt_args
   local -a commands
   commands=(
-    'install:write configuration.nix for this machine, then plan and update'
+    'install:write configuration.nix for this machine, then plan and upgrade system'
     'plan:show what switch would change; changes nothing'
     'switch:converge Arch, then activate the home generation'
-    'update:switch, also upgrading declared pacman and AUR packages'
+    'upgrade:upgrade system packages or Nacre itself'
     'purge:remove managed Arch state; skips Home Manager'
     'status:checkout, last switch, home generation, pending work'
     'doctor:report problems that need attention; changes nothing'
@@ -31,7 +31,7 @@ _nacre() {
   )
 
   _arguments -C \
-    '--flake[machine flake checkout]:checkout:_files -/' \
+    '--dir[machine checkout]:checkout:_files -/' \
     '*--override-input[override a flake input]:input: :reference:_files -/' \
     '--verbose[pass --verbose to Nix, Home Manager and adapters]' \
     '(- *)--help[show usage]' \
@@ -53,6 +53,7 @@ _nacre() {
             '--locale[locale]:locale:_locales' \
             '--yes[apply without asking]' \
             '--force[overwrite uncommitted configuration.nix]' ;;
+        upgrade) _arguments '1:target:(system)' ;;
         changes) _arguments '--since[ISO date or time]:time:' ;;
         rollback) _arguments '1:generation:_nacre_generations' ;;
         ai) _arguments '1:action:(prepare)' '2:part:(build model)' ;;

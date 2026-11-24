@@ -225,7 +225,7 @@ def main() -> None:
     if machine and not (machine / "flake.nix").is_file():
         parser.error("The actual machine flake is unavailable")
     if machine:
-        env["NACRE_FLAKE"] = str(machine.resolve())
+        env["NACRE_DIR"] = str(machine.resolve())
     redactor = Redactor(str(machine.resolve()) if machine else None)
     if PROFILE == "runner":
         authenticate(args.sudo_password_file)

@@ -119,7 +119,7 @@ class NacreTests(unittest.TestCase):
             ("--version",),
             ("status",),
             ("build",),
-            ("--flake", str(self.root), "build"),
+            ("--dir", str(self.root), "build"),
         ):
             with self.subTest(args=args):
                 plain = self.run_nacre(*args)
@@ -157,11 +157,20 @@ class NacreTests(unittest.TestCase):
         (nacre / "flake.nix").write_text("{}")
         self.run_nacre("build")
         self.assertIn(f"{nacre}#deployment", self.recorded()[-1])
-        self.run_nacre("build", NACRE_FLAKE=str(self.flake))
+        self.run_nacre("build", NACRE_DIR=str(self.flake))
         self.assertIn(f"{self.flake}#deployment", self.recorded()[-1])
-        result = self.run_nacre("--flake", str(self.root), "build")
+        self.run_nacre("build", NACRE_DIR="")
+        self.assertIn(f"{nacre}#deployment", self.recorded()[-1])
+        result = self.run_nacre("--dir", str(self.root), "build")
         self.assertEqual(result.returncode, 2)
         self.assertIn("no checkout found", result.stderr)
+        for removed in (
+            ("--flake", str(self.flake), "build"),
+            ("update",),
+            ("upgrade",),
+        ):
+            with self.subTest(removed=removed):
+                self.assertEqual(self.run_nacre(*removed).returncode, 2)
 
     def test_deployment_modes_and_recorded_switches(self):
         state = self.home / ".local/state/nacre/last-switch"
@@ -177,7 +186,7 @@ class NacreTests(unittest.TestCase):
                 self.assertEqual(self.recorded()[-1].rstrip(), expected)
                 self.assertEqual(state.exists(), command == "switch")
         state.unlink()
-        result = self.run_nacre("--verbose", "update", DEPLOY_STATUS="3")
+        result = self.run_nacre("--verbose", "upgrade", "system", DEPLOY_STATUS="3")
         # doctor reports after an update; the update's status stays the result.
         self.assertEqual(result.returncode, 3)
         self.assertRegex(result.stdout, r"(?m)^(ok|warn) +pending ")
@@ -248,7 +257,7 @@ class NacreTests(unittest.TestCase):
             f"[{at(-60)}] [ALPM] upgraded before (1-1 -> 1-2)\n"
             f"[{at(-60)}] [PACMAN] Running 'pacman -Syu'\n"
         )
-        self.run_nacre("update", DEPLOY_STATUS="75", **env)
+        self.run_nacre("upgrade", "system", DEPLOY_STATUS="75", **env)
         with log.open("a") as stream:
             stream.write(
                 f"[{at(1)}] [ALPM] upgraded kitty (0.48.2-1 -> 0.49.2-1)\n"
@@ -410,7 +419,7 @@ class NacreTests(unittest.TestCase):
     def test_install_into_an_empty_directory_creates_a_machine_flake(self):
         env = self.prepare_install()
         machine = self.root / "machine-flake"
-        result = self.run_nacre("--flake", str(machine), "install", "--yes", **env)
+        result = self.run_nacre("--dir", str(machine), "install", "--yes", **env)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("nacre.lib.mkFlake", (machine / "flake.nix").read_text())
         self.assertIn("users.users.alice", (machine / "configuration.nix").read_text())
@@ -462,7 +471,7 @@ class NacreTests(unittest.TestCase):
         for machine in (self.root / "fresh", self.flake):
             with self.subTest(machine=machine):
                 result = self.run_nacre(
-                    "--flake",
+                    "--dir",
                     str(machine),
                     *args,
                     NACRE_TEST_TRACKED=str(machine),
@@ -514,7 +523,7 @@ class NacreTests(unittest.TestCase):
                 )
                 # A Git-filtered closure must still pass the real packaged capture helper.
                 roundtrip_args = [
-                    "--flake",
+                    "--dir",
                     str(self.root / (machine.name + "-roundtrip")),
                     "install",
                     "--role",

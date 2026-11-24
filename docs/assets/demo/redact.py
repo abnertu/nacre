@@ -159,7 +159,7 @@ def main() -> None:
     try:
         data = sys.stdin.buffer.read(2_000_001).decode("utf-8", errors="strict")
         sys.stdout.write(
-            Redactor(os.environ.get("NACRE_FLAKE")).clean(
+            Redactor(os.environ.get("NACRE_DIR")).clean(
                 data, color="--color" in sys.argv[1:]
             )
         )

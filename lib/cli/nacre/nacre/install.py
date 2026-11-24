@@ -1,4 +1,4 @@
-"""install: write configuration.nix for this machine, then plan and update."""
+"""install: write configuration.nix for this machine, then plan and upgrade system."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ RUNNER_PUBLIC_FILES = Path("@runner-public-files@")
 
 
 class Installer:
-    """Write configuration.nix for this machine, then plan and update."""
+    """Write configuration.nix for this machine, then plan and upgrade system."""
 
     def __init__(self, machine: Machine, args: Sequence[str]):
         self.machine = machine
@@ -65,7 +65,7 @@ class Installer:
                 raise Usage
 
     def run(self) -> int:
-        """Ask for missing values, write the files, plan, and update on consent."""
+        """Ask for missing values, write the files, plan, and upgrade on consent."""
         interactive = sys.stdin.isatty()
         if not self.yes and interactive:
             self.ask()
@@ -76,7 +76,7 @@ class Installer:
         if status != 0:
             return status
         if not self.yes and not self.confirmed(interactive):
-            print("Not applied. Run nacre update when ready.", file=sys.stderr)
+            print("Not applied. Run nacre upgrade system when ready.", file=sys.stderr)
             return 0
         return deploy(self.machine, "update")
 
@@ -92,7 +92,7 @@ class Installer:
         """Whether the operator agrees to apply the plan; never without a terminal."""
         if not interactive:
             return False
-        answer = input("Apply this plan with nacre update? [y/N] ")
+        answer = input("Apply this plan with nacre upgrade system? [y/N] ")
         return answer.lower().startswith("y")
 
     def write_configuration(self, content: str) -> None:
