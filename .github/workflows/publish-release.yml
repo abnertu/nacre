@@ -29,7 +29,8 @@ jobs:
         run: |
           # The release commit's own changelog section, up to the next heading.
           awk -v v="## $(cat VERSION)" 'index($0, v) == 1 {on=1; next} /^## /{on=0} on' CHANGELOG.md >"$RUNNER_TEMP/notes.md"
-      - name: Create the Release
+      - name: Create the Release with install.sh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --title "Nacre ${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
+        # releases/latest/download/install.sh serves this asset.
+        run: gh release create "$GITHUB_REF_NAME" scripts/install.sh --title "Nacre ${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
