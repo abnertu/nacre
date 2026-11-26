@@ -6,8 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .checkhealth import checkhealth
 from .common import now, revision
-from .doctor import doctor
 from .machine import Machine, append_record, write_record
 
 MODES = ("plan", "switch", "update", "purge")
@@ -18,7 +18,7 @@ def deploy(machine: Machine, mode: str) -> int:
     """Build #deployment and run it in `mode`; return its exit status.
 
     A successful switch or update records the checkout revision. An update
-    also runs doctor afterwards, because kernels, units and replaced files
+    also runs checkhealth afterwards, because kernels, units and replaced files
     change then; the update's own exit status stays the result.
     """
     status, artifact = machine.build_deployment()
@@ -33,7 +33,7 @@ def deploy(machine: Machine, mode: str) -> int:
     if mode == "update":
         print("\nAfter the update:", file=sys.stderr)
         sys.stderr.flush()
-        doctor(machine)
+        checkhealth(machine)
     return status
 
 

@@ -40,7 +40,7 @@ nacre plan            # preview changes
 nacre switch          # converge Arch and activate the built home
 nacre upgrade system  # also upgrade declared pacman and AUR packages
 nacre upgrade self    # adopt the newest Nacre, plan, then switch
-nacre doctor          # report drift and pending work
+nacre checkhealth     # report drift and pending work
 ```
 
 A routine `switch` installs no packages. `nacre upgrade self` follows the channel of the machine flake's `nacre` input:

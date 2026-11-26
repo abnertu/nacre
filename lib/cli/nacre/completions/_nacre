@@ -20,7 +20,7 @@ _nacre() {
     'upgrade:upgrade system packages or Nacre itself'
     'purge:remove managed Arch state; skips Home Manager'
     'status:checkout, last switch, home generation, pending work'
-    'doctor:report problems that need attention; changes nothing'
+    'checkhealth:report problems that need attention; changes nothing'
     'changes:package changes since the last update'
     'generations:list home generations'
     'rollback:activate an earlier home generation'

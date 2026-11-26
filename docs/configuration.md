@@ -75,7 +75,7 @@ users.users.alice.homeModules = [ ./homes/alice/home.nix ];
 }
 ```
 
-Nacre uses `lib.mkDefault` for these defaults, so plain home definitions win. Keep the reviewed Noctalia snapshot at `homes/<user>/noctalia/config.toml`. The CLI and doctor look for it there.
+Nacre uses `lib.mkDefault` for these defaults, so plain home definitions win. Keep the reviewed Noctalia snapshot at `homes/<user>/noctalia/config.toml`. The CLI and `checkhealth` look for it there.
 
 After you edit, run `nacre build`. Then review `nacre plan`.
 

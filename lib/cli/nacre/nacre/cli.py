@@ -8,9 +8,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .checkhealth import checkhealth
 from .common import Refusal, Usage, config_home, revision, styled
 from .deploy import MODES, deploy
-from .doctor import doctor
 from .generations import list_generations, rollback
 from .install import Installer
 from .machine import Machine, find_flake
@@ -40,7 +40,7 @@ Deployment
 
 Inspection
   status                   checkout, last switch, home generation, pending work
-  doctor                   report problems that need attention; changes nothing
+  checkhealth              report problems that need attention; changes nothing
   changes [--since TIME]   package changes since the last update (or TIME)
   generations              list home generations
   rollback [GENERATION]    activate an earlier home generation (Arch is not rolled back)
@@ -220,7 +220,7 @@ COMMANDS: dict[str, Callable[[Machine, list[str]], int]] = {
     "check": no_arguments(check),
     "build": no_arguments(build),
     "status": no_arguments(status),
-    "doctor": no_arguments(doctor),
+    "checkhealth": no_arguments(checkhealth),
     "changes": changes_command,
     "generations": no_arguments(lambda _: list_generations()),
     "rollback": rollback_command,

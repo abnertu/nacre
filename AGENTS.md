@@ -137,7 +137,7 @@ Assign one owner to each resource. Feature modules contribute native resources t
 - Assign one startup owner to each application.
 - Pass (`programs.password-store`) owns user credential storage.
 - Some applications rewrite their settings. Declare settings read-only when changes are rare and deliberate, as with fcitx5.
-- For settings changed through the GUI, such as Noctalia, keep a reviewed snapshot with capture. Let `nacre doctor` report drift.
+- For settings changed through the GUI, such as Noctalia, keep a reviewed snapshot with capture. Let `nacre checkhealth` report drift.
 - Never capture or commit automatically.
 - Hyprland and Neovim sources live outside managed runtime paths. They are pinned flake inputs that intentional lock updates adopt.
 - For local worktrees, use `development.hyprlandPath` or `development.neovimPath`.

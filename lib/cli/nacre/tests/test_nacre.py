@@ -196,7 +196,7 @@ class NacreTests(unittest.TestCase):
                 self.assertEqual(state.exists(), command == "switch")
         state.unlink()
         result = self.run_nacre("--verbose", "upgrade", "system", DEPLOY_STATUS="3")
-        # doctor reports after an update; the update's status stays the result.
+        # checkhealth reports after an update; the update's status stays the result.
         self.assertEqual(result.returncode, 3)
         self.assertRegex(result.stdout, r"(?m)^(ok|warn) +pending ")
         self.assertEqual(self.recorded()[-1], "deploy --update --verbose")
@@ -324,7 +324,7 @@ class NacreTests(unittest.TestCase):
         (profiles / "home-manager").symlink_to("home-manager-1-link")
         self.run_nacre("switch", **env)
 
-        result = self.run_nacre("doctor", **env)
+        result = self.run_nacre("checkhealth", **env)
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertTrue(
             all(line.startswith("ok") for line in result.stdout.splitlines())
@@ -344,7 +344,7 @@ class NacreTests(unittest.TestCase):
         (self.home / ".config/kitty").mkdir(parents=True)
         (self.home / ".config/kitty/kitty.conf.bak").write_text("")
         result = self.run_nacre(
-            "doctor",
+            "checkhealth",
             KERNEL="7.2.6-arch2-1",
             FAILED="broken.service loaded failed failed Broken",
             WATCH_STATE="inactive",

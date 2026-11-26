@@ -25,7 +25,7 @@ nacre purge               # withdraw managed Arch state without home activation
 | --- | --- |
 | `build` | Build without activation, then print the deployment artifact path. |
 | `status` | Show checkout revision, last recorded switch, active home and pending markers |
-| `doctor` | Report revision drift, pending work and missing kernel modules. Report failed or unstarted units, uncaptured Noctalia preferences and backup files beside managed home files. Exit 1 on findings. |
+| `checkhealth` | Report revision drift, pending work and missing kernel modules. Report failed or unstarted units, uncaptured Noctalia preferences and backup files beside managed home files. Exit 1 on findings. |
 | `changes [--since TIME]` | Read package changes from the pacman log since the start of the last update, or since an explicit ISO date/time |
 | `generations` | List previous home generations |
 | `rollback [N]` | Activate a previous home again. Arch packages and native files do not change. |
@@ -33,7 +33,7 @@ nacre purge               # withdraw managed Arch state without home activation
 
 Plan prefixes are `=` unchanged, `~` changed, `+` added and `!` conflict. System settings show preflight results, not individual changes. The next switch after a rollback activates the current declaration again.
 
-Routine runs install nothing. They exit 3 when packages are missing. `upgrade system` fully upgrades pacman and converges AUR. A kernel upgrade can need a reboot. The final doctor report does not change the exit status of the upgrade.
+Routine runs install nothing. They exit 3 when packages are missing. `upgrade system` fully upgrades pacman and converges AUR. A kernel upgrade can need a reboot. The final `checkhealth` report does not change the exit status of the upgrade.
 
 `upgrade self` changes only the `nacre` input of the machine flake. A release pin (`github:abnertu/nacre/vX.Y.Z`) moves to the newest tag. A branch pin keeps its URL and refreshes its lock entry. A pin newer than the newest release is refused. A failed lookup or lock update restores `flake.nix` and `flake.lock`. Without `--yes` and without a terminal, it stops after the plan.
 

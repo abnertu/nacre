@@ -1,4 +1,4 @@
-"""doctor: report the problems that need attention; it changes nothing."""
+"""checkhealth: report the problems that need attention; it changes nothing."""
 
 from __future__ import annotations
 
@@ -21,14 +21,14 @@ NOCTALIA_UNCAPTURED = 3
 
 @dataclass(frozen=True)
 class Finding:
-    """One doctor line: a problem, or the healthy state when there is none."""
+    """One checkhealth line: a problem, or the healthy state when there is none."""
 
     label: str
     problem: str | None
     fine: str
 
 
-def doctor(machine: Machine) -> int:
+def checkhealth(machine: Machine) -> int:
     """Print one line for each check; return 1 if any found a problem."""
     checks: list[Callable[[Machine], Finding]] = [
         check_switch,

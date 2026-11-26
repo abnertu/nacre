@@ -112,7 +112,7 @@ class CompletionTests(unittest.TestCase):
             [PACKAGE / "bin/nacre", "--help"], capture_output=True, text=True
         ).stdout
         commands = set(re.findall(r"(?m)^  ([a-z]+)\b", usage))
-        self.assertIn("doctor", commands)
+        self.assertIn("checkhealth", commands)
         for shell in (self.bash, self.zsh):
             with self.subTest(shell.__name__):
                 self.assertEqual(shell("nacre "), commands)
