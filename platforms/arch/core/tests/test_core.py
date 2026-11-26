@@ -770,6 +770,17 @@ class EtcTests(Harness):
         self.deploy()
         self.assertFalse(self.path(name).exists())
 
+    def test_lost_receipt_plan_names_identical_text_as_nacre_created(self):
+        self.deploy()
+        (self.root / STATE / "receipts/core.json").unlink()
+        self.existing("hosts", "nacre\n")
+        self.path("hosts").chmod(0o600)
+        self.existing("motd", "operator\n")
+        self.manifest["etc"] = [entry("hosts", "nacre\n"), entry("motd", "nacre\n")]
+        lines = self.plan()
+        self.assertIn("~ /etc/hosts (adopt as Nacre's)", lines)
+        self.assertIn("~ /etc/motd (adopt, save original)", lines)
+
     def test_host_of_an_older_version_stops_preflight(self):
         (self.root / "etc/nix/nix.conf").write_text(OLD_BLOCK)
         with self.assertRaisesRegex(Conflict, "older Nacre.*nacre purge"):

@@ -636,7 +636,10 @@ class Core(BaseAdapter[CoreRequest]):
         if current is None:
             return Change("+", path)
         if record is None:
-            created = "nix-config" in Path(path).name
+            # The same rule as write_entry, which records these as Nacre's.
+            created = "nix-config" in Path(path).name or (
+                self.lost_receipt and current[0] == entry["text"]
+            )
             note = "adopt as Nacre's" if created else "adopt, save original"
         elif files.matches(path, entry["text"], int(entry["mode"], 8)):
             return Change("=", path)
