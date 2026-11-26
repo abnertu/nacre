@@ -60,6 +60,16 @@
         python ${./system}/tests/test_system.py
         touch "$out"
       '';
+  hotspot-prepare-tests =
+    pkgs.runCommand "hotspot-prepare-tests"
+      {
+        nativeBuildInputs = [ (pkgs.python3.withPackages (python: [ python.pygobject3 ])) ];
+        GI_TYPELIB_PATH = "${pkgs.glib.out}/lib/girepository-1.0";
+      }
+      ''
+        python ${./system}/tests/test_prepare_hotspot.py ${adapterPython}/bin/python3 ${./system}/prepare_hotspot.py
+        touch "$out"
+      '';
   ai-services-tests =
     pkgs.runCommand "ai-services-tests" { nativeBuildInputs = [ adapterPython ]; }
       ''

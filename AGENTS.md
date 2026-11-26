@@ -96,7 +96,7 @@ Assign one owner to each resource. Feature modules contribute native resources t
 - Validate manifest keys at the adapter entry point. The `adapter-manifests` check validates generated manifests to prevent drift between Nix and Python.
 - Use pyright strict for production Python. Add `# pyright: standard` to each test file.
 - Nix generates static, public policy.
-- Python adapters and orchestration (`arch-switch`, `nacre`, `llama-prepare`) do only safe live-state reconciliation, validation and recovery.
+- Python adapters and orchestration (`arch-switch`, `nacre`, `llama-prepare`, `hotspot-prepare`) do only safe live-state reconciliation, validation and recovery.
 - Use Bash only for thin entry points: the deployment wrapper, home switch, the install script and the container test.
 - Keep secrets, runtime receipts, registration tokens and mutable data outside derivations.
 - Host state keeps the `nix-config` namespace, so existing machines need no migration. The namespace covers `/var/lib/nix-config`, `60-nix-config.conf` drop-ins, `# BEGIN nix-config` blocks and receipts.

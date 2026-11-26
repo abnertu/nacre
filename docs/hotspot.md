@@ -1,17 +1,27 @@
 # Wi-Fi hotspot
 
-Nacre adopts an existing NetworkManager AP connection by unique name and manages its public properties. NetworkManager retains the UUID, WPA credentials and other fields. The adapter does not read or print the password.
+Nacre adopts a NetworkManager AP connection by unique name and manages its public properties. `nacre hotspot prepare` creates that connection. NetworkManager retains the UUID, WPA credentials and other fields. The adapter does not read or print the password.
 
 ## Preparing the connection
 
-Before you enable `networking.hotspot`, do these steps:
+Before you deploy with `networking.hotspot`, do these steps:
 
-1. Start NetworkManager.
-2. Create the named WPA-personal AP connection. Keep its password in the protected storage of NetworkManager.
-3. Make sure that the declared wireless and uplink interfaces exist.
-4. Make sure that no other connection holds the wireless interface.
+1. Start NetworkManager. On a new host, deploy once without `networking.hotspot`.
+2. Declare `networking.hotspot`.
+3. Run `nacre hotspot prepare`. Type the password twice.
+4. Make sure that the declared wireless and uplink interfaces exist.
+5. Make sure that no other connection holds the wireless interface.
 
-Set `networking.hotspot.interface` and `.uplink` for the hardware. Otherwise, disable the feature. Missing interfaces, duplicate or non-AP connections, unsafe ownership and failed queries stop core preflight.
+```bash
+nacre hotspot prepare
+nacre switch
+```
+
+Prepare creates a WPA2 (RSN, CCMP) AP with the declared properties and `autoconnect` off. It writes the password only into a root-only keyfile under `/etc/NetworkManager/system-connections/`. A password has 8 to 63 printable ASCII characters, or 64 hex digits. Prepare stops and writes nothing when the connection or its keyfile exists. When NetworkManager does not load the keyfile, prepare removes it again. You can also create the connection by hand.
+
+The deployment applies the declared `autoconnect`. With `autoconnect = true`, it starts the AP. With `autoconnect = false`, run `nmcli connection up <connection>`.
+
+Set `networking.hotspot.interface` and `.uplink` for the hardware. Otherwise, disable the feature. Missing interfaces, duplicate or non-AP connections, unsafe ownership and failed queries stop the system preflight.
 
 ## Deploying and verifying
 

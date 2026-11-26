@@ -85,7 +85,7 @@ The machine flake supplies identity, existing login accounts, hardware, optional
 | [System settings](docs/system-settings.md) | Native ownership and pending changes |
 | [Desktop session](docs/desktop-session.md) | Startup, themes and local development |
 | [Noctalia](docs/noctalia-config.md) | Review, capture and deploy UI preferences |
-| [Hotspot](docs/hotspot.md) | Adopt an existing AP connection |
+| [Hotspot](docs/hotspot.md) | Create and adopt the AP connection |
 | [Local AI](docs/ai.md) | Prepare models and serve loopback APIs |
 | [GitLab Runner](docs/gitlab-runner.md) | Declare Runner instances and manage their deployment boundary |
 | [Backup](docs/backup.md) | Preserve state outside the flake |

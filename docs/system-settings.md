@@ -8,7 +8,7 @@ The system adapter owns locale, timezone, console, hostname, firewall, hotspot a
 | `networking.hostname`, `networking.firewall`, `networking.hotspot` | Hostname, UFW and an existing NetworkManager AP |
 | `services.timesyncd`, `services.journald`, `services.logind`, `services.fstrim`, `services.powerpanel` | Native settings, service state and UPS configuration |
 
-Preflight checks files, ownership, commands and units before mutations. Missing interfaces or resources, conflicting providers and failed queries stop the core stage. Before the first adoption, inspect current ownership from a local session that permits recovery. Examine UFW, networking, time sync, storage discard and console settings carefully. See [hotspot](hotspot.md) for AP preparation.
+Preflight checks files, ownership, commands and units before mutations. Missing interfaces or resources, conflicting providers and failed queries stop the core stage. Before the first adoption, inspect current ownership from a local session that permits recovery. Examine UFW, networking, time sync, storage discard and console settings carefully. See [hotspot](hotspot.md) to create the AP connection with `nacre hotspot prepare`.
 
 When a setting goes away, Nacre returns it to its state before Nacre. The system receipt `/var/lib/nix-config/arch/receipts/system.json` records each change:
 

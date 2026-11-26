@@ -7,6 +7,7 @@
 let
   python = pkgs.python3.withPackages (packages: [
     packages.jinja2
+    packages.pygobject3
     packages.rich
     nixAdapter
   ]);

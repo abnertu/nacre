@@ -229,7 +229,7 @@ in
       }
     );
     default = null;
-    description = "A NetworkManager access point that already exists; null leaves it unmanaged.";
+    description = "A NetworkManager access point that Nacre adopts; `nacre hotspot prepare` creates it. Null leaves it unmanaged.";
   };
 
   firewall = mkOption {

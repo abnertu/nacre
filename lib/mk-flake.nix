@@ -32,6 +32,7 @@ lib.recursiveUpdate extraOutputs {
       arch-switch
       home-switch
       llama-prepare
+      hotspot-prepare
       nacre
       deployment
       ;
@@ -48,6 +49,7 @@ lib.recursiveUpdate extraOutputs {
     arch-switch = app d.arch-switch "Converge Arch-native policy";
     home-switch = app d.home-switch "Activate ${d.homeConfigurationName} through Home Manager";
     llama-prepare = app d.llama-prepare "Prepare the pinned llama.cpp build and models";
+    hotspot-prepare = app d.hotspot-prepare "Create the declared hotspot connection";
   }
   // lib.optionalAttrs d.noctaliaEnabled {
     noctalia-config = app d.noctalia-config "Capture or deploy reviewed Noctalia preferences";

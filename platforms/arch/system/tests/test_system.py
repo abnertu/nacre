@@ -75,6 +75,8 @@ class Fake(FakeNative):
         self.added = []
         self.hotspot_kernel = set()
         self.up = set()
+        # Whether NetworkManager lists the hotspot connection.
+        self.listed = True
         self.radio_follows = True
         self.radio = None
         # Local ports of established inbound TCP connections: ss -Htn.
@@ -252,7 +254,7 @@ class Fake(FakeNative):
 
     def nmcli(self, rest):
         if "UUID,NAME" in rest:
-            return f"{self.uuid}:hotspot\n"
+            return f"{self.uuid}:hotspot\n" if self.listed else ""
         if rest[:3] == ["-g", "GENERAL.CON-UUID", "device"]:
             return self.device_uuid
         if rest[:3] == ["--escape", "no", "-g"]:
@@ -917,6 +919,13 @@ class SystemTests(unittest.TestCase):
                 setattr(self.native, field, saved)
         self.native.connection["802-11-wireless.mode"] = "infrastructure"
         with self.assertRaises(Conflict):
+            self.system.converge()
+        self.assertEqual(self.nmcli_writes(), [])
+
+    def test_missing_hotspot_connection_names_the_prepare_command(self):
+        self.hotspot()
+        self.native.listed = False
+        with self.assertRaisesRegex(Conflict, "run `nacre hotspot prepare`"):
             self.system.converge()
         self.assertEqual(self.nmcli_writes(), [])
 

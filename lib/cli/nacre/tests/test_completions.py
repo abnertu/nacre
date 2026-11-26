@@ -127,6 +127,7 @@ class CompletionTests(unittest.TestCase):
             "nacre changes ",
             "nacre ai ",
             "nacre ai prepare ",
+            "nacre hotspot ",
             "nacre upgrade ",
             "nacre upgrade self --",
             "nacre noctalia ",

@@ -136,6 +136,11 @@ class Hotspot:
             for line in lines
             if ":" in line and line.split(":", 1)[1] == self.desired["connection"]
         ]
+        if not matches:
+            raise Conflict(
+                f"hotspot connection {self.desired['connection']} does not exist; "
+                "run `nacre hotspot prepare`, then deploy"
+            )
         if len(matches) != 1 or not re.fullmatch(r"[0-9a-fA-F-]{36}", matches[0]):
             raise Conflict(
                 "prepare exactly one named hotspot connection and its credentials in NetworkManager before deployment"

@@ -28,6 +28,7 @@ _nacre() {
     'check:run every flake check'
     'build:build the deployment without activating'
     'ai:prepare the pinned llama.cpp build and models'
+    'hotspot:create the declared hotspot connection'
     'noctalia:capture or deploy Noctalia preferences'
   )
 
@@ -61,6 +62,7 @@ _nacre() {
         changes) _arguments '--since[ISO date or time]:time:' ;;
         rollback) _arguments '1:generation:_nacre_generations' ;;
         ai) _arguments '1:action:(prepare)' '2:part:(build model)' ;;
+        hotspot) _arguments '1:action:(prepare)' ;;
         noctalia)
           _arguments -C '1:action:(capture deploy)' '*::option:->option' && return
           case $words[1] in

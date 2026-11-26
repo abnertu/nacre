@@ -52,6 +52,7 @@ Source
 
 Features
   ai prepare [build|model] prepare the pinned llama.cpp build and models
+  hotspot prepare          create the declared hotspot connection
   noctalia ACTION [ARGS]   ACTION: capture, deploy
 
 The checkout is --dir, else $NACRE_DIR, else ~/.config/nacre or ~/.config/nix.
@@ -195,6 +196,13 @@ def ai_command(machine: Machine, args: list[str]) -> int:
     )
 
 
+def hotspot_command(machine: Machine, args: list[str]) -> int:
+    """hotspot prepare: create the declared hotspot connection."""
+    if args != ["prepare"]:
+        raise Usage
+    machine.nix_root("NO_COLOR", "run", machine.target("hotspot-prepare"))
+
+
 def noctalia_command(machine: Machine, args: list[str]) -> int:
     """noctalia capture|deploy [ARGS]: the reviewed Noctalia snapshot."""
     if not args or args[0] not in NOCTALIA_ACTIONS:
@@ -234,6 +242,7 @@ COMMANDS: dict[str, Callable[[Machine, list[str]], int]] = {
     "generations": no_arguments(lambda _: list_generations()),
     "rollback": rollback_command,
     "ai": ai_command,
+    "hotspot": hotspot_command,
     "noctalia": noctalia_command,
 }
 

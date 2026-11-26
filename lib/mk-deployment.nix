@@ -97,6 +97,10 @@ let
     inherit lib pkgs adapterPython;
     inherit (ai) artifacts;
   };
+  hotspot-prepare = import ../platforms/arch/system/prepare-package.nix {
+    inherit pkgs adapterPython;
+    inherit (host.systemSettings) hotspot;
+  };
   home-switch = import ./deployment/home/package.nix {
     inherit pkgs;
     activationPackage = homes.${homeConfigurationName}.activationPackage;
@@ -118,6 +122,7 @@ in
     archAi
     arch-switch
     llama-prepare
+    hotspot-prepare
     home-switch
     nacre
     runnerctl

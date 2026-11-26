@@ -10,7 +10,7 @@ The flake rebuilds configuration. Deployment creates no backups. Back up irrepla
 | Password store | `~/.password-store/` | Stored passwords are lost |
 | SSH keys | `~/.ssh/` | Keys must be replaced at every authorized service |
 | Noctalia storage key and encrypted data | Key: `~/.local/share/noctalia/file-key-v1/master-key` | A newly generated key cannot decrypt old data |
-| Hotspot connection | `/etc/NetworkManager/system-connections/` | AP and WPA credentials must be recreated |
+| Hotspot connection | `/etc/NetworkManager/system-connections/` | Recreate it with `nacre hotspot prepare` and the old password |
 
 Machine extensions can add required state. Follow each extension's backup procedures.
 
