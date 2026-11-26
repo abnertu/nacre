@@ -296,10 +296,10 @@ class System(BaseAdapter[SystemRequest]):
     def withdraw_record(self, key: str, record: dict[str, Any], purge: bool) -> None:
         """Withdraw one record other than a drop-in.
 
-        Purge keeps UFW and the hotspot connection and only drops their records.
+        Purge keeps UFW and its rules and only drops their records.
         """
         kind = record["kind"]
-        if kind == "dropin" or (purge and kind in ("ufw", "firewall", "hotspot")):
+        if kind == "dropin" or (purge and kind in ("ufw", "firewall")):
             return
         if kind == "ufw":
             withdraw_rule(self, key, record)
@@ -401,8 +401,8 @@ class System(BaseAdapter[SystemRequest]):
         self.check_withdrawn(purge=True)
         removed = self.withdraw(purge=True)
         print(
-            f"System settings purged: {len(removed)} drop-ins removed; locale, timezone, "
-            "hostname, console, firewall and hotspot values were kept."
+            f"System settings purged: {len(removed)} drop-ins removed; the other "
+            "settings returned to their values before Nacre; UFW was kept."
         )
 
     def localtime(self) -> str | None:

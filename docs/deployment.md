@@ -71,14 +71,14 @@ Purge checks every recorded file for drift before any change. Purge withdraws th
 - Policy retired by explicitly opted-in extension adapters.
 - Recorded `/etc` files. Adopted files get their originals back.
 - The AI Tailscale route, Caddy site and llama-swap configuration.
-- System-setting drop-ins.
+- System-setting drop-ins. The locale, console, time zone, hostname and hotspot get their values before Nacre back.
 - Managed core units, kernel files and repository configuration.
 - Extension-owned units, Nix settings and pending state.
 
 Purge keeps these items:
 
 - Packages, accounts, registrations, mutable data and prepared AI artifacts.
-- The current locale, timezone, hostname, console, firewall and hotspot settings.
+- UFW and its rules.
 - The initramfs module block, because its removal needs a boot-image rebuild.
 
 Nacre no longer manages disabled features and does not touch them. Home Manager does not activate.

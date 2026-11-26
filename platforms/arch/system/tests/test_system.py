@@ -830,6 +830,24 @@ class SystemTests(unittest.TestCase):
         self.converge()
         self.assertIn(self.native.uuid, self.native.up)
 
+    def test_purge_restores_the_hotspot_and_settings_but_keeps_ufw(self):
+        self.firewall()
+        self.hotspot()
+        before = dict(self.native.connection)
+        self.timezone()
+        self.converge()
+        self.native.calls.clear()
+        System(self.d, self.files, self.native).purge()
+        self.assertEqual(
+            self.native.connection["802-11-wireless.ssid"],
+            before["802-11-wireless.ssid"],
+        )
+        self.assertTrue(self.native.added)
+        self.assertEqual(self.ufw_calls("delete") + self.ufw_calls("route"), [])
+        localtime = self.files.path("/etc/localtime", symlink_leaf=True)
+        self.assertFalse(localtime.is_symlink())
+        self.assertEqual(self.receipt(), {})
+
     def test_changed_withdrawn_hotspot_stops_and_names_forget(self):
         self.hotspot()
         self.converge()

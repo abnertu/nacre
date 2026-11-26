@@ -126,6 +126,7 @@ Assign one owner to each resource. Feature modules contribute native resources t
 - `--verbose` reaches Nix, Home Manager and privileged adapters.
 - A withdrawn `environment.etc` entry removes the file that Nacre created, or restores the adopted original.
 - A withdrawn authored unit stops, is disabled and goes away. A withdrawn packaged unit keeps running.
+- A withdrawn system setting returns to its value before Nacre. UFW withdrawals that loosen protection stop, and purge keeps UFW.
 - Other disabled declarations only withdraw management.
 - A withdrawn file that changed since Nacre wrote it stops the deployment.
 - `--purge` removes the managed Arch deployment state and skips Home Manager. It keeps packages, accounts, registrations and mutable data.

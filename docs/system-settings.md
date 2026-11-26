@@ -10,7 +10,18 @@ The system adapter owns locale, timezone, console, hostname, firewall, hotspot a
 
 Preflight checks files, ownership, commands and units before mutations. Missing interfaces or resources, conflicting providers and failed queries stop the core stage. Before the first adoption, inspect current ownership from a local session that permits recovery. Examine UFW, networking, time sync, storage discard and console settings carefully. See [hotspot](hotspot.md) for AP preparation.
 
-When you disable a declaration, Nacre withdraws management. Purge removes owned drop-ins. It keeps the current locale, timezone, hostname, console, firewall rules and hotspot properties.
+When a setting goes away, Nacre returns it to its state before Nacre. The system receipt `/var/lib/nix-config/arch/receipts/system.json` records each change:
+
+- A drop-in goes away. systemd reloads and the service restarts. logind changes apply after the next boot.
+- The locale, console, time zone and hostname get their values before Nacre back. A file that Nacre created goes away.
+- The `locale.gen` block goes away, and `locale-gen` runs.
+- A UFW rule that Nacre added goes away. A rule whose port carries an established TCP connection stays, and the deployment stops.
+- A UFW withdrawal that disables UFW, lowers its logging or allows new application profiles stops the deployment. Run the named command from a local console if you want it.
+- The hotspot connection gets its properties back. An AP that Nacre brought up goes down.
+
+A value that changed since Nacre set it stops the deployment. Restore it, or run `nacre forget <kind>:<name>` to leave it unmanaged. The kinds are `dropin`, `locale`, `console`, `timezone`, `hostname`, `ufw`, `firewall` and `hotspot`.
+
+Purge withdraws all settings the same way. It keeps UFW and its rules.
 
 ## PowerPanel (CyberPower UPS)
 

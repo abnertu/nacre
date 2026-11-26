@@ -27,4 +27,4 @@ Check address assignment, DNS and internet access from a client. `iw dev <interf
 
 ## Recovery
 
-Keep pending markers under `/var/lib/nix-config/arch/`. Fix the reported cause, then run again. When you disable management, the connection and credentials stay. After you change the subnet, interface or uplink, review stale manual rules. Deployment cannot determine who owns those rules.
+Keep pending markers under `/var/lib/nix-config/arch/`. Fix the reported cause, then run again. When the hotspot goes away, the connection gets its properties before Nacre back, and an AP that Nacre brought up goes down. The connection and credentials stay. After you change the subnet, interface or uplink, review stale manual rules. Deployment cannot determine who owns those rules.
