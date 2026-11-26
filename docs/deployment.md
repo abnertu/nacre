@@ -66,22 +66,23 @@ A module can skip as `not ready` only before its preparation has ever completed.
 - Failed native commands.
 - A readiness change after preflight.
 
-Purge checks every recorded file for drift before any change. Purge withdraws these items:
+`nacre purge` uninstalls Nacre. It checks every record for drift before any change. Then it withdraws everything that a deployment would withdraw when all declarations go away:
 
 - Policy retired by explicitly opted-in extension adapters.
-- Recorded `/etc` files. Adopted files get their originals back.
 - The AI Tailscale route, Caddy site and llama-swap configuration.
+- Units. Network units such as NetworkManager and tailscaled stop last.
+- Recorded `/etc` files. Adopted files get their originals back.
 - System-setting drop-ins. The locale, console, time zone, hostname and hotspot get their values before Nacre back.
-- Managed core units, kernel files and repository configuration.
-- Extension-owned units, Nix settings and pending state.
+- Groups, file capabilities, sysctl values and kernel modules that Nacre set. `wheel` stays.
+- The repository, the `nix.conf` block and the initramfs block. The boot images are rebuilt.
+- The deployment state under `/var/lib/nix-config/arch`.
 
 Purge keeps these items:
 
 - Packages, accounts, registrations, mutable data and prepared AI artifacts.
-- UFW and its rules.
-- The initramfs module block, because its removal needs a boot-image rebuild.
+- UFW, `ufw.service` and the UFW rules.
 
-Nacre no longer manages disabled features and does not touch them. Home Manager does not activate.
+A second purge changes nothing. Home Manager does not activate.
 
 Extension purge hooks run in extension-name order before built-in retirement. A hook failure stops purge before shared pending state is removed. Purge does not skip opted-in hooks because preparation is incomplete.
 
@@ -91,7 +92,8 @@ Extension purge hooks run in extension-name order before built-in retirement. A 
 
 - Missing-package rejection and update.
 - Quiet repeat convergence and an unchanged plan.
-- Purge.
+- A withdrawal generation that removes declared files, a unit, a drop-in and a sysctl value.
+- Purge, and a second purge that changes nothing.
 - Installation of a new minimal machine.
 - Nix store integrity.
 

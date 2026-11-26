@@ -54,6 +54,13 @@ NIX_BLOCK = {
     "action": "nix-daemon",
     "create": True,
 }
+INITRAMFS_BLOCK = {
+    "path": "/etc/mkinitcpio.conf",
+    "name": "modules",
+    "text": "MODULES+=( usbhid )\n",
+    "action": "initramfs",
+    "create": False,
+}
 MANIFEST = {
     "user": "tester",
     "etc": [
@@ -68,16 +75,7 @@ MANIFEST = {
         "source": "/fixture/lizardbyte.conf",
         "include": INCLUDE,
     },
-    "blocks": [
-        {
-            "path": "/etc/mkinitcpio.conf",
-            "name": "modules",
-            "text": "MODULES+=( usbhid )\n",
-            "action": "initramfs",
-            "create": False,
-        },
-        NIX_BLOCK,
-    ],
+    "blocks": [INITRAMFS_BLOCK, NIX_BLOCK],
     "initramfsImages": ["/boot/initramfs-linux.img"],
     "groups": ["wheel", "i2c"],
     "units": [unit("NetworkManager.service", triggers="nm-1"), unit("libvirtd.socket")],
@@ -90,7 +88,7 @@ MANIFEST = {
         {"path": "/usr/bin/sunshine", "capability": "cap_sys_admin=p"}
     ],
     "purge": {
-        "blocks": [NIX_BLOCK],
+        "blocks": [INITRAMFS_BLOCK, NIX_BLOCK],
         "ownedUnits": [
             {
                 "unit": "fixture-extension.service",
@@ -502,14 +500,52 @@ class CoreTests(Harness):
         self.assertEqual(
             (self.root / "etc/nix/nix.conf").read_text(), "build-users-group = nixbld\n"
         )
-        self.assertIn(
-            "nix-config modules", (self.root / "etc/mkinitcpio.conf").read_text()
+        self.assertEqual(
+            (self.root / "etc/mkinitcpio.conf").read_text(), "MODULES=(existing)\n"
         )
+        self.assertIn(("mkinitcpio", "-P"), self.native.calls)
         self.assertFalse(unit.exists())
         self.assertFalse(any(self.native.unit(u)["enabled"] for u in UNIT_NAMES))
         self.assertIn(("systemctl", "restart", "nix-daemon.service"), self.native.calls)
         self.assertIn(("systemctl", "daemon-reload"), self.native.calls)
         self.assertFalse((self.root / "var/lib/nix-config/arch").exists())
+
+    def test_purge_uninstalls_in_order_and_keeps_ufw(self):
+        self.manifest["units"].append(unit("ufw.service"))
+        self.deploy()
+        self.native.calls.clear()
+        self.core().purge()
+        calls = self.native.calls
+        order = [
+            calls.index(("systemctl", "disable", "--now", "libvirtd.socket")),
+            calls.index(("mkinitcpio", "-P")),
+            calls.index(("systemctl", "disable", "--now", "NetworkManager.service")),
+        ]
+        self.assertEqual(order, sorted(order))
+        self.assertTrue(self.native.unit("ufw.service")["enabled"])
+        self.assertNotIn("i2c", self.native.groups)
+        self.assertEqual(self.native.capabilities, {})
+        self.assertEqual(self.native.sysctl["net.ipv4.ip_forward"], "0")
+        self.assertFalse((self.root / "sys/module/br_netfilter").exists())
+        self.assertFalse((self.root / STATE).exists())
+
+    def test_purge_stops_on_runtime_drift_before_any_change(self):
+        self.deploy()
+        self.native.sysctl["net.ipv4.ip_forward"] = "7"
+        nix = (self.root / "etc/nix/nix.conf").read_text()
+        self.native.calls.clear()
+        with self.assertRaisesRegex(
+            Conflict, "nacre forget sysctl:net.ipv4.ip_forward"
+        ):
+            self.core().purge()
+        self.assertEqual((self.root / "etc/nix/nix.conf").read_text(), nix)
+        self.assertFalse(
+            any(
+                call[1] == "disable"
+                for call in self.native.calls
+                if call[0] == "systemctl"
+            )
+        )
 
     def test_failed_purge_keeps_pacman_repository_loadable(self):
         self.deploy()

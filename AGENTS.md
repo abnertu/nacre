@@ -129,7 +129,7 @@ Assign one owner to each resource. Feature modules contribute native resources t
 - A withdrawn system setting returns to its value before Nacre. UFW withdrawals that loosen protection stop, and purge keeps UFW.
 - Other disabled declarations only withdraw management.
 - A withdrawn file that changed since Nacre wrote it stops the deployment.
-- `--purge` removes the managed Arch deployment state and skips Home Manager. It keeps packages, accounts, registrations and mutable data.
+- `--purge` uninstalls Nacre through the withdrawal path and skips Home Manager. It keeps packages, accounts, registrations, mutable data and UFW.
 - Deployment does no directory backups or garbage collection. It saves only the original of an adopted file, to restore it on withdrawal.
 - Adopted originals can hold secrets. Never print, log or copy them outside `/var/lib/nix-config/arch/adopted/`.
 - Keep backward compatibility out of the code. A host of an older version purges with that version first.

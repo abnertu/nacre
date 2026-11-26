@@ -16,6 +16,8 @@
     "net.bridge.bridge-nf-call-iptables" = lib.mkForce null;
     "net.ipv4.tcp_congestion_control" = lib.mkForce null;
   };
+  # A file under /etc that the withdrawal generation removes again.
+  environment.etc."nacre-container-test.conf".text = "declared by the container test\n";
   # An authored service: real systemd must load, enable and start it.
   systemd.services.nacre-demo = {
     description = "Nacre container demo";

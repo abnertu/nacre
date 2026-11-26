@@ -58,6 +58,7 @@ trap 'annotate "command failed (exit $?) at line $LINENO during: $current_step"'
 
 step 'Build the container deployment'
 deployment=$(nix build --no-link --print-out-paths "$source_root#container-deployment")
+withdrawn=$(nix build --no-link --print-out-paths "$source_root#container-withdrawn-deployment")
 # shellcheck disable=SC2016 # the single-quoted text is a Nix expression
 read -r user home hostname <<<"$(nix eval --raw "$source_root#lib.container" \
   --apply 'c: "${c.username} ${c.homeDirectory} ${c.hostname}"')"
@@ -111,10 +112,14 @@ as_user_in() {
   podman exec -i -u "$user" -w "$home" "$name" "$@"
 }
 deploy() {
-  local log=$1
-  shift
+  deploy_from "$deployment" "$@"
+}
+# Deploy the generation at $1 with log $2 and the remaining arguments.
+deploy_from() {
+  local generation=$1 log=$2
+  shift 2
   local status=0
-  as_user "$deployment/bin/$binary" "$@" >"$work/$log" 2>&1 || status=$?
+  as_user "$generation/bin/$binary" "$@" >"$work/$log" 2>&1 || status=$?
   return "$status"
 }
 show() {
@@ -127,8 +132,11 @@ podman cp "$source_root/scripts/install.sh" "$name:/tmp/install.sh"
 as_user bash /tmp/install.sh >"$work/install-script.log" 2>&1 || { show install-script.log; fail 'install.sh failed'; }
 
 step 'Import the deployment closure'
-mapfile -t closure < <(nix-store --query --requisites "$deployment")
+mapfile -t closure < <(nix-store --query --requisites "$deployment" "$withdrawn")
 nix-store --export "${closure[@]}" | podman exec -i "$name" nix-store --import >/dev/null
+
+# The value before Nacre, which the withdrawal generation must restore.
+forward_before=$(podman exec "$name" sysctl -n net.ipv4.ip_forward)
 
 step 'Routine deployment refuses missing packages'
 status=0
@@ -158,10 +166,33 @@ if ! grep -Fxq 'Core plan: 0 changes.' "$work/plan.log" ||
   fail 'plan reported changes after a converged deployment'
 fi
 
-step 'Purge withdraws managed state and keeps pacman usable'
-deploy purge.log --purge || { show purge.log; fail 'purge failed'; }
+step 'A withdrawal generation returns its declarations to the host'
+podman exec "$name" test -e /etc/nacre-container-test.conf || fail 'the declared /etc file is missing'
+deploy_from "$withdrawn" withdrawn.log || { show withdrawn.log; fail 'withdrawal deployment failed'; }
+last_log=withdrawn.log
+if podman exec "$name" test -e /etc/nacre-container-test.conf ||
+  podman exec "$name" test -e /etc/systemd/system/nacre-demo.service ||
+  podman exec "$name" test -e /etc/systemd/journald.conf.d/60-nix-config.conf; then
+  fail 'a withdrawn file stayed'
+fi
+if podman exec "$name" systemctl is-active --quiet nacre-demo.service; then
+  fail 'the withdrawn nacre-demo.service still runs'
+fi
+[[ $(podman exec "$name" sysctl -n net.ipv4.ip_forward) == "$forward_before" ]] ||
+  fail 'net.ipv4.ip_forward did not return to its value before Nacre'
+
+step 'Purge uninstalls Nacre and keeps pacman usable'
+deploy_from "$withdrawn" purge.log --purge || { show purge.log; fail 'purge failed'; }
 podman exec "$name" pacman -Q >/dev/null || fail 'pacman is unusable after purge'
 if podman exec "$name" test -e /var/lib/nix-config/arch; then fail 'purge kept pending state'; fi
+if podman exec "$name" grep -q 'BEGIN nix-config' /etc/nix/nix.conf /etc/pacman.conf; then
+  fail 'purge kept a managed block'
+fi
+deploy_from "$withdrawn" purge-again.log --purge || { show purge-again.log; fail 'second purge failed'; }
+if grep -E '^(updated|removed|restored|withdrew|overwrote) ' "$work/purge-again.log"; then
+  last_log=purge-again.log
+  fail 'a second purge changed the host'
+fi
 if podman exec "$name" test -e /etc/systemd/system/nacre-demo.service ||
   podman exec "$name" systemctl is-active --quiet nacre-demo.service; then
   fail 'purge kept the declared nacre-demo.service'

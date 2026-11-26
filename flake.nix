@@ -85,6 +85,15 @@
           ./checks/container/configuration.nix
         ];
       };
+      # The container configuration with some declarations withdrawn.
+      containerWithdrawn = mkDeployment {
+        inherit inputs;
+        modules = [
+          fixture
+          ./checks/container/configuration.nix
+          ./checks/container/withdrawn.nix
+        ];
+      };
       extensionPurge = mkDeployment {
         inherit inputs;
         modules = [
@@ -105,6 +114,7 @@
 
       packages.${system} = {
         container-deployment = container.deployment;
+        container-withdrawn-deployment = containerWithdrawn.deployment;
         inherit nacre;
       };
       apps.${system} = {

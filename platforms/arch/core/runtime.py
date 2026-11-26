@@ -34,6 +34,9 @@ from schema import Block, CoreRequest, EtcEntry, Repository, UnitEntry
 
 __all__ = ["RECEIPT_LINE", "Core"]
 
+# Units that carry the deploying session; purge stops them last.
+NETWORK_UNITS = frozenset({"NetworkManager.service", "tailscaled.service"})
+
 
 def restart_action(unit: str) -> str:
     """The pending action that restarts `unit` after its file changed."""
@@ -965,34 +968,51 @@ class Core(BaseAdapter[CoreRequest]):
         return changes
 
     def purge(self) -> None:
-        """Withdraw the managed Arch state; keep packages, accounts and user data.
+        """Uninstall: withdraw every record, then Nacre's own prerequisite state.
 
-        Every recorded file is checked for drift before any change. Units stop
-        first, then the repository Include goes before its target, then
-        recorded files are restored or removed, then blocks, and the
-        deployment state last.
+        Every record is checked for drift before any change. Units other than
+        network units and ufw.service stop first. Recorded files, runtime state
+        and the repository are withdrawn, then the nix.conf and initramfs
+        blocks, with a rebuild of the images. systemd reloads after unit files
+        went away. Network units stop last, so a purge over SSH completes its
+        boot work first. Packages, accounts and mutable data stay.
         """
         self.recover_intent()
         self.check_etc(converging=False, purge=True)
-        self.purge_units()
-        if repository := self.desired["repository"]:
-            self.purge_repository(repository)
+        self.check_runtime(purge=True)
+        self.purge_units(network=False)
+        self.withdraw_repository()
         for record in self.withdrawn(purge=True):
             self.withdraw(record)
+        self.withdraw_groups(purge=True)
+        self.withdraw_runtime(purge=True)
         for block in self.desired["purge"]["blocks"]:
             self.purge_block(block)
+        if self.pending("units"):
+            self.systemd.daemon_reload()
+        self.purge_units(network=True)
         state = self.files.path(STATE)
         if state.exists():
             shutil.rmtree(state)
-        print("Arch deployment state purged; package and user data were preserved.")
+        print("Nacre is uninstalled; packages, accounts and user data were preserved.")
 
-    def purge_units(self) -> None:
-        """Disable the managed units and remove the unit files that Nacre owns."""
+    def purge_units(self, network: bool) -> None:
+        """Disable the managed units of one group; ufw.service keeps running.
+
+        Stopping ufw.service would flush the rules that purge keeps.
+        """
         d = self.desired
         for unit in d["units"]:
             name = unit["name"]
-            if unit["start"] and self.systemctl_ok("is-enabled", "--quiet", name):
+            if (
+                unit["start"]
+                and name != "ufw.service"
+                and (name in NETWORK_UNITS) == network
+                and self.systemctl_ok("is-enabled", "--quiet", name)
+            ):
                 self.systemd.disable(name, now=True)
+        if network:
+            return
         reload = False
         for owned in d["purge"]["ownedUnits"]:
             if self.files.path(owned["path"]).exists():
@@ -1016,7 +1036,11 @@ class Core(BaseAdapter[CoreRequest]):
         text = self.without_block(block)
         if text is None or text == self.files.read(block["path"]):
             return
+        if block["action"] == "initramfs":
+            self.mark("initramfs")  # Record the intent before the boot change.
         self.files.write(block["path"], text)
+        if block["action"] == "initramfs":
+            self.initramfs()
         if block["action"] == "nix-daemon" and self.systemctl_ok(
             "is-active", "--quiet", "nix-daemon.service"
         ):
