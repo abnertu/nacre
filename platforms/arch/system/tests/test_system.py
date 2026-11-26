@@ -332,14 +332,106 @@ class SystemTests(unittest.TestCase):
         runtime.Firewall(system).kernel_drift([])
         self.assertTrue(any(call[0] == "iptables" for call in self.native.calls))
 
+    def receipt(self):
+        path = self.root / "var/lib/nix-config/arch/receipts/system.json"
+        return json.loads(path.read_text())["records"] if path.exists() else {}
+
+    def converge(self):
+        System(self.d, self.files, self.native).converge()
+
+    def test_withdrawn_dropins_go_away_and_their_services_reload(self):
+        self.native.unit("systemd-journald.service")["ActiveState"] = "active"
+        self.native.unit("systemd-timesyncd.service")["UnitFileState"] = "enabled"
+        self.d["timeSync"] = {"provider": "systemd-timesyncd", "servers": []}
+        self.d["files"] = {
+            "journald": "[Journal]\nStorage=volatile\n",
+            "timesyncd": "[Time]\n",
+            "logind": "[Login]\nHandlePowerKey=ignore\n",
+        }
+        self.d["power"] = {"powerKey": "ignore", "lidSwitch": None}
+        self.write("/proc/sys/kernel/random/boot_id", "boot-1\n")
+        self.converge()
+        self.assertEqual(
+            set(self.receipt()),
+            {"dropin:journald", "dropin:timesyncd", "dropin:logind"},
+        )
+        self.d.update(files={}, timeSync=None, power=None)
+        self.native.calls.clear()
+        self.converge()
+        for name in ("journald", "timesyncd", "logind"):
+            self.assertFalse(
+                (self.root / f"etc/systemd/{name}.conf.d/60-nix-config.conf").exists()
+            )
+        self.assertIn(("systemctl", "daemon-reload"), self.native.calls)
+        self.assertIn(
+            ("systemctl", "try-restart", "systemd-journald.service"), self.native.calls
+        )
+        self.assertIn(
+            ("systemctl", "try-restart", "systemd-timesyncd.service"), self.native.calls
+        )
+        self.assertIn(
+            "logind settings apply after the next boot", self.output.getvalue()
+        )
+        self.assertEqual(self.receipt(), {})
+
+    def test_withdrawn_trim_dropin_goes_away_and_the_timer_restarts(self):
+        self.d["trim"] = {"enable": True}
+        self.converge()
+        self.d["trim"] = None
+        self.native.calls.clear()
+        self.converge()
+        self.assertFalse(
+            (
+                self.root / "etc/systemd/system/fstrim.timer.d/60-nix-config.conf"
+            ).exists()
+        )
+        self.assertIn(("systemctl", "try-restart", "fstrim.timer"), self.native.calls)
+
+    def test_edited_withdrawn_dropin_stops_preflight_and_names_forget(self):
+        self.d["files"] = {"journald": "[Journal]\nStorage=volatile\n"}
+        self.converge()
+        dropin = "/etc/systemd/journald.conf.d/60-nix-config.conf"
+        self.write(dropin, "[Journal]\nStorage=auto\n")
+        self.d["files"] = {}
+        with self.assertRaisesRegex(Conflict, "nacre forget dropin:journald"):
+            System(self.d, self.files, self.native).preflight()
+        self.assertTrue(self.files.path(dropin).exists())
+
+    def test_forget_drops_one_system_record(self):
+        self.d["files"] = {"journald": "[Journal]\nStorage=volatile\n"}
+        self.converge()
+        request = dict(self.d, forget="dropin:journald")
+        System(request, self.files, self.native).forget()
+        self.assertEqual(self.receipt(), {})
+        for record in ("dropin:missing", "nonsense"):
+            with self.subTest(record), self.assertRaises(Conflict):
+                System(dict(self.d, forget=record), self.files, self.native).forget()
+
+    def test_plan_names_withdrawn_dropins(self):
+        self.d["files"] = {"journald": "[Journal]\nStorage=volatile\n"}
+        self.converge()
+        self.d["files"] = {}
+        lines = [
+            f"{c.kind} {c.text}" for c in System(self.d, self.files, self.native).plan()
+        ]
+        self.assertIn(
+            "~ /etc/systemd/journald.conf.d/60-nix-config.conf (withdrawn, remove)",
+            lines,
+        )
+
     def test_purge_removes_owned_dropins_and_keeps_system_values(self):
         names = ("timesyncd", "journald", "logind")
-        for name in names:
-            self.write(f"/etc/systemd/{name}.conf.d/60-nix-config.conf", "[X]\n")
-        self.write("/etc/systemd/system/fstrim.timer.d/60-nix-config.conf", "[Timer]\n")
         self.write("/etc/locale.conf", "LANG=en_US.UTF-8\n")
-        self.d.update(files={name: "[X]\n" for name in names}, trim={})
-        self.system.purge()
+        self.write("/proc/sys/kernel/random/boot_id", "boot-1\n")
+        self.d.update(
+            files={name: "[X]\n" for name in names},
+            trim={"enable": True},
+            timeSync={"provider": "systemd-timesyncd", "servers": []},
+            power={"powerKey": "ignore", "lidSwitch": None},
+        )
+        self.converge()
+        self.native.calls.clear()
+        System(self.d, self.files, self.native).purge()
         for name in names:
             self.assertFalse(
                 (self.root / f"etc/systemd/{name}.conf.d/60-nix-config.conf").exists()
@@ -357,8 +449,9 @@ class SystemTests(unittest.TestCase):
             for call in self.native.calls
             if call[:2] == ("systemctl", "try-restart")
         ]
-        self.assertEqual(
-            restarted, ["systemd-timesyncd.service", "systemd-journald.service"]
+        self.assertCountEqual(
+            restarted,
+            ["systemd-timesyncd.service", "systemd-journald.service", "fstrim.timer"],
         )
 
     def test_unmanaged_does_nothing(self):

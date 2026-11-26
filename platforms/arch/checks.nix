@@ -29,7 +29,7 @@
 
         for directory, schema, manifest in (
             ("${./core}", "CoreRequest", "${arch-switch.manifests.core}"),
-            ("${./system}", "SystemManifest", "${arch-switch.manifests.system}"),
+            ("${./system}", "SystemRequest", "${arch-switch.manifests.system}"),
             ("${./ai}", "AIManifest", "${arch-switch.manifests.ai}"),
             ("${../../modules/gitlab-runner}", "Manifest", "${runnerManifest}"),
         ):

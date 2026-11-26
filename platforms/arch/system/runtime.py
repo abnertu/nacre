@@ -6,7 +6,7 @@ native runner directly; production accepts no root/command overrides.
 
 import hashlib
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
@@ -31,7 +31,8 @@ from nix_adapter.system import (
     set_hostname,
     set_timezone,
 )
-from schema import Console, Locale, SystemManifest
+from schema import Console, Locale, SystemRequest
+from state import KINDS, Receipt, digest, load_receipt, save_receipt
 
 # Host identifiers keep the nix-config namespace, so existing machines need no
 # migration.
@@ -72,7 +73,7 @@ def locale_key(name: str) -> str:
     return name.lower().replace("-", "")
 
 
-class System(BaseAdapter[SystemManifest]):
+class System(BaseAdapter[SystemRequest]):
     pending_template = "/var/lib/nix-config/arch/system-{action}.pending"
 
     def __init__(
@@ -84,12 +85,118 @@ class System(BaseAdapter[SystemManifest]):
     ):
         root = files.root if files else Path("/")
         super().__init__(
-            desired=cast(SystemManifest, desired),
+            desired=cast(SystemRequest, desired),
             root=root,
             native=native,
             files=files,
             context=context,
         )
+        self._receipt: Receipt | None = None
+
+    @property
+    def phases(self) -> dict[str, Callable[[], None]]:
+        return {"forget": self.forget}
+
+    # The receipt records what this adapter changed, so a withdrawn setting
+    # can return to the state before Nacre.
+
+    @property
+    def receipt(self) -> Receipt:
+        if self._receipt is None:
+            self._receipt = load_receipt(self.files)
+        return self._receipt
+
+    @property
+    def records(self) -> dict[str, dict[str, Any]]:
+        return self.receipt["records"]
+
+    def save_receipt(self) -> None:
+        save_receipt(self.files, self.receipt)
+
+    def record(self, key: str, value: dict[str, Any]) -> None:
+        if self.records.get(key) != value:
+            self.records[key] = value
+            self.save_receipt()
+
+    def drop(self, key: str) -> None:
+        record = self.records.pop(key)
+        if isinstance(original := record.get("original"), str):
+            self.remove(original)
+        self.save_receipt()
+
+    def forget(self) -> None:
+        """Drop one record; leave the native state as it is."""
+        request = self.desired.get("forget", "")
+        kind, _, name = request.partition(":")
+        if kind not in KINDS or not name:
+            raise Conflict(f"unknown record {request}; see `nacre forget` in the guide")
+        if request not in self.records:
+            raise Conflict(f"Nacre has no record {request}")
+        self.drop(request)
+        print(f"forgot {request}; the native state stays as it is, unmanaged")
+
+    def desired_dropins(self) -> dict[str, str]:
+        """The path of each declared drop-in, by setting name."""
+        d = self.desired
+        paths = {
+            name: f"/etc/systemd/{name}.conf.d/{DROPIN_FILE}" for name in d["files"]
+        }
+        if d["trim"] is not None:
+            paths["trim"] = TRIM_DROPIN
+        return paths
+
+    def record_dropin(self, name: str, path: str, text: str) -> None:
+        self.record(
+            f"dropin:{name}",
+            {"kind": "dropin", "name": name, "path": path, "sha256": digest(text)},
+        )
+
+    def withdrawn(self, purge: bool = False) -> dict[str, dict[str, Any]]:
+        """The records whose setting the manifest no longer declares."""
+        declared = {} if purge else self.desired_dropins()
+        return {
+            key: record
+            for key, record in self.records.items()
+            if record["kind"] == "dropin" and record["name"] not in declared
+        }
+
+    def check_withdrawn(self, purge: bool = False) -> None:
+        """Raise `Conflict` if a withdrawn drop-in changed since Nacre wrote it."""
+        for key, record in self.withdrawn(purge).items():
+            text = self.files.read(record["path"])
+            if (
+                self.files.path(record["path"]).exists()
+                and digest(text) != record["sha256"]
+            ):
+                raise Conflict(
+                    f"{record['path']} changed since Nacre wrote it; restore or delete it, "
+                    f"or run `nacre forget {key}` to leave it unmanaged"
+                )
+
+    def withdraw(self, purge: bool = False) -> list[str]:
+        """Remove withdrawn drop-ins and apply the change; return their names."""
+        withdrawn = self.withdrawn(purge)
+        removed = [
+            record["name"]
+            for record in withdrawn.values()
+            if self.remove(record["path"])
+        ]
+        if removed:
+            self.systemd.daemon_reload()
+            self.actions += 1
+        units = {
+            "timesyncd": "systemd-timesyncd.service",
+            "journald": "systemd-journald.service",
+            "trim": "fstrim.timer",
+        }
+        for name in removed:
+            if name in units:
+                self.run("systemctl", "try-restart", units[name])
+            elif name == "logind":
+                print("logind settings apply after the next boot.")
+        for key in withdrawn:
+            self.drop(key)
+        return removed
 
     def boot_id(self) -> str:
         # A kernel pseudo-file, not a managed path: skip ownership checks.
@@ -118,25 +225,8 @@ class System(BaseAdapter[SystemManifest]):
         profile are the machine's settings, so withdrawing management keeps
         them as they are now.
         """
-        d = self.desired
-        removed = [
-            name
-            for name in d["files"]
-            if self.remove(f"/etc/systemd/{name}.conf.d/60-nix-config.conf")
-        ]
-        if d["trim"] is not None and self.remove(
-            "/etc/systemd/system/fstrim.timer.d/60-nix-config.conf"
-        ):
-            removed.append("trim")
-        if removed:
-            self.systemd.daemon_reload()
-        # logind applies at the next boot, as it does on convergence.
-        for name, unit in (
-            ("timesyncd", "systemd-timesyncd.service"),
-            ("journald", "systemd-journald.service"),
-        ):
-            if name in removed:
-                self.run("systemctl", "try-restart", unit)
+        self.check_withdrawn(purge=True)
+        removed = self.withdraw(purge=True)
         print(
             f"System settings purged: {len(removed)} drop-ins removed; locale, timezone, "
             "hostname, console, firewall and hotspot values were kept."
@@ -262,6 +352,7 @@ class System(BaseAdapter[SystemManifest]):
         for setting, action in PENDING_ACTIONS.items():
             if d.get(setting) is not None:
                 self.files.pending(action)
+        self.check_withdrawn()
         self.check_files()
         self.check_services(installed)
         if d["hotspot"] is not None:
@@ -330,6 +421,7 @@ class System(BaseAdapter[SystemManifest]):
         """Converge every declared setting; settings left null stay untouched."""
         self.preflight(installed=True)
         d = self.desired
+        self.withdraw()
         if (locale := d["locale"]) is not None:
             self.converge_locale(locale)
         if (zone := d["timeZone"]) is not None:
@@ -440,6 +532,7 @@ class System(BaseAdapter[SystemManifest]):
         """Install the drop-in of service `name` and apply it."""
         f = self.files
         target = f.dropin(name, text, file_name=DROPIN_FILE)
+        self.record_dropin(name, target, text)
         if name == "logind":
             # logind changes wait until reboot; power() reports that.
             self.power(target, text)
@@ -497,6 +590,7 @@ class System(BaseAdapter[SystemManifest]):
         f = self.files
         d = self.desired
         path, text = self.trim_dropin(d["trimDropin"])
+        self.record_dropin("trim", path, text)
         self.write(path, text, "trim")
         pending = f.pending("trim")
         if pending:
@@ -510,7 +604,11 @@ class System(BaseAdapter[SystemManifest]):
         """What converge would change, judged the way converge judges it."""
         self.preflight(installed=True)
         d = self.desired
-        changes: list[Change] = []
+        changes: list[Change] = [
+            Change("~", f"{record['path']} (withdrawn, remove)")
+            for record in self.withdrawn().values()
+            if self.files.path(record["path"]).exists()
+        ]
         if (locale := d["locale"]) is not None:
             changes += self.plan_locale(locale)
         if (zone := d["timeZone"]) is not None:

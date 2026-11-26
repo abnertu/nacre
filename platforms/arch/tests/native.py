@@ -38,7 +38,8 @@ ADAPTERS = {
 if command == "python":
     adapter, manifest, phase, *rest = args
     if phase == "forget":
-        assert adapter == "/fixture/core-adapter", args
+        assert adapter in ("/fixture/core-adapter", "/fixture/system-adapter"), args
+        state["forget_adapter"] = adapter
         state["forget_request"] = json.loads(Path(manifest).read_text())
         save()
         sys.exit(1 if state.get("forget_unknown") else 0)

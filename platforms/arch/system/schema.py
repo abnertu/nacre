@@ -89,3 +89,9 @@ class SystemManifest(TypedDict):
     files: dict[str, str]
     trimDropin: str
     paths: Paths
+
+
+class SystemRequest(SystemManifest, total=False):
+    """The manifest, plus the record that `arch-switch --forget` drops."""
+
+    forget: str

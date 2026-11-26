@@ -329,6 +329,16 @@ class ArchSwitchTests(unittest.TestCase):
         self.assertEqual(
             [call[3] for call in self.commands() if call[0] == "python"], ["forget"]
         )
+        self.assertEqual(self.state["forget_adapter"], "/fixture/core-adapter")
+        system = self.root / "system-manifest.json"
+        system.write_text(json.dumps({"files": {}}))
+        self.config["adapters"]["system"]["manifest"] = str(system)
+        self.write_config()
+        self.invoke("--forget", "dropin:journald")
+        self.assertEqual(self.state["forget_adapter"], "/fixture/system-adapter")
+        self.assertEqual(
+            self.state["forget_request"], {"files": {}, "forget": "dropin:journald"}
+        )
         self.state["forget_unknown"] = True
         self.save()
         self.invoke("--forget", "file:missing", code=1)

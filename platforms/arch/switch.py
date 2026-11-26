@@ -453,15 +453,18 @@ class Switch:
             task.update(1)
 
     def forget(self, record: str) -> None:
-        """Drop one receipt record through core; the native state stays."""
-        manifest = json.loads(
-            Path(self.config["adapters"]["core"]["manifest"]).read_text()
-        )
+        """Drop one receipt record; the native state stays.
+
+        Core owns `file:` records; the system adapter owns the other kinds.
+        """
+        name = "core" if record.startswith("file:") else "system"
+        packaged = Path(self.config["adapters"][name]["manifest"])
+        manifest = json.loads(packaged.read_text())
         manifest["forget"] = record
-        request = self.work / "core-forget.json"
+        request = self.work / f"{name}-forget.json"
         request.write_text(json.dumps(manifest))
         self.native("sudo", "-v")
-        status = self.adapter("core", "forget", str(request))
+        status = self.adapter(name, "forget", str(request))
         if status != 0:
             raise Failure("", status)
 
