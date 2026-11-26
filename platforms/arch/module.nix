@@ -5,6 +5,41 @@
 let
   inherit (lib) mkOption types optionals;
   desktop = config.desktop.enable;
+  baseline = lib.mkOverride 1100;
+  files = ./files;
+  # Paths that other owners write; environment.etc must not name them.
+  # A trailing slash reserves a directory and everything under it.
+  reservedPaths = [
+    # Core: the repository, managed blocks and account databases.
+    "pacman.conf"
+    "pacman.d/nix-config-lizardbyte.conf"
+    "nix/nix.conf"
+    "mkinitcpio.conf"
+    "passwd"
+    "group"
+    "shadow"
+    "gshadow"
+    "subuid"
+    "subgid"
+    # System settings.
+    "locale.conf"
+    "locale.gen"
+    "localtime"
+    "hostname"
+    "vconsole.conf"
+    "systemd/timesyncd.conf.d/60-nix-config.conf"
+    "systemd/journald.conf.d/60-nix-config.conf"
+    "systemd/logind.conf.d/60-nix-config.conf"
+    "systemd/system/fstrim.timer.d/60-nix-config.conf"
+    "default/ufw"
+    "ufw/"
+    # AI.
+    "caddy/Caddyfile"
+    "caddy/conf.d/nix-config-llama.caddy"
+    "llama-swap/"
+    "systemd/system/llama-swap.service"
+  ];
+  relative = path: lib.removePrefix "/etc/" path;
 in
 {
   options.arch = {
@@ -57,6 +92,18 @@ in
       internal = true;
       description = "Packaged user units to enable for the deployment user.";
     };
+    etc = mkOption {
+      type = types.listOf types.attrs;
+      internal = true;
+      readOnly = true;
+      description = "Enabled environment.etc entries with their resolved content, for the core manifest.";
+    };
+    etcReserved = mkOption {
+      type = types.listOf types.str;
+      internal = true;
+      readOnly = true;
+      description = "Paths relative to /etc that another owner writes; a trailing slash reserves a directory.";
+    };
     extensions = mkOption {
       default = { };
       description = ''
@@ -94,6 +141,14 @@ in
               default = false;
               description = "Run the adapter's purge phase before built-in retirement; failures stop purge.";
             };
+            reservedPaths = mkOption {
+              type = types.listOf types.str;
+              default = [ ];
+              description = ''
+                Paths under /etc that the adapter writes itself, relative to /etc.
+                A trailing slash reserves a directory. environment.etc cannot name them.
+              '';
+            };
             ownedUnits = mkOption {
               type = types.listOf (
                 types.submodule {
@@ -118,7 +173,58 @@ in
     };
   };
 
+  config.environment.etc = {
+    "NetworkManager/conf.d/main.conf" = lib.mkIf config.networking.networkmanager.enable {
+      source = baseline (files + "/NetworkManager-main.conf");
+      adopt = baseline true;
+      action = "network";
+    };
+    "NetworkManager/conf.d/99-tailscale.conf" =
+      lib.mkIf (config.networking.networkmanager.enable && config.services.tailscale.enable)
+        {
+          source = baseline (files + "/NetworkManager-tailscale.conf");
+          adopt = baseline true;
+          action = "network";
+        };
+    # Derived from typed options at normal priority: change those options instead.
+    "modules-load.d/nix-config-podman.conf" = {
+      text = lib.concatMapStrings (module: "${module}\n") config.boot.kernelModules;
+      adopt = baseline true;
+    };
+    "sysctl.d/99-nix-config.conf" = {
+      text = lib.concatStrings (
+        lib.mapAttrsToList (key: value: "${key} = ${toString value}\n") (
+          lib.filterAttrs (_: value: value != null) config.boot.kernel.sysctl
+        )
+      );
+      adopt = baseline true;
+    };
+    "systemd/system/getty@tty1.service.d/override.conf" = lib.mkIf desktop {
+      text = lib.replaceStrings [ "@USER@" ] [ config.deployment.username ] (
+        builtins.readFile (files + "/tty1-autologin.conf")
+      );
+      adopt = baseline true;
+      action = "units";
+    };
+  };
+
   config.arch = {
+    etc = lib.mapAttrsToList (name: entry: {
+      inherit name;
+      path = "/etc/${name}";
+      text = entry.content;
+      inherit (entry)
+        mode
+        group
+        adopt
+        action
+        ;
+    }) (lib.filterAttrs (_: entry: entry.enable && entry.content != null) config.environment.etc);
+    etcReserved =
+      reservedPaths
+      ++ lib.concatMap (
+        extension: extension.reservedPaths ++ map (owned: relative owned.path) extension.ownedUnits
+      ) (builtins.attrValues config.arch.extensions);
     inherit (config.packages) hold;
     pacman =
       config.packages.extra.pacman

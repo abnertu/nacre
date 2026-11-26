@@ -19,6 +19,7 @@ _nacre() {
     'switch:converge Arch, then activate the home generation'
     'upgrade:upgrade system packages or Nacre itself'
     'purge:remove managed Arch state; skips Home Manager'
+    'forget:leave one drifted record unmanaged; changes no file'
     'status:checkout, last switch, home generation, pending work'
     'checkhealth:report problems that need attention; changes nothing'
     'changes:package changes since the last update'

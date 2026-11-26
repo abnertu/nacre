@@ -72,9 +72,9 @@ if [[ ! -f $nix_conf ]] || ! grep -Fq experimental-features "$nix_conf"; then
   printf 'experimental-features = nix-command flakes\n' | sudo tee -a "$nix_conf" >/dev/null
 fi
 # Write the block arch-switch owns, so deployment adopts it instead of adding a
-# second trusted-users entry.
+# second trusted-users entry. The receipts line marks a host of this Nacre.
 if ! grep -Fq trusted-users "$nix_conf"; then
-  printf '# BEGIN nix-config settings\ntrusted-users = root @wheel %s\n# END nix-config settings\n' \
+  printf '# BEGIN nix-config settings\n# nix-config receipts 1\ntrusted-users = root @wheel %s\n# END nix-config settings\n' \
     "$login_user" | sudo tee -a "$nix_conf" >/dev/null
 fi
 sudo systemctl enable --now nix-daemon.service

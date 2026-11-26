@@ -2,19 +2,41 @@
 
 from __future__ import annotations
 
+import datetime
 import os
 import shutil
+import stat
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
 from nix_adapter import AdapterContext, BaseAdapter, Change, Conflict, Files, Native
-from schema import Block, CoreManifest, Repository
+from receipts import (
+    INTENT,
+    RECEIPT,
+    RECEIPT_LINE,
+    STATE,
+    VERSION,
+    FileRecord,
+    Intent,
+    Original,
+    Receipt,
+    digest,
+    file_key,
+    load_json,
+    load_receipt,
+    original_name,
+    save_json,
+)
+from schema import Block, CoreRequest, EtcEntry, Repository
 
-STATE = "/var/lib/nix-config/arch"
+__all__ = ["RECEIPT_LINE", "Core"]
+
+# A file state: text, mode, UID and GID.
+type FileState = tuple[str, int, int, int]
 
 
-class Core(BaseAdapter[CoreManifest]):
+class Core(BaseAdapter[CoreRequest]):
     def __init__(
         self,
         desired: Mapping[str, Any],
@@ -24,18 +46,23 @@ class Core(BaseAdapter[CoreManifest]):
     ):
         root = files.root if files else Path("/")
         super().__init__(
-            desired=cast(CoreManifest, desired),
+            desired=cast(CoreRequest, desired),
             root=root,
             native=native,
             files=files,
             context=context,
         )
+        self._receipt: Receipt | None = None
 
     # Pending markers keep their historic names so interrupted runs resume.
     @property
     def phases(self) -> dict[str, Callable[[], None]]:
         """The extra phases arch-switch runs around package installation."""
-        return {"repositories": self.repositories, "finish": self.finish}
+        return {
+            "repositories": self.repositories,
+            "finish": self.finish,
+            "forget": self.forget,
+        }
 
     def marker(self, action: str) -> str:
         return f"{STATE}/{action}.pending"
@@ -68,6 +95,315 @@ class Core(BaseAdapter[CoreManifest]):
         self.files.write(name, text)
         self.updates += 1
         print(f"updated {name}")
+
+    def group_id(self, group: str) -> int | None:
+        """The GID of `group` in the target root's /etc/group, or None."""
+        for line in self.files.read("/etc/group").splitlines():
+            fields = line.split(":")
+            if len(fields) >= 3 and fields[0] == group and fields[2].isdigit():
+                return int(fields[2])
+        return None
+
+    def entry_files(self, entry: EtcEntry) -> Files:
+        """Files that write `entry` as the adapter's user and the entry's group.
+
+        Raise `Conflict` if the group does not exist in the target root.
+        """
+        gid = self.group_id(entry["group"])
+        if gid is None:
+            raise Conflict(f"group {entry['group']} of {entry['path']} does not exist")
+        return Files(self.files.root, (self.files.identity[0], gid))
+
+    # environment.etc: the receipt is the only proof that Nacre owns a file.
+
+    @property
+    def receipt(self) -> Receipt:
+        if self._receipt is None:
+            self._receipt = load_receipt(self.files) or {
+                "version": VERSION,
+                "records": {},
+            }
+        return self._receipt
+
+    @property
+    def records(self) -> dict[str, FileRecord]:
+        return self.receipt["records"]
+
+    def save_receipt(self) -> None:
+        save_json(self.files, RECEIPT, self.receipt)
+
+    def intent(self) -> Intent | None:
+        return cast("Intent | None", load_json(self.files, INTENT, "intent"))
+
+    def check_host(self) -> None:
+        """Refuse a host that a Nacre version without receipts deployed."""
+        if load_receipt(self.files) is not None:
+            return
+        lines = self.files.read("/etc/nix/nix.conf").splitlines()
+        if "# BEGIN nix-config settings" in lines and RECEIPT_LINE not in lines:
+            raise Conflict(
+                "this host was deployed by an older Nacre without receipts; "
+                "run `nacre purge` with that version, then deploy this one"
+            )
+
+    def state(self, name: str) -> FileState | None:
+        """The text, mode, UID and GID of `name`, or None if it does not exist."""
+        text = self.files.read(name)
+        path = self.files.path(name)
+        if not path.exists():
+            return None
+        info = path.stat()
+        return text, stat.S_IMODE(info.st_mode), info.st_uid, info.st_gid
+
+    @staticmethod
+    def recorded(record: FileRecord, current: FileState) -> bool:
+        """Whether `current` is the state that `record` left."""
+        text, mode, uid, gid = current
+        return (digest(text), mode, uid, gid) == (
+            record["sha256"],
+            int(record["mode"], 8),
+            record["uid"],
+            record["gid"],
+        )
+
+    def desired_entries(self) -> dict[str, EtcEntry]:
+        return {file_key(entry["name"]): entry for entry in self.desired["etc"]}
+
+    def withdrawn(self, purge: bool = False) -> list[FileRecord]:
+        """The records that the manifest no longer declares; all of them on purge."""
+        desired = {} if purge else self.desired_entries()
+        return [record for key, record in self.records.items() if key not in desired]
+
+    def package_owner(self, name: str) -> tuple[str, str] | None:
+        """The pacman package that owns `name`, and its version."""
+        owner = self.run("pacman", "-Qqo", name, check=False)
+        if owner.returncode != 0:
+            return None
+        package = owner.stdout.strip()
+        query = self.run("pacman", "-Q", package, check=False).stdout.split()
+        return package, query[1] if len(query) > 1 else ""
+
+    def check_withdrawn(self, record: FileRecord) -> None:
+        """Raise `Conflict` if a withdrawn file changed since Nacre wrote it."""
+        current = self.state(record["path"])
+        if current is not None and not self.recorded(record, current):
+            key = file_key(record["name"])
+            raise Conflict(
+                f"{record['path']} changed since Nacre wrote it; restore or delete it, "
+                f"or run `nacre forget {key}` to leave it unmanaged"
+            )
+
+    def check_declared(self, entry: EtcEntry, converging: bool) -> None:
+        """Raise `Conflict` if an unrecorded existing file may not be replaced."""
+        if file_key(entry["name"]) in self.records:
+            return
+        current = self.state(entry["path"])
+        if current is None or current[0] == entry["text"] or entry["adopt"]:
+            return
+        if not converging:
+            raise Conflict(
+                f"{entry['path']} exists, differs from environment.etc."
+                f'"{entry["name"]}" and Nacre does not manage it; set adopt = true '
+                "to replace it (Nacre saves the original)"
+            )
+        # Preflight passed, so the file appeared or changed since then.
+        if self.package_owner(entry["path"]) is None:
+            raise Conflict(
+                f"{entry['path']} changed after preflight; deployment stopped"
+            )
+
+    def check_etc(self, converging: bool, purge: bool = False) -> None:
+        self.check_host()
+        intent = self.intent()
+        busy = intent["key"] if intent and intent["op"] == "withdraw" else None
+        for record in self.withdrawn(purge):
+            if file_key(record["name"]) != busy:
+                self.check_withdrawn(record)
+        if not purge:
+            for entry in self.desired["etc"]:
+                self.check_declared(entry, converging)
+
+    def clear_intent(self) -> None:
+        self.remove(INTENT)
+
+    def recover_intent(self) -> None:
+        """Complete the record of a change that an earlier run interrupted."""
+        intent = self.intent()
+        if intent is None:
+            return
+        key = intent["key"]
+        if intent["op"] == "write" and "record" in intent:
+            record = intent["record"]
+            current = self.state(record["path"])
+            if current is not None and digest(current[0]) == record["sha256"]:
+                self.records[key] = record
+                self.save_receipt()
+        elif (record := self.records.get(key)) is not None:
+            current = self.state(record["path"])
+            original = self.saved_original(record)
+            if current is None or (original and current[0] == original["text"]):
+                self.drop(key)
+        self.clear_intent()
+
+    def saved_original(self, record: FileRecord) -> Original | None:
+        if record["original"] is None:
+            return None
+        return cast(
+            "Original | None", load_json(self.files, record["original"], "original")
+        )
+
+    def save_original(self, name: str, current: FileState) -> str:
+        """Save the file that an adoption replaces; return where it went."""
+        text, mode, uid, gid = current
+        owner = self.package_owner(name)
+        original: Original = {
+            "path": name,
+            "text": text,
+            "mode": f"{mode:04o}",
+            "uid": uid,
+            "gid": gid,
+            "package": owner[0] if owner else None,
+            "version": owner[1] if owner else None,
+            "date": datetime.date.today().isoformat(),
+        }
+        saved = original_name(name)
+        save_json(self.files, saved, original)
+        return saved
+
+    def drop(self, key: str) -> None:
+        record = self.records.pop(key)
+        if record["original"] is not None:
+            self.remove(record["original"])
+        self.save_receipt()
+
+    def forget(self) -> None:
+        """Drop one record and its original; leave the native state as it is."""
+        record = self.desired.get("forget", "")
+        kind, _, name = record.partition(":")
+        if kind != "file" or not name:
+            raise Conflict(
+                f"unknown record {record}; core records look like file:<name>"
+            )
+        if record not in self.records:
+            raise Conflict(f"Nacre has no record {record}")
+        path = self.records[record]["path"]
+        self.drop(record)
+        print(f"forgot {record}; {path} stays as it is, unmanaged")
+
+    def write_entry(self, entry: EtcEntry) -> None:
+        key = file_key(entry["name"])
+        record = self.records.get(key)
+        files = self.entry_files(entry)
+        mode = int(entry["mode"], 8)
+        if record is not None and files.matches(entry["path"], entry["text"], mode):
+            return
+        current = self.state(entry["path"])
+        drifted = (
+            record is not None
+            and current is not None
+            and not self.recorded(record, current)
+        )
+        if record is not None:
+            original = record["original"]
+        elif current is None or "nix-config" in Path(entry["path"]).name:
+            original = None
+        else:
+            original = self.save_original(entry["path"], current)
+        new: FileRecord = {
+            "kind": "file",
+            "name": entry["name"],
+            "path": entry["path"],
+            "sha256": digest(entry["text"]),
+            "mode": entry["mode"],
+            "uid": files.identity[0],
+            "gid": files.identity[1],
+            "action": entry["action"],
+            "original": original,
+        }
+        save_json(self.files, INTENT, {"op": "write", "key": key, "record": new})
+        if files.write(entry["path"], entry["text"], mode):
+            self.mark(entry["action"])
+            self.updates += 1
+            print(f"{'overwrote drifted' if drifted else 'updated'} {entry['path']}")
+        self.records[key] = new
+        self.save_receipt()
+        self.clear_intent()
+
+    def withdraw(self, record: FileRecord) -> None:
+        """Restore the adopted original of a withdrawn file, or remove the file."""
+        key = file_key(record["name"])
+        save_json(self.files, INTENT, {"op": "withdraw", "key": key})
+        if self.state(record["path"]) is not None:
+            if record["original"] is None:
+                self.remove(record["path"])
+                print(f"removed {record['path']}")
+            else:
+                self.restore(record)
+            self.mark(record["action"])
+            self.updates += 1
+        self.drop(key)
+        self.clear_intent()
+
+    def restore(self, record: FileRecord) -> None:
+        original = self.saved_original(record)
+        if original is None:
+            raise Conflict(f"the saved original of {record['path']} is missing")
+        files = Files(self.files.root, (self.files.identity[0], original["gid"]))
+        files.write(original["path"], original["text"], int(original["mode"], 8))
+        if original["uid"] != self.files.identity[0]:
+            os.chown(
+                files.path(original["path"]),
+                original["uid"],
+                original["gid"],
+                follow_symlinks=False,
+            )
+        print(f"restored {record['path']}")
+        if original["package"]:
+            owner = self.package_owner(record["path"])
+            if owner and owner[1] != original["version"]:
+                print(
+                    f"warning: the restored {record['path']} predates "
+                    f"{owner[0]} {owner[1]}; merge the package changes by hand"
+                )
+
+    def plan_etc(self) -> list[Change]:
+        """The etc writes, adoptions, restores and removals, without content."""
+        changes: list[Change] = []
+        for record in self.withdrawn():
+            if self.state(record["path"]) is None:
+                continue
+            original = self.saved_original(record)
+            changes.append(
+                Change(
+                    "~", f"{record['path']} (restore original from {original['date']})"
+                )
+                if original
+                else Change("~", f"{record['path']} (withdrawn, remove)")
+            )
+        for entry in self.desired["etc"]:
+            changes.append(self.plan_entry(entry))
+        return changes
+
+    def plan_entry(self, entry: EtcEntry) -> Change:
+        path = entry["path"]
+        record = self.records.get(file_key(entry["name"]))
+        current = self.state(path)
+        try:
+            files = self.entry_files(entry)
+        except Conflict:
+            return Change("~", f"{path} (group {entry['group']} does not exist yet)")
+        if current is None:
+            return Change("+", path)
+        if record is None:
+            created = "nix-config" in Path(path).name
+            note = "adopt as Nacre's" if created else "adopt, save original"
+        elif files.matches(path, entry["text"], int(entry["mode"], 8)):
+            return Change("=", path)
+        elif not self.recorded(record, current):
+            note = "drifted, overwrite"
+        else:
+            note = "content differs"
+        return Change("~", f"{path} ({note})")
 
     @staticmethod
     def block_lines(name: str) -> tuple[str, str]:
@@ -113,7 +449,7 @@ class Core(BaseAdapter[CoreManifest]):
 
     def required_commands(self) -> set[str]:
         d = self.desired
-        commands = {"systemctl", "sysctl", "gpasswd", "id", "modprobe"}
+        commands = {"systemctl", "sysctl", "gpasswd", "id", "modprobe", "pacman"}
         if d["initramfsImages"]:
             commands.add("mkinitcpio")
         if d["fileCapabilities"]:
@@ -131,8 +467,7 @@ class Core(BaseAdapter[CoreManifest]):
             raise Conflict(
                 "required native core commands are missing: " + " ".join(missing)
             )
-        for entry in d["files"]:
-            self.files.read(entry["path"])
+        self.check_etc(converging=False)
         for block in d["blocks"]:
             self.without_block(block)
         repository = d["repository"]
@@ -167,13 +502,21 @@ class Core(BaseAdapter[CoreManifest]):
 
     def converge(self) -> None:
         d = self.desired
-        for entry in d["files"]:
-            self.put(entry["path"], entry["text"], entry["action"])
+        self.recover_intent()
+        self.check_etc(converging=True)
+        if load_receipt(self.files) is None:
+            # Before any other change: an interrupted first run is then a
+            # lost-receipt host, never a fresh one.
+            self.save_receipt()
+        for record in self.withdrawn():
+            self.withdraw(record)
+        for entry in d["etc"]:
+            self.write_entry(entry)
         for block in d["blocks"]:
             self.put(block["path"], self.with_block(block), block["action"])
         self.initramfs()
         groups_changed = self.groups()
-        if d["reloadUnits"] and self.pending("units"):
+        if self.pending("units"):
             self.systemd.daemon_reload()
             self.clear("units")
             self.actions += 1
@@ -257,7 +600,7 @@ class Core(BaseAdapter[CoreManifest]):
     def plan_files(self) -> list[Change]:
         """The managed file, managed block and repository changes."""
         d = self.desired
-        changes = [self.plan_file(entry["path"], entry["text"]) for entry in d["files"]]
+        changes = self.plan_etc()
         changes += [
             self.plan_file(block["path"], self.with_block(block))
             for block in d["blocks"]
@@ -286,7 +629,7 @@ class Core(BaseAdapter[CoreManifest]):
             for g in d["groups"]
             if g not in current
         ]
-        if d["reloadUnits"] and self.pending("units"):
+        if self.pending("units"):
             changes.append(Change("~", "reload systemd units"))
         for unit in d["units"]:
             changes += self.plan_unit(unit)
@@ -326,14 +669,18 @@ class Core(BaseAdapter[CoreManifest]):
     def purge(self) -> None:
         """Withdraw the managed Arch state; keep packages, accounts and user data.
 
-        Units stop first, then the repository Include goes before its target,
-        then owned files and blocks, and the deployment state last.
+        Every recorded file is checked for drift before any change. Units stop
+        first, then the repository Include goes before its target, then
+        recorded files are restored or removed, then blocks, and the
+        deployment state last.
         """
+        self.recover_intent()
+        self.check_etc(converging=False, purge=True)
         self.purge_units()
         if repository := self.desired["repository"]:
             self.purge_repository(repository)
-        for entry in self.desired["files"]:
-            self.remove(entry["path"])
+        for record in self.withdrawn(purge=True):
+            self.withdraw(record)
         for block in self.desired["purge"]["blocks"]:
             self.purge_block(block)
         state = self.files.path(STATE)

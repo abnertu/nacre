@@ -3,8 +3,10 @@
 
 import contextlib
 import copy
+import hashlib
 import importlib.util
 import io
+import json
 import os
 import sys
 import tempfile
@@ -22,27 +24,33 @@ runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runtime)
 
 INCLUDE = "Include = /etc/pacman.d/nix-config-lizardbyte.conf"
+
+
+def entry(name, text, action=None, mode="0644", group="root", adopt=True):
+    return {
+        "name": name,
+        "path": f"/etc/{name}",
+        "text": text,
+        "mode": mode,
+        "group": group,
+        "adopt": adopt,
+        "action": action,
+    }
+
+
 NIX_BLOCK = {
     "path": "/etc/nix/nix.conf",
     "name": "settings",
-    "text": "trusted-users = root @wheel tester\n",
+    "text": "# nix-config receipts 1\ntrusted-users = root @wheel tester\n",
     "action": "nix-daemon",
     "create": True,
 }
 MANIFEST = {
     "user": "tester",
-    "files": [
-        {
-            "path": "/etc/NetworkManager/conf.d/main.conf",
-            "text": "[main]\n",
-            "action": "network",
-        },
-        {"path": "/etc/sysctl.d/99-nix-config.conf", "text": "a = 1\n", "action": None},
-        {
-            "path": "/etc/pwrstatd.conf",
-            "text": "runtime-threshold = 300\n",
-            "action": "pwrstatd",
-        },
+    "etc": [
+        entry("NetworkManager/conf.d/main.conf", "[main]\n", "network"),
+        entry("sysctl.d/99-nix-config.conf", "a = 1\n"),
+        entry("pwrstatd.conf", "runtime-threshold = 300\n", "pwrstatd"),
     ],
     "repository": {
         "name": "lizardbyte",
@@ -64,7 +72,6 @@ MANIFEST = {
     "initramfsImages": ["/boot/initramfs-linux.img"],
     "groups": ["wheel", "i2c"],
     "units": ["NetworkManager.service", "libvirtd.socket"],
-    "reloadUnits": True,
     "restarts": [
         {"action": "network", "unit": "NetworkManager.service", "onlyIfActive": False},
         {"action": "nix-daemon", "unit": "nix-daemon.service", "onlyIfActive": False},
@@ -98,6 +105,8 @@ class Fake(FakeNative):
         self.capabilities: set[str] = set()
         self.stay_inactive: set[str] = set()
         self.unmanaged_repository = False
+        # Package that owns each path, with its version: pacman -Qqo and -Q.
+        self.owners: dict[str, tuple[str, str]] = {}
 
     def unit(self, name):
         return self.units.setdefault(name, {"enabled": False, "active": False})
@@ -117,6 +126,7 @@ class Fake(FakeNative):
             "getcap": self.getcap,
             "setcap": self.setcap,
             "pacman-conf": self.pacman_conf,
+            "pacman": self.pacman,
         }.get(cmd)
         if handler is None:
             raise AssertionError(args)
@@ -175,13 +185,28 @@ class Fake(FakeNative):
         self.capabilities.add(rest[-1])
         return 0, ""
 
+    def pacman(self, rest):
+        if rest[0] == "-Qqo":
+            owner = self.owners.get(rest[1])
+            return (0, owner[0]) if owner else (1, "")
+        if rest[0] == "-Q":
+            versions = {name: version for name, version in self.owners.values()}
+            return (
+                (0, f"{rest[1]} {versions[rest[1]]}")
+                if rest[1] in versions
+                else (1, "")
+            )
+        raise AssertionError(rest)
+
     def pacman_conf(self, rest):
         pacman = (self.root / "etc/pacman.conf").read_text()
         loaded = "--config" in rest or self.unmanaged_repository or INCLUDE in pacman
         return (0, "https://repo.example") if loaded else (1, "")
 
 
-class CoreTests(unittest.TestCase):
+class Harness(unittest.TestCase):
+    """A temporary root, a fake native runner and the core adapter."""
+
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
@@ -192,6 +217,7 @@ class CoreTests(unittest.TestCase):
         (self.root / "etc/mkinitcpio.conf").write_text("MODULES=(existing)\n")
         (self.root / "etc/nix/nix.conf").write_text("build-users-group = nixbld\n")
         (self.root / "usr/bin/sunshine").write_text("binary")
+        (self.root / "etc/group").write_text(f"root:x:{os.getgid()}:\n")
         self.files = Files(self.root, (os.getuid(), os.getgid()))
         self.native = Fake(self.root)
         self.manifest = copy.deepcopy(MANIFEST)
@@ -219,6 +245,11 @@ class CoreTests(unittest.TestCase):
             if path.is_file()
         }
 
+    def plan(self):
+        return [f"{change.kind} {change.text}" for change in self.core().plan()]
+
+
+class CoreTests(Harness):
     def test_deploy_converges_policy_and_repeat_changes_nothing(self):
         self.deploy()
         main = self.root / "etc/NetworkManager/conf.d/main.conf"
@@ -228,6 +259,7 @@ class CoreTests(unittest.TestCase):
             (self.root / "etc/nix/nix.conf").read_text(),
             "build-users-group = nixbld\n"
             "# BEGIN nix-config settings\n"
+            "# nix-config receipts 1\n"
             "trusted-users = root @wheel tester\n"
             "# END nix-config settings\n",
         )
@@ -244,7 +276,9 @@ class CoreTests(unittest.TestCase):
         self.assertTrue((self.root / "sys/module/br_netfilter").is_dir())
         self.assertIn("/usr/bin/sunshine", self.native.capabilities)
         self.assertIn(("systemctl", "restart", "nix-daemon.service"), self.native.calls)
-        self.assertEqual(list((self.root / "var/lib/nix-config/arch").iterdir()), [])
+        self.assertEqual(
+            list((self.root / "var/lib/nix-config/arch").glob("*.pending")), []
+        )
         self.assertIn("Group membership changed", self.output.getvalue())
 
         before = self.snapshot()
@@ -258,9 +292,6 @@ class CoreTests(unittest.TestCase):
                 for call in self.native.calls
             )
         )
-
-    def plan(self):
-        return [f"{change.kind} {change.text}" for change in self.core().plan()]
 
     def test_plan_lists_every_change_without_making_it(self):
         before = sorted(str(path) for path in self.root.rglob("*"))
@@ -305,7 +336,7 @@ class CoreTests(unittest.TestCase):
         self.marker("network").parent.mkdir(parents=True)
         self.marker("network").touch()
         for key in (
-            "files",
+            "etc",
             "blocks",
             "initramfsImages",
             "groups",
@@ -317,7 +348,6 @@ class CoreTests(unittest.TestCase):
             self.manifest[key] = []
         self.manifest["sysctl"] = {}
         self.manifest["repository"] = None
-        self.manifest["reloadUnits"] = False
         self.deploy()
         self.assertEqual(main.read_text(), "operator\n")
         self.assertTrue(self.marker("network").exists())
@@ -402,8 +432,8 @@ class CoreTests(unittest.TestCase):
         self.native.unit("nix-daemon.service")["active"] = True
         self.native.calls.clear()
         self.core().purge()
-        for entry in MANIFEST["files"]:
-            self.assertFalse((self.root / entry["path"].lstrip("/")).exists())
+        for item in MANIFEST["etc"]:
+            self.assertFalse((self.root / item["path"].lstrip("/")).exists())
         self.assertFalse(
             (self.root / "etc/pacman.d/nix-config-lizardbyte.conf").exists()
         )
@@ -438,6 +468,269 @@ class CoreTests(unittest.TestCase):
         self.assertTrue(
             (self.root / "etc/pacman.d/nix-config-lizardbyte.conf").exists()
         )
+
+
+STATE = "var/lib/nix-config/arch"
+OLD_BLOCK = (
+    "# BEGIN nix-config settings\ntrusted-users = root\n# END nix-config settings\n"
+)
+
+
+class EtcTests(Harness):
+    """environment.etc entries: receipts, adoption, withdrawal and recovery."""
+
+    def setUp(self):
+        super().setUp()
+        self.manifest["etc"] = []
+
+    def path(self, name):
+        return self.root / "etc" / name
+
+    def receipt(self):
+        return json.loads((self.root / STATE / "receipts/core.json").read_text())
+
+    def original(self, name):
+        digest = hashlib.sha256(f"/etc/{name}".encode()).hexdigest()
+        return self.root / STATE / "adopted" / f"{digest}.json"
+
+    def existing(self, name, text):
+        self.path(name).parent.mkdir(parents=True, exist_ok=True)
+        self.path(name).write_text(text)
+
+    def test_entry_gets_its_mode_group_and_record(self):
+        gid = os.getgid()
+        (self.root / "etc/group").write_text(f"root:x:{gid + 1}:\ndemo:x:{gid}:\n")
+        self.manifest["etc"] = [entry("foo/bar.conf", "x\n", mode="0640", group="demo")]
+        self.manifest["blocks"] = []
+        self.deploy()
+        info = self.path("foo/bar.conf").stat()
+        self.assertEqual(self.path("foo/bar.conf").read_text(), "x\n")
+        self.assertEqual((info.st_mode & 0o777, info.st_gid), (0o640, gid))
+        record = self.receipt()["records"]["file:foo/bar.conf"]
+        self.assertEqual(record["sha256"], hashlib.sha256(b"x\n").hexdigest())
+        self.assertEqual(
+            (record["mode"], record["uid"], record["gid"]), ("0640", os.getuid(), gid)
+        )
+        self.assertEqual(self.deploy().updates, 0)
+
+    def test_differing_unmanaged_file_needs_adopt(self):
+        self.existing("hosts", "operator\n")
+        self.manifest["etc"] = [entry("hosts", "nacre\n", adopt=False)]
+        with self.assertRaisesRegex(Conflict, "/etc/hosts .*adopt"):
+            self.core().preflight()
+        self.assertEqual(self.path("hosts").read_text(), "operator\n")
+
+    def test_adoption_saves_the_original_and_withdrawal_restores_it(self):
+        self.existing("hosts", "operator\n")
+        self.path("hosts").chmod(0o600)
+        self.manifest["etc"] = [entry("hosts", "nacre\n", "network", adopt=True)]
+        self.deploy()
+        self.assertEqual(self.path("hosts").read_text(), "nacre\n")
+        self.assertIn("operator", self.original("hosts").read_text())
+        self.assertEqual(self.original("hosts").stat().st_mode & 0o777, 0o600)
+        self.manifest["etc"] = []
+        self.native.calls.clear()
+        self.deploy()
+        self.assertEqual(self.path("hosts").read_text(), "operator\n")
+        self.assertEqual(self.path("hosts").stat().st_mode & 0o777, 0o600)
+        self.assertFalse(self.original("hosts").exists())
+        self.assertNotIn("file:hosts", self.receipt()["records"])
+        self.assertIn(
+            ("systemctl", "restart", "NetworkManager.service"), self.native.calls
+        )
+
+    def test_identical_file_is_adopted_without_adopt_and_kept_on_withdrawal(self):
+        self.existing("hosts", "same\n")
+        self.manifest["etc"] = [entry("hosts", "same\n", adopt=False)]
+        self.deploy()
+        self.manifest["etc"] = []
+        self.deploy()
+        self.assertEqual(self.path("hosts").read_text(), "same\n")
+
+    def test_created_file_is_removed_on_withdrawal(self):
+        self.manifest["etc"] = [entry("new.conf", "x\n")]
+        self.deploy()
+        self.manifest["etc"] = []
+        self.deploy()
+        self.assertFalse(self.path("new.conf").exists())
+        self.assertEqual(self.receipt()["records"], {})
+
+    def test_package_file_created_after_preflight_is_adopted(self):
+        self.manifest["etc"] = [entry("pwrstatd.conf", "nacre\n", adopt=False)]
+        core = self.core()
+        core.preflight()
+        self.existing("pwrstatd.conf", "package default\n")
+        self.native.owners["/etc/pwrstatd.conf"] = ("powerpanel", "1.4")
+        core.repositories()
+        core.converge()
+        self.assertEqual(self.path("pwrstatd.conf").read_text(), "nacre\n")
+        self.assertIn("package default", self.original("pwrstatd.conf").read_text())
+
+    def test_other_file_created_after_preflight_is_runtime_drift(self):
+        self.manifest["etc"] = [entry("hosts", "nacre\n", adopt=False)]
+        core = self.core()
+        core.preflight()
+        self.existing("hosts", "operator\n")
+        with self.assertRaisesRegex(Conflict, "/etc/hosts changed after preflight"):
+            core.converge()
+        self.assertEqual(self.path("hosts").read_text(), "operator\n")
+
+    def test_drifted_withdrawn_file_stops_preflight_and_names_forget(self):
+        self.manifest["etc"] = [entry("new.conf", "x\n")]
+        self.deploy()
+        self.path("new.conf").write_text("edited\n")
+        self.manifest["etc"] = []
+        with self.assertRaisesRegex(Conflict, "nacre forget file:new.conf"):
+            self.core().preflight()
+        self.assertEqual(self.path("new.conf").read_text(), "edited\n")
+
+    def test_missing_withdrawn_file_drops_its_record(self):
+        self.manifest["etc"] = [entry("new.conf", "x\n")]
+        self.deploy()
+        self.path("new.conf").unlink()
+        self.manifest["etc"] = []
+        self.deploy()
+        self.assertEqual(self.receipt()["records"], {})
+
+    def test_restore_warns_when_the_package_changed_since_adoption(self):
+        self.existing("pwrstatd.conf", "package default\n")
+        self.native.owners["/etc/pwrstatd.conf"] = ("powerpanel", "1.4")
+        self.manifest["etc"] = [entry("pwrstatd.conf", "nacre\n")]
+        self.deploy()
+        self.native.owners["/etc/pwrstatd.conf"] = ("powerpanel", "1.5")
+        self.manifest["etc"] = []
+        self.deploy()
+        self.assertEqual(self.path("pwrstatd.conf").read_text(), "package default\n")
+        self.assertIn("predates powerpanel 1.5", self.output.getvalue())
+
+    def test_edited_declared_file_is_overwritten_and_planned_as_drift(self):
+        self.manifest["etc"] = [entry("new.conf", "x\n")]
+        self.deploy()
+        self.path("new.conf").write_text("edited\n")
+        self.assertIn("~ /etc/new.conf (drifted, overwrite)", self.plan())
+        self.deploy()
+        self.assertEqual(self.path("new.conf").read_text(), "x\n")
+
+    def test_plan_names_adoptions_restores_and_removals_without_content(self):
+        self.existing("hosts", "operator\n")
+        self.manifest["etc"] = [entry("hosts", "nacre\n"), entry("new.conf", "x\n")]
+        self.assertIn("~ /etc/hosts (adopt, save original)", self.plan())
+        self.deploy()
+        self.manifest["etc"] = []
+        lines = self.plan()
+        self.assertTrue(
+            any(
+                line.startswith("~ /etc/hosts (restore original from ")
+                for line in lines
+            ),
+            lines,
+        )
+        self.assertIn("~ /etc/new.conf (withdrawn, remove)", lines)
+        self.assertFalse(any("operator" in line or "nacre" in line for line in lines))
+
+    def test_interrupted_write_keeps_the_pre_nacre_original(self):
+        self.deploy()
+        self.existing("hosts", "operator\n")
+        self.manifest["etc"] = [entry("hosts", "nacre\n")]
+        save = runtime.Core.save_receipt
+        calls = []
+
+        def fail_once(core):
+            calls.append(1)
+            if len(calls) == 1:
+                raise OSError("injected receipt failure")
+            save(core)
+
+        with (
+            patch.object(runtime.Core, "save_receipt", fail_once),
+            self.assertRaises(OSError),
+        ):
+            self.deploy()
+        self.assertEqual(self.path("hosts").read_text(), "nacre\n")
+        self.deploy()
+        self.assertIn("operator", self.original("hosts").read_text())
+        self.manifest["etc"] = []
+        self.deploy()
+        self.assertEqual(self.path("hosts").read_text(), "operator\n")
+
+    def test_lost_receipt_records_namespaced_files_as_nacre_created(self):
+        self.manifest["etc"] = [entry("sysctl.d/99-nix-config.conf", "a = 1\n")]
+        self.deploy()
+        (self.root / STATE / "receipts/core.json").unlink()
+        self.deploy()
+        self.assertFalse(self.original("sysctl.d/99-nix-config.conf").exists())
+        self.manifest["etc"] = []
+        self.deploy()
+        self.assertFalse(self.path("sysctl.d/99-nix-config.conf").exists())
+
+    def test_host_of_an_older_version_stops_preflight(self):
+        (self.root / "etc/nix/nix.conf").write_text(OLD_BLOCK)
+        with self.assertRaisesRegex(Conflict, "older Nacre.*nacre purge"):
+            self.core().preflight()
+
+    def test_block_with_the_receipt_line_is_a_lost_receipt_not_an_old_host(self):
+        self.deploy()
+        self.assertIn(
+            runtime.RECEIPT_LINE, (self.root / "etc/nix/nix.conf").read_text()
+        )
+        (self.root / STATE / "receipts/core.json").unlink()
+        self.core().preflight()
+
+    def test_purge_restores_originals_and_removes_created_files(self):
+        self.existing("hosts", "operator\n")
+        self.manifest["etc"] = [entry("hosts", "nacre\n"), entry("new.conf", "x\n")]
+        self.deploy()
+        self.core().purge()
+        self.assertEqual(self.path("hosts").read_text(), "operator\n")
+        self.assertFalse(self.path("new.conf").exists())
+        self.assertFalse((self.root / STATE).exists())
+
+    def test_withdrawn_unit_drop_in_reloads_systemd_and_clears_its_marker(self):
+        name = "systemd/system/getty@tty1.service.d/override.conf"
+        self.manifest["etc"] = [entry(name, "[Service]\n", "units")]
+        self.deploy()
+        self.manifest["etc"] = []
+        self.native.calls.clear()
+        self.deploy()
+        self.assertFalse(self.path(name).exists())
+        self.assertIn(("systemctl", "daemon-reload"), self.native.calls)
+        self.assertFalse((self.root / STATE / "units.pending").exists())
+
+    def test_forget_drops_only_the_record_and_its_original(self):
+        self.existing("hosts", "operator\n")
+        self.manifest["etc"] = [entry("hosts", "nacre\n")]
+        self.deploy()
+        self.path("hosts").write_text("edited\n")
+        self.manifest["etc"] = []
+        self.manifest["forget"] = "file:hosts"
+        self.core().forget()
+        self.assertEqual(self.path("hosts").read_text(), "edited\n")
+        self.assertEqual(self.receipt()["records"], {})
+        self.assertFalse(self.original("hosts").exists())
+        del self.manifest["forget"]
+        self.deploy()
+        self.assertEqual(self.path("hosts").read_text(), "edited\n")
+
+    def test_forget_of_an_unknown_record_fails_without_change(self):
+        self.manifest["etc"] = [entry("new.conf", "x\n")]
+        self.deploy()
+        before = self.receipt()
+        for record in ("file:other.conf", "group:wheel", "new.conf"):
+            with self.subTest(record):
+                self.manifest["forget"] = record
+                with self.assertRaises(Conflict):
+                    self.core().forget()
+                self.assertEqual(self.receipt(), before)
+
+    def test_purge_stops_on_drift_before_any_change(self):
+        self.manifest["etc"] = [entry("new.conf", "x\n")]
+        self.deploy()
+        self.path("new.conf").write_text("edited\n")
+        nix = (self.root / "etc/nix/nix.conf").read_text()
+        with self.assertRaisesRegex(Conflict, "nacre forget file:new.conf"):
+            self.core().purge()
+        self.assertEqual((self.root / "etc/nix/nix.conf").read_text(), nix)
+        self.assertTrue((self.root / STATE / "receipts/core.json").exists())
 
 
 if __name__ == "__main__":

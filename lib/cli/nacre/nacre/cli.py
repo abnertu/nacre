@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .checkhealth import checkhealth
 from .common import Refusal, Usage, config_home, revision, styled
-from .deploy import MODES, deploy
+from .deploy import MODES, deploy, forget
 from .generations import list_generations, rollback
 from .install import Installer
 from .machine import Machine, find_flake
@@ -37,6 +37,7 @@ Deployment
   upgrade system           switch, also upgrading declared pacman and AUR packages
   upgrade self [--yes]     pin the newest Nacre on the checkout's channel, plan, then switch
   purge                    remove managed Arch state; skips Home Manager
+  forget KIND:NAME         leave one drifted record unmanaged; changes no file
 
 Inspection
   status                   checkout, last switch, home generation, pending work
@@ -205,6 +206,13 @@ def noctalia_command(machine: Machine, args: list[str]) -> int:
     machine.nix("run", machine.target("noctalia-config"), "--", *args, *repo, *extra)
 
 
+def forget_command(machine: Machine, args: list[str]) -> int:
+    """forget KIND:NAME: drop one receipt record."""
+    if len(args) != 1:
+        raise Usage
+    return forget(machine, args[0])
+
+
 def upgrade_command(machine: Machine, args: list[str]) -> int:
     """upgrade system | upgrade self [--yes]."""
     if args == ["system"]:
@@ -217,6 +225,7 @@ def upgrade_command(machine: Machine, args: list[str]) -> int:
 COMMANDS: dict[str, Callable[[Machine, list[str]], int]] = {
     **{mode: deployment(mode) for mode in MODES if mode != "update"},
     "upgrade": upgrade_command,
+    "forget": forget_command,
     "check": no_arguments(check),
     "build": no_arguments(build),
     "status": no_arguments(status),

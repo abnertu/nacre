@@ -61,6 +61,35 @@ class DeploymentTests(unittest.TestCase):
                     else ["arch", "home"],
                 )
 
+    def test_forget_runs_only_arch_with_the_record(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, body in (
+                ("arch", f'echo "$@" >> {root}/calls'),
+                ("home", f"echo home >> {root}/calls"),
+            ):
+                path = root / name
+                path.write_text(f"#!{shutil.which('bash')}\n" + body)
+                path.chmod(0o755)
+            script = (
+                f"set -euo pipefail\ndeployment_name=fixture\narch_switch={root}/arch\nhome_switch={root}/home\n"
+                + DEPLOY
+            )
+            for args, code in (
+                (["--forget", "file:hosts", "--verbose"], 0),
+                (["--forget"], 2),
+                (["--forget", "file:hosts", "--purge"], 2),
+            ):
+                with self.subTest(args):
+                    result = subprocess.run(
+                        ["bash", "-c", script, "deploy", *args], capture_output=True
+                    )
+                    self.assertEqual(result.returncode, code, result.stderr)
+            self.assertEqual(
+                (root / "calls").read_text().splitlines(),
+                ["--forget file:hosts --verbose"],
+            )
+
     def test_plan_previews_both_stages_and_never_activates(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

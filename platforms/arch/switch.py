@@ -23,7 +23,10 @@ from typing import NoReturn, NotRequired, TypedDict
 from nix_adapter import Progress
 from nix_adapter.plan import STYLES
 
-USAGE = "usage: arch-switch [--check | --plan | --update | --purge] [--verbose]"
+USAGE = (
+    "usage: arch-switch [--check | --plan | --update | --purge | --forget RECORD]"
+    " [--verbose]"
+)
 # An optional adapter exits 20 only while its preparation has never completed.
 NOT_READY = 20
 
@@ -134,13 +137,16 @@ class Switch:
             heading = f"\033[1;31m{title}:\033[0m" if self.color else f"{title}:"
             self.say(heading + "\n" + details.rstrip("\n"), error=True)
 
-    def adapter(self, name: str, phase: str) -> int:
-        """Run phase `phase` of adapter `name` as root; return its exit status."""
+    def adapter(self, name: str, phase: str, manifest: str | None = None) -> int:
+        """Run phase `phase` of adapter `name` as root; return its exit status.
+
+        `manifest` replaces the packaged manifest, for a request such as forget.
+        """
         entry = self.config["adapters"][name]
         args = [
             self.config["adapterPython"],
             entry["adapter"],
-            entry["manifest"],
+            manifest or entry["manifest"],
             phase,
         ]
         if self.verbose:
@@ -446,6 +452,19 @@ class Switch:
             self.say("Arch, LizardByte, and AUR package inventories resolve")
             task.update(1)
 
+    def forget(self, record: str) -> None:
+        """Drop one receipt record through core; the native state stays."""
+        manifest = json.loads(
+            Path(self.config["adapters"]["core"]["manifest"]).read_text()
+        )
+        manifest["forget"] = record
+        request = self.work / "core-forget.json"
+        request.write_text(json.dumps(manifest))
+        self.native("sudo", "-v")
+        status = self.adapter("core", "forget", str(request))
+        if status != 0:
+            raise Failure("", status)
+
     def purge(self) -> None:
         """Remove the managed Arch state: optional services, drop-ins, then core."""
         with self.progress.task("Purge managed Arch state", total=1) as task:
@@ -556,22 +575,46 @@ class Switch:
         )
 
 
-def parse(args: list[str]) -> tuple[str, bool]:
-    """The mode and verbosity from arch-switch's own arguments.
+def parse(args: list[str]) -> tuple[str, bool, str | None]:
+    """The mode, verbosity and forget record from arch-switch's own arguments.
 
     Print usage and exit 0 on `--help`; raise `Failure` (exit 2) on any
     unknown or conflicting argument.
     """
-    modes = {"--check", "--plan", "--update", "--purge"}
+    modes = {"--check", "--plan", "--update", "--purge", "--forget"}
     if "--help" in args:
         print(USAGE)
         raise SystemExit(0)
+    record = None
+    if "--forget" in args:
+        index = args.index("--forget")
+        if index + 1 >= len(args) or args[index + 1].startswith("--"):
+            raise Failure(USAGE, 2)
+        record = args[index + 1]
+        args = args[: index + 1] + args[index + 2 :]
     if any(arg not in modes | {"--verbose"} for arg in args):
         raise Failure(USAGE, 2)
     chosen = [arg for arg in args if arg in modes]
     if len(chosen) > 1:
         raise Failure(USAGE, 2)
-    return (chosen[0].removeprefix("--") if chosen else "deploy"), "--verbose" in args
+    mode = chosen[0].removeprefix("--") if chosen else "deploy"
+    return mode, "--verbose" in args, record
+
+
+def run_mode(switch: Switch, mode: str, record: str | None) -> None:
+    """Run one arch-switch mode; the changing modes hold the deployment lock."""
+    if mode == "plan":
+        switch.plan()
+    elif mode == "check":
+        switch.check()
+    else:
+        with switch.lock():
+            if mode == "purge":
+                switch.purge()
+            elif mode == "forget" and record is not None:
+                switch.forget(record)
+            else:
+                switch.deploy(update=mode == "update")
 
 
 def main(argv: list[str]) -> int:
@@ -582,7 +625,7 @@ def main(argv: list[str]) -> int:
         return 2
     config: Config = json.loads(Path(argv[1]).read_text())
     try:
-        mode, verbose = parse(argv[2:])
+        mode, verbose, record = parse(argv[2:])
     except Failure as failure:
         print(str(failure), file=sys.stderr)
         return failure.code
@@ -590,16 +633,7 @@ def main(argv: list[str]) -> int:
         switch = Switch(config, verbose, progress)
         try:
             switch.validate_host()
-            if mode == "plan":
-                switch.plan()
-            elif mode == "check":
-                switch.check()
-            else:
-                with switch.lock():
-                    if mode == "purge":
-                        switch.purge()
-                    else:
-                        switch.deploy(update=mode == "update")
+            run_mode(switch, mode, record)
             return 0
         except Failure as failure:
             if str(failure):

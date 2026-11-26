@@ -1,7 +1,6 @@
-# CyberPower PowerPanel: the pwrstatd.conf that the core adapter installs.
+# CyberPower PowerPanel: the content of /etc/pwrstatd.conf.
 {
   lib,
-  pkgs,
   config,
 }:
 let
@@ -127,8 +126,4 @@ let
     ${lib.optionalString (config.extraConfig != "") "\n${config.extraConfig}"}
   '';
 in
-{
-  inherit content;
-  configFile = pkgs.writeText "pwrstatd.conf" content;
-  inherit (config) enable;
-}
+content

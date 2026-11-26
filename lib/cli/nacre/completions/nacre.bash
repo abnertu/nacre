@@ -3,7 +3,7 @@
 
 _nacre() {
   local cur=${COMP_WORDS[COMP_CWORD]} prev=${COMP_WORDS[COMP_CWORD - 1]}
-  local commands="install plan switch upgrade purge status checkhealth changes generations rollback check build ai noctalia"
+  local commands="install plan switch upgrade purge forget status checkhealth changes generations rollback check build ai noctalia"
   local i command='' args=()
   # The command follows the global options; collect its positional arguments.
   for ((i = 1; i < COMP_CWORD; i++)); do

@@ -9,13 +9,13 @@ sys.dont_write_bytecode = True
 
 from nix_adapter import run_adapter_cli, validate
 from runtime import Core
-from schema import CoreManifest
+from schema import CoreRequest
 
 if __name__ == "__main__":
     raise SystemExit(
         run_adapter_cli(
             lambda desired, context: Core(
-                validate(CoreManifest, desired, "core manifest"), context=context
+                validate(CoreRequest, desired, "core manifest"), context=context
             ),
             "Core",
         )

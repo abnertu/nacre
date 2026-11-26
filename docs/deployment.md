@@ -18,6 +18,7 @@ nacre switch              # converge Arch, then activate the built home
 nacre upgrade system      # also upgrade declared pacman and AUR packages
 nacre upgrade self        # adopt the newest Nacre, plan, then switch
 nacre --verbose switch    # include native diagnostics
+nacre forget file:NAME    # leave one drifted record unmanaged
 nacre purge               # withdraw managed Arch state without home activation
 ```
 
@@ -57,14 +58,18 @@ A module can skip as `not ready` only before its preparation has ever completed.
 
 - Invalid receipts.
 - Checksum drift.
+- A withdrawn file that changed since Nacre wrote it.
+- An existing file that differs from a declaration without `adopt`.
+- A host deployed by Nacre 0.11 or older.
 - Ownership conflicts.
 - Missing core hardware.
 - Failed native commands.
 - A readiness change after preflight.
 
-Purge withdraws these items:
+Purge checks every recorded file for drift before any change. Purge withdraws these items:
 
 - Policy retired by explicitly opted-in extension adapters.
+- Recorded `/etc` files. Adopted files get their originals back.
 - The AI Tailscale route, Caddy site and llama-swap configuration.
 - System-setting drop-ins.
 - Managed core units, kernel files and repository configuration.
@@ -128,7 +133,26 @@ Adapter failures report the command, exit code, stdout, stderr and partial timeo
 
 Managed mutations first write a pending marker under `/var/lib/nix-config/arch/`. They clear it after success. Keep markers during recovery. Healthy reruns keep identical files and healthy services. Purge is not a recovery shortcut.
 
+The receipt at `/var/lib/nix-config/arch/receipts/core.json` records each file that Nacre writes. Saved originals stay under `/var/lib/nix-config/arch/adopted/`, readable only by root. Never edit or copy them by hand. An interrupted run completes its record on the next run. A corrupt receipt stops the deployment.
+
+| Stop | Next step |
+| --- | --- |
+| `set adopt = true` | Review the existing file, then set `adopt` on its entry or remove the entry |
+| `changed since Nacre wrote it` | Restore or delete the file, or run `nacre forget file:<name>` |
+| `deployed by an older Nacre` | Follow [From 0.11.x](#from-011x) |
+
+`nacre forget` drops one record and its saved original. The file stays as it is.
+
 ## Migrating older machines
+
+### From 0.11.x
+
+This version keeps no compatibility with the state of older versions. Do these steps on the machine:
+
+1. With the installed 0.11 Nacre, run `nacre purge`.
+2. Run `nacre upgrade self`. It adopts this version, shows the plan, then switches.
+
+Purge keeps packages, accounts, data and the current system settings. The new deployment adopts the existing files and saves them as originals.
 
 ### From `~/.config/nix` (before 0.1.0)
 

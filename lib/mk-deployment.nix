@@ -72,10 +72,6 @@ let
     inherit (ai) artifacts;
     inherit (capabilities) tailscale;
   };
-  powerpanel = import ../modules/powerpanel {
-    inherit lib pkgs;
-    config = host.powerpanel;
-  };
   systemSettings = import ../platforms/arch/system {
     inherit lib pkgs;
     config = host.systemSettings;
@@ -88,7 +84,6 @@ let
       deploymentUser
       capabilities
       systemSettings
-      powerpanel
       adapterPython
       ;
     inherit (deployment) username;

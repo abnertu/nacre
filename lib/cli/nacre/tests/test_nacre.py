@@ -195,6 +195,13 @@ class NacreTests(unittest.TestCase):
                 self.assertEqual(self.recorded()[-1].rstrip(), expected)
                 self.assertEqual(state.exists(), command == "switch")
         state.unlink()
+        result = self.run_nacre("forget", "file:hosts")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.recorded()[-1].rstrip(), "deploy --forget file:hosts")
+        self.assertFalse(state.exists())
+        for args in (["forget"], ["forget", "a", "b"]):
+            with self.subTest(args):
+                self.assertEqual(self.run_nacre(*args).returncode, 2)
         result = self.run_nacre("--verbose", "upgrade", "system", DEPLOY_STATUS="3")
         # checkhealth reports after an update; the update's status stays the result.
         self.assertEqual(result.returncode, 3)

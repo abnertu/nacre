@@ -41,7 +41,7 @@ A deployment has the name `<hostname>-<role>`. It is also available as `#deploym
 | Held upgrades | `packages.hold` |
 | Desktop and home programs | `desktop`, `programs`, `users.users.<name>.home` |
 
-When you disable an Arch feature, Nacre withdraws management. It does not remove the packages, services, registrations or data of the feature. Home Manager still activates the newly declared home.
+When you disable an Arch feature, Nacre keeps its packages, services, registrations and data. It withdraws the feature's [files under /etc](#files-under-etc). Home Manager still activates the newly declared home.
 
 `packages.hold = [ "ghostty" ];` excludes installed packages from Nacre's pacman and AUR upgrades. Missing held packages still install. Dependency resolution can fail if another package needs a newer version. Manual pacman operations ignore this declaration. Remove the hold to resume upgrades.
 
@@ -50,6 +50,42 @@ Kernel defaults support container networking. You can change them in these ways:
 - Override a sysctl key.
 - Set a key to `null` to withdraw management.
 - Replace the module list with `lib.mkForce`.
+
+## Files under /etc
+
+`environment.etc.<name>` declares a text file under `/etc`. The name is relative to `/etc`:
+
+```nix
+environment.etc."sudoers.d/50-alice" = {
+  text = "alice ALL=(ALL) NOPASSWD: /usr/bin/systemctl\n";
+  mode = "0440";
+};
+environment.etc."ssh/sshd_config.d/50-local.conf".source = ./files/sshd-local.conf;
+```
+
+| Option | Behavior |
+| --- | --- |
+| `text`, `source` | The content. A definition with a higher priority wins. Equal priorities fail evaluation. |
+| `mode` | Octal mode, `0644` by default. |
+| `group` | Owning group, `root` by default. The owner is always root. |
+| `adopt` | Replace an existing file that differs. Nacre saves the original. |
+| `enable` | Set it to `false` to withdraw the file. |
+
+Never put secrets in an entry. Its text lands in the Nix store and the deployment manifest.
+
+Prefer a drop-in directory, such as `sshd_config.d`, to a whole file. A drop-in needs no adoption.
+
+Nacre records each file that it writes. These rules apply:
+
+- A file that Nacre created goes away when its declaration goes away.
+- An adopted file gets its original back when its declaration goes away.
+- An existing file that differs stops preflight until you set `adopt = true`. An identical file is adopted without it.
+- A declared file that someone edited is written again.
+- A withdrawn file that someone edited stops the deployment. Restore or delete it, or run `nacre forget file:<name>` to leave it unmanaged.
+
+Built-in files use the same option. Override the NetworkManager files with a plain definition or `lib.mkDefault`. The kernel module, sysctl and PowerPanel files come from their typed options. Change `boot.kernelModules`, `boot.kernel.sysctl` or `services.powerpanel` instead.
+
+Evaluation rejects absolute names, `.` and `..` components, nested entries and paths that another owner writes. The system settings, AI, the repository, managed blocks and account databases own reserved paths. An extension reserves the paths that its adapter writes with `arch.extensions.<name>.reservedPaths`.
 
 Read [local AI](ai.md) before you select models, offload or context under `programs.ai.llama.models`.
 Read [GitLab Runner](gitlab-runner.md) before you declare instances under `services.gitlabRunner`.

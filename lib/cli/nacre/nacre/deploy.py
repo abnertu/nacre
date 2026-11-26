@@ -1,4 +1,4 @@
-"""plan, switch, update and purge: build the deployment and run it."""
+"""plan, switch, update, purge and forget: build the deployment and run it."""
 
 from __future__ import annotations
 
@@ -37,9 +37,19 @@ def deploy(machine: Machine, mode: str) -> int:
     return status
 
 
-def run_deployment(machine: Machine, artifact: str, mode: str) -> int:
+def forget(machine: Machine, record: str) -> int:
+    """Drop one receipt record; the native state stays as it is."""
+    status, artifact = machine.build_deployment()
+    if status != 0:
+        return status
+    return run_deployment(machine, artifact, "forget", ["--forget", record])
+
+
+def run_deployment(
+    machine: Machine, artifact: str, mode: str, flags: list[str] | None = None
+) -> int:
     """Run the deployment program of `artifact` in `mode`."""
-    args = FLAGS.get(mode, []) + (["--verbose"] if machine.verbose else [])
+    args = (flags or FLAGS.get(mode, [])) + (["--verbose"] if machine.verbose else [])
     # The deployment's only program is named after the machine.
     (program,) = Path(artifact, "bin").iterdir()
     return subprocess.run([str(program), *args], check=False).returncode

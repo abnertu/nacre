@@ -5,9 +5,15 @@ from __future__ import annotations
 from typing import TypedDict
 
 
-class ManagedFile(TypedDict):
+class EtcEntry(TypedDict):
+    """One enabled environment.etc entry."""
+
+    name: str
     path: str
     text: str
+    mode: str
+    group: str
+    adopt: bool
     action: str | None
 
 
@@ -50,15 +56,20 @@ class Purge(TypedDict):
 
 class CoreManifest(TypedDict):
     user: str
-    files: list[ManagedFile]
+    etc: list[EtcEntry]
     repository: Repository | None
     units: list[str]
     blocks: list[Block]
     initramfsImages: list[str]
     groups: list[str]
-    reloadUnits: bool
     restarts: list[Restart]
     kernelModules: list[str]
     sysctl: dict[str, str]
     fileCapabilities: list[FileCapability]
     purge: Purge
+
+
+class CoreRequest(CoreManifest, total=False):
+    """The manifest, plus the record that `arch-switch --forget` drops."""
+
+    forget: str

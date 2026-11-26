@@ -15,7 +15,6 @@
   sysctl ? { },
   kernelModules ? [ ],
   nixSettings ? { },
-  powerpanel ? null,
   adapterPython ? pkgs.python3,
 }:
 let
@@ -40,7 +39,6 @@ let
       sysctl
       kernelModules
       nixSettings
-      powerpanel
       ;
     ownedUnits = lib.concatMap (extension: extension.ownedUnits) (builtins.attrValues arch.extensions);
   };

@@ -11,38 +11,13 @@
   sysctl ? { },
   kernelModules ? [ ],
   nixSettings ? { },
-  powerpanel ? null,
   ownedUnits ? [ ],
 }:
 let
   files = ../files;
   read = name: builtins.readFile (files + "/${name}");
-  file = path: text: action: { inherit path text action; };
-  managedFiles =
-    lib.optionals capabilities.networking (
-      [ (file "/etc/NetworkManager/conf.d/main.conf" (read "NetworkManager-main.conf") "network") ]
-      ++ lib.optional capabilities.tailscale (
-        file "/etc/NetworkManager/conf.d/99-tailscale.conf" (read "NetworkManager-tailscale.conf") "network"
-      )
-    )
-    ++ [
-      (file "/etc/modules-load.d/nix-config-podman.conf" (lib.concatMapStrings (
-        module: "${module}\n"
-      ) kernelModules) null)
-      (file "/etc/sysctl.d/99-nix-config.conf" (lib.concatStrings (
-        lib.mapAttrsToList (key: value: "${key} = ${toString value}\n") sysctl
-      )) null)
-    ]
-    ++ lib.optional (powerpanel != null && powerpanel.enable) (
-      file "/etc/pwrstatd.conf" (builtins.readFile powerpanel.configFile) "pwrstatd"
-    )
-    ++ lib.optional capabilities.desktop.enable (
-      file "/etc/systemd/system/getty@tty1.service.d/override.conf" (lib.replaceStrings
-        [ "@USER@" ]
-        [ username ]
-        (read "tty1-autologin.conf")
-      ) "units"
-    );
+  # environment.etc entries, merged by platforms/arch/module.nix.
+  inherit (arch) etc;
   repository =
     if arch.lizardbyte == [ ] then
       null
@@ -57,32 +32,35 @@ let
   nixBlock = {
     path = "/etc/nix/nix.conf";
     name = "settings";
-    text = lib.concatStrings (
-      lib.mapAttrsToList
-        (
-          key: value:
-          let
-            rendered =
-              if builtins.isList value then
-                lib.concatStringsSep " " value
-              else if builtins.isBool value then
-                lib.boolToString value
-              else
-                toString value;
-          in
-          "${key} = ${rendered}\n"
-        )
-        (
-          nixSettings
-          // {
-            trusted-users = [
-              "root"
-              "@wheel"
-              username
-            ];
-          }
-        )
-    );
+    # Marks a host whose deployment keeps receipts (core/receipts.py RECEIPT_LINE).
+    text =
+      "# nix-config receipts 1\n"
+      + lib.concatStrings (
+        lib.mapAttrsToList
+          (
+            key: value:
+            let
+              rendered =
+                if builtins.isList value then
+                  lib.concatStringsSep " " value
+                else if builtins.isBool value then
+                  lib.boolToString value
+                else
+                  toString value;
+            in
+            "${key} = ${rendered}\n"
+          )
+          (
+            nixSettings
+            // {
+              trusted-users = [
+                "root"
+                "@wheel"
+                username
+              ];
+            }
+          )
+      );
     action = "nix-daemon";
     create = true;
   };
@@ -95,7 +73,7 @@ let
   };
   manifest = {
     user = username;
-    files = managedFiles;
+    inherit etc;
     inherit repository;
     units = arch.systemUnits;
     blocks = lib.optional capabilities.initramfs initramfsBlock ++ [ nixBlock ];
@@ -103,25 +81,25 @@ let
     groups = lib.unique (
       arch.groups ++ deploymentUser.groups ++ lib.optional deploymentUser.admin "wheel"
     );
-    reloadUnits = capabilities.desktop.enable;
-    restarts =
-      lib.optional capabilities.networking {
+    # Every action stays listed, so a withdrawn file's marker always clears.
+    restarts = [
+      {
         action = "network";
         unit = "NetworkManager.service";
+        # Without networking, a withdrawn file restarts only a running manager.
+        onlyIfActive = !capabilities.networking;
+      }
+      {
+        action = "nix-daemon";
+        unit = "nix-daemon.service";
         onlyIfActive = false;
       }
-      ++ [
-        {
-          action = "nix-daemon";
-          unit = "nix-daemon.service";
-          onlyIfActive = false;
-        }
-        {
-          action = "pwrstatd";
-          unit = "pwrstatd.service";
-          onlyIfActive = true;
-        }
-      ];
+      {
+        action = "pwrstatd";
+        unit = "pwrstatd.service";
+        onlyIfActive = true;
+      }
+    ];
     inherit kernelModules;
     sysctl = lib.mapAttrs (_: toString) sysctl;
     fileCapabilities =

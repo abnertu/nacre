@@ -9,6 +9,7 @@ let
     class = "nixConfig";
     modules = [
       { options = import ./configuration-options.nix { inherit lib; }; }
+      ./environment-options.nix
       ./configuration-assertions.nix
       ../roles
       ../platforms/arch/module.nix

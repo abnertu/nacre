@@ -5,9 +5,40 @@ let
   inherit (config) deployment;
   user = users.${deployment.username} or null;
   homes = map (value: value.homeDirectory) (builtins.attrValues users);
+  etcNames = builtins.attrNames (lib.filterAttrs (_: entry: entry.enable) config.environment.etc);
+  reserved = config.arch.etcReserved;
+  isReserved =
+    name:
+    lib.any (
+      path: if lib.hasSuffix "/" path then lib.hasPrefix path name || name + "/" == path else name == path
+    ) reserved;
+  badName =
+    name:
+    name == ""
+    || lib.hasPrefix "/" name
+    || lib.hasSuffix "/" name
+    || lib.any (part: part == "" || part == "." || part == "..") (lib.splitString "/" name);
+  etcAssertions = lib.concatMap (name: [
+    {
+      assertion = !badName name;
+      message = "environment.etc.\"${name}\" must be a relative path without empty, . or .. components";
+    }
+    {
+      assertion = badName name || !isReserved name;
+      message = "environment.etc.\"${name}\" names a path that another Nacre owner writes";
+    }
+    {
+      assertion = !lib.any (other: lib.hasPrefix "${name}/" other) etcNames;
+      message = "environment.etc.\"${name}\" is a directory of another entry";
+    }
+    {
+      assertion = config.environment.etc.${name}.contentError == null;
+      message = toString config.environment.etc.${name}.contentError;
+    }
+  ]) etcNames;
 in
 {
-  assertions = [
+  assertions = etcAssertions ++ [
     {
       assertion = !config.services.gitlabRunner.enable || config.services.gitlabRunner.configFiles != [ ];
       message = "services.gitlabRunner.enable requires at least one public instance file";

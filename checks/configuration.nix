@@ -176,8 +176,59 @@ let
       };
     }
   ];
-
+  # environment.etc: the failed assertion messages, and the manifest entries.
+  etcFailed =
+    module:
+    map (check: check.message) (
+      lib.filter (check: !check.assertion) (evaluate [ module ]).config.assertions
+    );
+  etcFile = text: builtins.toFile "etc-entry" text;
+  etcText =
+    modules: name:
+    (lib.findFirst (entry: entry.name == name) null (evaluate modules).config.arch.etc).text;
+  mainConf = "NetworkManager/conf.d/main.conf";
+  relativeMessage =
+    name: "environment.etc.\"${name}\" must be a relative path without empty, . or .. components";
 in
+assert etcFailed { environment.etc."/abs".text = "x"; } == [ (relativeMessage "/abs") ];
+assert etcFailed { environment.etc."a/../b".text = "x"; } == [ (relativeMessage "a/../b") ];
+assert etcFailed { environment.etc."a//b".text = "x"; } == [ (relativeMessage "a//b") ];
+assert
+  etcFailed { environment.etc."passwd".text = "x"; } == [
+    "environment.etc.\"passwd\" names a path that another Nacre owner writes"
+  ];
+assert
+  etcFailed { environment.etc."ufw/user.rules".text = "x"; } == [
+    "environment.etc.\"ufw/user.rules\" names a path that another Nacre owner writes"
+  ];
+assert
+  etcFailed {
+    environment.etc."a".text = "x";
+    environment.etc."a/b".text = "y";
+  } == [ "environment.etc.\"a\" is a directory of another entry" ];
+assert
+  etcFailed {
+    environment.etc."both" = {
+      text = "x";
+      source = etcFile "y";
+    };
+  } == [ "environment.etc.\"both\" defines both text and source at the same priority" ];
+assert
+  etcFailed { environment.etc."empty".mode = "0600"; } == [
+    "environment.etc.\"empty\" defines neither text nor source"
+  ];
+assert etcText [ { environment.etc.${mainConf}.text = "plain\n"; } ] mainConf == "plain\n";
+assert
+  etcText [ { environment.etc.${mainConf}.text = lib.mkDefault "default\n"; } ] mainConf
+  == "default\n";
+assert
+  etcText [ { environment.etc.${mainConf}.source = etcFile "source\n"; } ] mainConf == "source\n";
+assert
+  !(builtins.tryEval (
+    builtins.deepSeq (etcText [
+      { environment.etc."sysctl.d/99-nix-config.conf".text = "x = 1\n"; }
+    ] "sysctl.d/99-nix-config.conf") true
+  )).success;
 assert hotspotOverride.host.systemSettings.hotspot.channel == 149;
 assert hotspotOff.host.systemSettings.hotspot == null;
 assert hotspotParentOff.host.systemSettings.hotspot == null;

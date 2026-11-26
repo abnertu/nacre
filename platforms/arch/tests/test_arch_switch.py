@@ -317,6 +317,28 @@ class ArchSwitchTests(unittest.TestCase):
             self.invoke(code=75)
         self.assertEqual(self.adapter_phases(CORE), [])
 
+    def test_forget_sends_the_record_to_core_under_the_lock(self):
+        manifest = self.root / "core-manifest.json"
+        manifest.write_text(json.dumps({"user": "tester"}))
+        self.config["adapters"]["core"]["manifest"] = str(manifest)
+        self.write_config()
+        self.invoke("--forget", "file:hosts")
+        self.assertEqual(
+            self.state["forget_request"], {"user": "tester", "forget": "file:hosts"}
+        )
+        self.assertEqual(
+            [call[3] for call in self.commands() if call[0] == "python"], ["forget"]
+        )
+        self.state["forget_unknown"] = True
+        self.save()
+        self.invoke("--forget", "file:missing", code=1)
+        with (self.root / "run/user/1000/nacre-arch.lock").open("w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.invoke("--forget", "file:hosts", code=75)
+        for args in (["--forget"], ["--forget", "file:hosts", "--purge"]):
+            with self.subTest(args):
+                self.invoke(*args, code=2)
+
     def test_purge_withdraws_ai_then_system_then_core(self):
         self.invoke("--purge")
         self.assertEqual(

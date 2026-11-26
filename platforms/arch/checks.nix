@@ -28,7 +28,7 @@
         from nix_adapter import validate
 
         for directory, schema, manifest in (
-            ("${./core}", "CoreManifest", "${arch-switch.manifests.core}"),
+            ("${./core}", "CoreRequest", "${arch-switch.manifests.core}"),
             ("${./system}", "SystemManifest", "${arch-switch.manifests.system}"),
             ("${./ai}", "AIManifest", "${arch-switch.manifests.ai}"),
             ("${../../modules/gitlab-runner}", "Manifest", "${runnerManifest}"),
