@@ -222,7 +222,9 @@ class AITests(unittest.TestCase):
         self.assertIn("--config /etc/llama-swap/config.yaml", unit)
         self.assertIn("--listen 127.0.0.1:11434", unit)
         self.assertTrue(any(c[:2] == ("caddy", "reload") for c in self.native.calls))
-        self.assertFalse(any((self.root / "var/lib/nix-config/arch").iterdir()))
+        self.assertFalse(
+            list((self.root / "var/lib/nix-config/arch").glob("*.pending"))
+        )
 
     def test_plan_reports_router_and_proxy_work_then_agrees_after_converge(self):
         before = sorted(str(p) for p in self.root.rglob("*"))
@@ -256,6 +258,7 @@ class AITests(unittest.TestCase):
         self.assertFalse(any(c[:2] == ("caddy", "reload") for c in self.native.calls))
 
     def test_purge_withdraws_route_site_and_router_but_keeps_assets(self):
+        (self.root / "etc/caddy/Caddyfile").write_text(self.generated["packageCaddy"])
         self.ai().converge()
         self.native.calls.clear()
         self.ai().purge()
@@ -263,8 +266,12 @@ class AITests(unittest.TestCase):
         self.assertFalse(
             (self.root / "etc/caddy/conf.d/nix-config-llama.caddy").exists()
         )
-        self.assertTrue(
-            any(call[:2] == ("caddy", "reload") for call in self.native.calls)
+        self.assertEqual(
+            (self.root / "etc/caddy/Caddyfile").read_text(),
+            self.generated["packageCaddy"],
+        )
+        self.assertEqual(
+            self.native.services["caddy.service"]["UnitFileState"], "disabled"
         )
         self.assertEqual(
             self.native.services["llama-swap.service"]["UnitFileState"], "disabled"
@@ -273,6 +280,60 @@ class AITests(unittest.TestCase):
         self.assertFalse((self.root / "etc/llama-swap/config.yaml").exists())
         self.assertTrue((self.root / "var/lib/llama/models/model.gguf").exists())
         self.assertTrue((self.root / "opt/llama/current").exists())
+
+    def receipt(self):
+        path = self.root / "var/lib/nix-config/arch/receipts/ai.json"
+        return json.loads(path.read_text())["records"] if path.exists() else {}
+
+    def test_withdrawn_ai_returns_the_host_to_its_state_before_nacre(self):
+        (self.root / "etc/caddy/Caddyfile").write_text(self.generated["packageCaddy"])
+        self.ai().converge()
+        self.assertEqual(set(self.receipt()), {"router", "caddy", "serve"})
+        self.desired = {"llama": False}
+        self.assertTrue(self.ai().preflight(installed=True))
+        self.native.calls.clear()
+        self.ai().converge()
+        self.assertEqual(self.native.serve, "{}")
+        self.assertFalse(
+            (self.root / "etc/caddy/conf.d/nix-config-llama.caddy").exists()
+        )
+        self.assertEqual(
+            (self.root / "etc/caddy/Caddyfile").read_text(),
+            self.generated["packageCaddy"],
+        )
+        for unit in ("caddy.service", "llama-swap.service"):
+            self.assertEqual(
+                self.native.services[unit]["UnitFileState"], "disabled", unit
+            )
+        self.assertFalse((self.root / "etc/systemd/system/llama-swap.service").exists())
+        self.assertFalse((self.root / "etc/llama-swap/config.yaml").exists())
+        self.assertIn(("systemctl", "daemon-reload"), self.native.calls)
+        self.assertTrue((self.root / "var/lib/llama/models/model.gguf").exists())
+        self.assertEqual(self.receipt(), {})
+        self.assertFalse(self.ai().preflight(installed=True))
+
+    def test_withdrawn_proxy_keeps_the_router(self):
+        self.ai().converge()
+        self.desired["proxy"] = False
+        self.ai().converge()
+        self.assertEqual(self.native.serve, "{}")
+        self.assertFalse(
+            (self.root / "etc/caddy/conf.d/nix-config-llama.caddy").exists()
+        )
+        self.assertFalse((self.root / "etc/caddy/Caddyfile").exists())
+        self.assertTrue((self.root / "etc/systemd/system/llama-swap.service").exists())
+        self.assertEqual(set(self.receipt()), {"router"})
+
+    def test_caddy_that_ran_before_nacre_keeps_running(self):
+        self.native.services["caddy.service"].update(
+            UnitFileState="enabled", ActiveState="active"
+        )
+        self.ai().converge()
+        self.desired["proxy"] = False
+        self.native.calls.clear()
+        self.ai().converge()
+        self.assertEqual(self.native.services["caddy.service"]["ActiveState"], "active")
+        self.assertTrue(any(c[:2] == ("caddy", "reload") for c in self.native.calls))
 
     def test_disabled_preserves_state(self):
         path = self.root / "etc/llama-swap/config.yaml"

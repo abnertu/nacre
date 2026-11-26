@@ -1,5 +1,7 @@
 """Converge Arch-owned llama.cpp, Caddy and Tailscale Serve policy."""
 
+import hashlib
+import json
 import os
 import time
 from collections.abc import Mapping
@@ -8,6 +10,10 @@ from typing import Any, cast
 
 from nix_adapter import AdapterContext, BaseAdapter, Change, Conflict, Files, Native
 from schema import AIManifest, Model, Unmanaged
+
+RECEIPT = "/var/lib/nix-config/arch/receipts/ai.json"
+ADOPTED = "/var/lib/nix-config/arch/adopted"
+CADDY_ADMIN = "unix//run/caddy/admin.socket"
 
 
 class AI(BaseAdapter[AIManifest | Unmanaged]):
@@ -29,6 +35,93 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
             files=files,
             context=context,
         )
+        self._records: dict[str, dict[str, Any]] | None = None
+
+    # The receipt records what this adapter wrote and changed: the router
+    # files, the Caddy site with the Caddyfile before Nacre and whether Caddy
+    # ran then, and the Serve route. Withdrawal returns each one.
+
+    @property
+    def records(self) -> dict[str, dict[str, Any]]:
+        if self._records is None:
+            text = self.files.read(RECEIPT)
+            try:
+                value: object = (
+                    json.loads(text) if text else {"version": 1, "records": {}}
+                )
+            except ValueError:
+                raise Conflict(f"receipt {RECEIPT} is corrupt") from None
+            data = cast("dict[str, object]", value) if isinstance(value, dict) else {}
+            if data.get("version") != 1 or not isinstance(data.get("records"), dict):
+                raise Conflict(f"receipt {RECEIPT} has an unknown format")
+            self._records = cast("dict[str, dict[str, Any]]", data["records"])
+        return self._records
+
+    def record(self, key: str, value: dict[str, Any]) -> None:
+        if self.records.get(key) != value:
+            self.records[key] = dict(value)
+            self.save_records()
+
+    def save_records(self) -> None:
+        receipt = {"version": 1, "records": self.records}
+        self.files.write(
+            RECEIPT, json.dumps(receipt, indent=2, sort_keys=True) + "\n", 0o600
+        )
+
+    def withdraw(self, keep: set[str]) -> None:
+        """Withdraw each record outside `keep`: the route, then Caddy, then the router."""
+        for key in ("serve", "caddy", "router"):
+            if key in self.records and key not in keep:
+                getattr(self, f"withdraw_{key}")(self.records[key])
+                del self.records[key]
+                self.save_records()
+                self.actions += 1
+
+    def withdraw_serve(self, record: dict[str, Any]) -> None:
+        status = self.run("tailscale", "serve", "status", "--json", check=False).stdout
+        if record["target"] in status and record["port"] in status:
+            self.run("tailscale", "serve", f"--https={record['port']}", "off")
+
+    def withdraw_caddy(self, record: dict[str, Any]) -> None:
+        """Remove the site and restore the Caddyfile; stop Caddy if Nacre started it."""
+        self.remove(record["site"])
+        caddyfile = record["caddyfile"]
+        if record["original"] is not None:
+            original = json.loads(self.files.read(record["original"]))
+            self.files.write(caddyfile, original["text"])
+            self.remove(record["original"])
+        else:
+            self.remove(caddyfile)
+        state = self.unit("caddy.service")
+        running = state.get("ActiveState") == "active"
+        if not (record["wasEnabled"] or record["wasActive"]):
+            if running or state.get("UnitFileState") == "enabled":
+                self.systemd.disable("caddy.service", now=True)
+        elif running:
+            self.run("caddy", "reload", "--config", caddyfile, "--address", CADDY_ADMIN)
+
+    def withdraw_router(self, record: dict[str, Any]) -> None:
+        state = self.unit("llama-swap.service")
+        if (
+            state.get("UnitFileState") == "enabled"
+            or state.get("ActiveState") == "active"
+        ):
+            self.systemd.disable("llama-swap.service", now=True)
+        unit = self.remove(record["unit"])
+        self.remove(record["config"])
+        if unit:
+            self.systemd.daemon_reload()
+
+    def save_caddy_original(self, caddyfile: str) -> str | None:
+        """Save the Caddyfile before Nacre; it can hold secrets, so root only."""
+        if not self.files.path(caddyfile).exists():
+            return None
+        saved = f"{ADOPTED}/{hashlib.sha256(caddyfile.encode()).hexdigest()}.json"
+        text = self.files.read(caddyfile)
+        self.files.write(
+            saved, json.dumps({"path": caddyfile, "text": text}) + "\n", 0o600
+        )
+        return saved
 
     def managed(self) -> AIManifest:
         d = self.desired
@@ -83,7 +176,8 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
         native command or unit that convergence needs is missing.
         """
         if not self.desired["llama"]:
-            return False
+            # Ready only to withdraw what an earlier deployment left.
+            return bool(self.records)
         d = self.managed()
         if any(not Path(model["path"]).is_absolute() for model in d["models"].values()):
             raise Conflict("model paths must be absolute")
@@ -189,51 +283,12 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
         return True
 
     def purge(self) -> None:
-        """Withdraw the router, its proxy site and the public route.
+        """Withdraw the route, the Caddy site and the router from the receipt.
 
         Prepared binaries, models and receipts stay: they are mutable assets
         that are expensive to rebuild. Caddy itself stays installed.
         """
-        if not self.desired["llama"]:
-            print("AI services purged: not managed.")
-            return
-        d = self.managed()
-        if d["proxy"]:
-            # Withdraw public exposure first.
-            target = f"http://127.0.0.1:{d['localPort']}"
-            port = str(d["httpsPort"])
-            status = self.run(
-                "tailscale", "serve", "status", "--json", check=False
-            ).stdout
-            if target in status and port in status:
-                self.run("tailscale", "serve", f"--https={port}", "off")
-            site = self.path_str(
-                "caddySite", "/etc/caddy/conf.d/nix-config-llama.caddy"
-            )
-            if (
-                self.remove(site)
-                and self.unit("caddy.service").get("ActiveState") == "active"
-            ):
-                self.run(
-                    "caddy",
-                    "reload",
-                    "--config",
-                    self.path_str("caddyMain", "/etc/caddy/Caddyfile"),
-                    "--address",
-                    "unix//run/caddy/admin.socket",
-                )
-        state = self.unit("llama-swap.service")
-        if (
-            state.get("UnitFileState") == "enabled"
-            or state.get("ActiveState") == "active"
-        ):
-            self.systemd.disable("llama-swap.service", now=True)
-        unit = self.remove(
-            self.path_str("switcherUnit", "/etc/systemd/system/llama-swap.service")
-        )
-        self.remove(self.path_str("switcherConfig", "/etc/llama-swap/config.yaml"))
-        if unit:
-            self.systemd.daemon_reload()
+        self.withdraw(keep=set())
         print("AI services purged; prepared binaries and models were kept.")
 
     def _curl_ready(
@@ -306,12 +361,14 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
         Skip with a message while preparation never completed.
         """
         if not self.desired["llama"]:
+            self.withdraw(keep=set())
             print("AI services unmanaged.")
             return
         d = self.managed()
         if not preflighted and not self.preflight(installed=True):
             print("AI services skipped: selected model is not prepared.")
             return
+        self.withdraw(keep={"router", "caddy", "serve"} if d["proxy"] else {"router"})
         self.converge_router(d)
         if d["proxy"]:
             self.converge_caddy(d)
@@ -340,6 +397,7 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
             "llama-swap.service", "ai-llama", restart=pending or config_changed
         )
         self._curl_ready(d["server"]["port"])
+        self.record("router", {"config": switcher_config, "unit": switcher_unit})
         f.clear("ai-llama")
 
     def converge_caddy(self, d: AIManifest) -> None:
@@ -352,6 +410,18 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
         caddy_site = self.path_str(
             "caddySite", "/etc/caddy/conf.d/nix-config-llama.caddy"
         )
+        if "caddy" not in self.records:
+            state = self.unit("caddy.service")
+            self.record(
+                "caddy",
+                {
+                    "site": caddy_site,
+                    "caddyfile": caddy_file,
+                    "original": self.save_caddy_original(caddy_file),
+                    "wasEnabled": state.get("UnitFileState") == "enabled",
+                    "wasActive": state.get("ActiveState") == "active",
+                },
+            )
         self.write(caddy_file, self.caddy_main(), "ai-caddy")
         self.write(caddy_site, d["generated"]["caddySite"], "ai-caddy")
         pending = f.pending("ai-caddy")
@@ -399,4 +469,5 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
             status = self.run("tailscale", "serve", "status", "--json").stdout
             if target not in status or port not in status:
                 raise Conflict("Tailscale Serve route did not converge")
+        self.record("serve", {"port": port, "target": target})
         f.clear("ai-serve")

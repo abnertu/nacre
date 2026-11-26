@@ -314,4 +314,4 @@ systemctl status llama-swap.service caddy.service
 
 Before a build selector exists, deployment reports AI as unprepared and does not touch it. After preparation, these conditions stop convergence: missing models, invalid receipts, checksum drift, unmanaged Caddy state, service failures and post-preflight changes.
 
-When you disable AI, Nacre withdraws management. Purge removes its Tailscale Serve route, Caddy site and llama-swap resources. It keeps prepared binaries, models and receipts.
+When you disable AI, or only its proxy, the next deployment withdraws what Nacre set. The AI receipt `/var/lib/nix-config/arch/receipts/ai.json` records it. The Tailscale Serve route and the Caddy site go away. The Caddyfile returns to its content before Nacre. Caddy stops when Nacre started it. llama-swap stops, and its unit and configuration go away. Purge withdraws the same way. Prepared binaries, models and their receipts stay.
