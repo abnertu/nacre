@@ -12,7 +12,7 @@ let
   # Option sets that one declaration reuses under several paths. A field of
   # such a set may repeat its text across the prefixes of one group.
   reusedSets = [
-    # systemd.services shares the unit fields of systemd.units.
+    # The typed unit kinds share the unit fields of systemd.units and each other.
     [
       [
         "systemd"
@@ -22,6 +22,21 @@ let
       [
         "systemd"
         "services"
+        "<name>"
+      ]
+      [
+        "systemd"
+        "timers"
+        "<name>"
+      ]
+      [
+        "systemd"
+        "sockets"
+        "<name>"
+      ]
+      [
+        "systemd"
+        "paths"
         "<name>"
       ]
     ]

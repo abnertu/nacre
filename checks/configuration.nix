@@ -227,6 +227,36 @@ let
       wantedBy = [ "multi-user.target" ];
     };
   };
+  demoTimers = {
+    systemd.timers.demo = {
+      description = "Demo timer";
+      timerConfig.OnCalendar = "daily";
+      wantedBy = [ "timers.target" ];
+    };
+    systemd.sockets.demo = {
+      socketConfig = {
+        ListenStream = [ "/run/demo.sock" ];
+        SocketMode = "0600";
+      };
+      wantedBy = [ "sockets.target" ];
+    };
+    systemd.paths.demo = {
+      after = [ "local-fs.target" ];
+      pathConfig.PathChanged = "/etc/demo";
+      wantedBy = [ "paths.target" ];
+    };
+  };
+  # Direct text for a typed unit conflicts with its rendered text.
+  directTextFails =
+    unit:
+    !(builtins.tryEval (
+      builtins.deepSeq
+        (evaluate [
+          demoTimers
+          { systemd.units.${unit}.text = "[Unit]\n"; }
+        ]).config.systemd.units.${unit}.text
+        true
+    )).success;
   relativeMessage =
     name: "environment.etc.\"${name}\" must be a relative path without empty, . or .. components";
 in
@@ -285,6 +315,46 @@ assert
     [Install]
     WantedBy=multi-user.target
   '';
+assert
+  lib.mapAttrs (name: _: (evaluate [ demoTimers ]).config.systemd.units.${name}.text) {
+    "demo.timer" = null;
+    "demo.socket" = null;
+    "demo.path" = null;
+  } == {
+    "demo.timer" = ''
+      [Unit]
+      Description=Demo timer
+
+      [Timer]
+      OnCalendar=daily
+
+      [Install]
+      WantedBy=timers.target
+    '';
+    "demo.socket" = ''
+      [Socket]
+      ListenStream=/run/demo.sock
+      SocketMode=0600
+
+      [Install]
+      WantedBy=sockets.target
+    '';
+    "demo.path" = ''
+      [Unit]
+      After=local-fs.target
+
+      [Path]
+      PathChanged=/etc/demo
+
+      [Install]
+      WantedBy=paths.target
+    '';
+  };
+assert lib.all directTextFails [
+  "demo.timer"
+  "demo.socket"
+  "demo.path"
+];
 assert
   etcFailed (demoService // { environment.etc."systemd/system/demo.service".text = "x"; })
   == [ "environment.etc.\"systemd/system/demo.service\" is the file of a systemd.units declaration" ];

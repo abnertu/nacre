@@ -1,6 +1,7 @@
-# systemd.units and systemd.services: system units that the core adapter
-# writes, enables, restarts and withdraws. A unit without content is a
-# packaged unit that Nacre only enables and keeps running.
+# systemd.units and the typed systemd.services, .timers, .sockets and .paths:
+# system units that the core adapter writes, enables, restarts and withdraws.
+# A unit without content is a packaged unit that Nacre only enables and keeps
+# running.
 { config, lib, ... }:
 let
   inherit (lib) mkOption types;
@@ -62,49 +63,127 @@ let
       ) entries
     );
   section = name: entries: lib.optionalString (entries != { }) "[${name}]\n${render entries}";
-  serviceText =
-    service:
+  # Typed unit kinds: the option name, the unit suffix and the section that
+  # `<kind>Config` fills.
+  kinds = {
+    services = {
+      suffix = "service";
+      section = "Service";
+    };
+    timers = {
+      suffix = "timer";
+      section = "Timer";
+    };
+    sockets = {
+      suffix = "socket";
+      section = "Socket";
+    };
+    paths = {
+      suffix = "path";
+      section = "Path";
+    };
+  };
+  configName = kind: "${kinds.${kind}.suffix}Config";
+  # The kind's own section: services also take `environment`.
+  sectionEntries =
+    kind: unit:
+    lib.optionalAttrs (kind == "services" && unit.environment != { }) {
+      Environment = lib.mapAttrsToList (key: item: "\"${key}=${item}\"") unit.environment;
+    }
+    // unit.${configName kind};
+  unitText =
+    kind: unit:
     let
-      dropin = service.overrideStrategy == "asDropin";
-      unit =
-        lib.optionalAttrs (service.description != null) { Description = service.description; }
+      dropin = unit.overrideStrategy == "asDropin";
+      unitEntries =
+        lib.optionalAttrs (unit.description != null) { Description = unit.description; }
         // lib.mapAttrs (_: lib.concatStringsSep " ") (
           lib.filterAttrs (_: list: list != [ ]) {
-            After = service.after;
-            Before = service.before;
-            Wants = service.wants;
-            Requires = service.requires;
+            After = unit.after;
+            Before = unit.before;
+            Wants = unit.wants;
+            Requires = unit.requires;
           }
         )
-        // service.unitConfig;
-      environment = lib.optionalAttrs (service.environment != { }) {
-        Environment = lib.mapAttrsToList (key: item: "\"${key}=${item}\"") service.environment;
-      };
-      install = lib.optionalAttrs (!dropin && service.wantedBy != [ ]) {
-        WantedBy = lib.concatStringsSep " " service.wantedBy;
+        // unit.unitConfig;
+      install = lib.optionalAttrs (!dropin && unit.wantedBy != [ ]) {
+        WantedBy = lib.concatStringsSep " " unit.wantedBy;
       };
     in
     lib.concatStringsSep "\n" (
       lib.filter (text: text != "") [
-        (section "Unit" unit)
-        (section "Service" (environment // service.serviceConfig))
+        (section "Unit" unitEntries)
+        (section kinds.${kind}.section (sectionEntries kind unit))
         (section "Install" install)
       ]
     );
+  # A typed unit with only `wantedBy` or other `common` fields renders no text:
+  # it enables the packaged unit.
   authored =
-    service:
-    service.description != null
+    kind: unit:
+    unit.description != null
     || lib.any (list: list != [ ]) [
-      service.after
-      service.before
-      service.wants
-      service.requires
+      unit.after
+      unit.before
+      unit.wants
+      unit.requires
     ]
-    || lib.any (attrs: attrs != { }) [
-      service.environment
-      service.unitConfig
-      service.serviceConfig
-    ];
+    || unit.unitConfig != { }
+    || sectionEntries kind unit != { };
+  typedOptions =
+    kind:
+    common
+    // {
+      description = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "The unit description.";
+      };
+      after = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "Units that this unit starts after.";
+      };
+      before = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "Units that this unit starts before.";
+      };
+      wants = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "Units that this unit wants.";
+      };
+      requires = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "Units that this unit requires.";
+      };
+      unitConfig = mkOption {
+        type = types.attrsOf value;
+        default = { };
+        description = "More `[Unit]` keys. A list repeats its key.";
+      };
+      ${configName kind} = mkOption {
+        type = types.attrsOf value;
+        default = { };
+        description = "`[${kinds.${kind}.section}]` keys. A list repeats its key; an empty string resets it.";
+      };
+    }
+    // lib.optionalAttrs (kind == "services") {
+      environment = mkOption {
+        type = types.attrsOf types.str;
+        default = { };
+        description = "Environment variables of the service. Never put secrets here.";
+      };
+    };
+  typed =
+    kind:
+    mkOption {
+      type = types.attrsOf (types.submodule { options = typedOptions kind; });
+      default = { };
+      description = "System ${kinds.${kind}.suffix} units by name without the `.${kinds.${kind}.suffix}` suffix. They render into `systemd.units`.";
+    };
 in
 {
   options.systemd = {
@@ -123,68 +202,24 @@ in
       default = { };
       description = "System units by full name, such as `demo.service` or `libvirtd.socket`.";
     };
-    services = mkOption {
-      type = types.attrsOf (
-        types.submodule {
-          options = common // {
-            description = mkOption {
-              type = types.nullOr types.str;
-              default = null;
-              description = "The unit description.";
-            };
-            after = mkOption {
-              type = types.listOf types.str;
-              default = [ ];
-              description = "Units that this unit starts after.";
-            };
-            before = mkOption {
-              type = types.listOf types.str;
-              default = [ ];
-              description = "Units that this unit starts before.";
-            };
-            wants = mkOption {
-              type = types.listOf types.str;
-              default = [ ];
-              description = "Units that this unit wants.";
-            };
-            requires = mkOption {
-              type = types.listOf types.str;
-              default = [ ];
-              description = "Units that this unit requires.";
-            };
-            environment = mkOption {
-              type = types.attrsOf types.str;
-              default = { };
-              description = "Environment variables of the service. Never put secrets here.";
-            };
-            unitConfig = mkOption {
-              type = types.attrsOf value;
-              default = { };
-              description = "More `[Unit]` keys. A list repeats its key.";
-            };
-            serviceConfig = mkOption {
-              type = types.attrsOf value;
-              default = { };
-              description = "`[Service]` keys. A list repeats its key; an empty string resets it.";
-            };
-          };
-        }
-      );
-      default = { };
-      description = "System services by name without the `.service` suffix. They render into `systemd.units`.";
-    };
-  };
+  }
+  // lib.mapAttrs (kind: _: typed kind) kinds;
 
-  config.systemd.units = lib.mapAttrs' (
-    name: service:
-    lib.nameValuePair "${name}.service" {
-      # Scalars pass at default priority, so a direct systemd.units definition wins.
-      enable = lib.mkDefault service.enable;
-      overrideStrategy = lib.mkDefault service.overrideStrategy;
-      restartIfChanged = lib.mkDefault service.restartIfChanged;
-      adopt = lib.mkDefault service.adopt;
-      inherit (service) wantedBy restartTriggers;
-      text = lib.mkIf (authored service) (serviceText service);
-    }
-  ) config.systemd.services;
+  config.systemd.units = lib.mkMerge (
+    lib.mapAttrsToList (
+      kind: _:
+      lib.mapAttrs' (
+        name: unit:
+        lib.nameValuePair "${name}.${kinds.${kind}.suffix}" {
+          # Scalars pass at default priority, so a direct systemd.units definition wins.
+          enable = lib.mkDefault unit.enable;
+          overrideStrategy = lib.mkDefault unit.overrideStrategy;
+          restartIfChanged = lib.mkDefault unit.restartIfChanged;
+          adopt = lib.mkDefault unit.adopt;
+          inherit (unit) wantedBy restartTriggers;
+          text = lib.mkIf (authored kind unit) (unitText kind unit);
+        }
+      ) config.systemd.${kind}
+    ) kinds
+  );
 }
