@@ -203,6 +203,14 @@ let
       keys = lib.filter (key: builtins.elem key forwarding) (builtins.attrNames host.sysctl);
       modules = host.kernelModules;
     };
+  # A machine home module overrides the defaults of Nacre's home modules.
+  homeWith = config: (fixtures.home [ { users.users.fixture.home = config; } ] "fixture").config;
+  plainAndDefault =
+    get: set: value:
+    lib.all (wrap: get (homeWith (set (wrap value))) == value) [
+      (x: x)
+      lib.mkDefault
+    ];
   demoService = {
     systemd.services.demo = {
       description = "Demo";
@@ -331,6 +339,51 @@ assert
     packages.exclude = [ "yt-dlp" ];
     packages.extra.pacman = [ "yt-dlp" ];
   } == [ "packages.exclude and packages.extra both name yt-dlp" ];
+# profiles/base: a Git default.
+assert plainAndDefault (c: c.programs.git.settings.init.defaultBranch) (v: {
+  programs.git.settings.init.defaultBranch = v;
+}) "trunk";
+# modules/home/shell-files.nix: the Powerlevel10k file.
+assert plainAndDefault (c: c.home.file.".p10k.zsh".source) (v: {
+  home.file.".p10k.zsh".source = v;
+}) ./fixtures/configuration.nix;
+# modules/home/config-files.nix: a whole text, not a concatenation.
+assert plainAndDefault (c: c.xdg.configFile."qt5ct/qt5ct.conf".text) (v: {
+  xdg.configFile."qt5ct/qt5ct.conf".text = v;
+}) "[Appearance]\n";
+# modules/home/hyprland.nix: the configuration source; .zprofile keeps merging.
+assert plainAndDefault (c: c.xdg.configFile."hypr".source) (v: {
+  xdg.configFile."hypr".source = v;
+}) ./fixtures;
+assert
+  let
+    text =
+      (homeWith { home.file.".zprofile".text = "export EDITOR=nvim\n"; }).home.file.".zprofile".text;
+  in
+  lib.hasInfix "uwsm start" text && lib.hasInfix "EDITOR=nvim" text;
+# modules/home/neovim.nix: the configuration source.
+assert plainAndDefault (c: c.xdg.configFile."nvim".source) (v: {
+  xdg.configFile."nvim".source = v;
+}) ./fixtures;
+# profiles/dev: the password store.
+assert plainAndDefault (c: c.programs.password-store.enable) (v: {
+  programs.password-store.enable = v;
+}) false;
+# modules/home/fcitx5.nix: an input-method variable.
+assert plainAndDefault (c: c.home.sessionVariables.QT_IM_MODULE) (v: {
+  home.sessionVariables.QT_IM_MODULE = v;
+}) "ibus";
+# modules/home/graphical-session.nix: a service command.
+# Home Manager stores ExecStart as a list.
+assert plainAndDefault (c: lib.toList c.systemd.user.services.vesktop.Service.ExecStart) (v: {
+  systemd.user.services.vesktop.Service.ExecStart = v;
+}) [ "/usr/bin/true" ];
+# profiles/workstation: packages keep merging.
+assert
+  let
+    names = map (p: p.pname or p.name) (homeWith { home.packages = [ pkgs.hello ]; }).home.packages;
+  in
+  builtins.elem "cava" names && builtins.elem "hello" names;
 assert hotspotOverride.host.systemSettings.hotspot.channel == 149;
 assert hotspotOff.host.systemSettings.hotspot == null;
 assert hotspotParentOff.host.systemSettings.hotspot == null;

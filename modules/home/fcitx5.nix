@@ -56,7 +56,7 @@ in
     # The desktop installs fcitx5; Qt and XWayland applications find it through
     # these variables whether or not its settings are managed.
     (lib.mkIf capabilities.desktop.enable {
-      home.sessionVariables = {
+      home.sessionVariables = lib.mapAttrs (_: lib.mkOverride 1100) {
         QT_IM_MODULE = "fcitx";
         XMODIFIERS = "@im=fcitx";
       };

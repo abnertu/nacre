@@ -1,5 +1,5 @@
 # The development profile: Neovim, GitHub CLI, Node.js and pass.
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 {
   imports = [ ../../modules/home/neovim.nix ];
 
@@ -10,7 +10,7 @@
     nix-output-monitor
   ];
 
-  programs.password-store = {
+  programs.password-store = import ../../lib/home-baseline.nix lib {
     enable = true;
     package = pkgs.pass;
   };

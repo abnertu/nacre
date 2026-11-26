@@ -7,9 +7,9 @@ let
 in
 {
   xdg.configFile = lib.genAttrs [ "btop" "fastfetch" ] (name: {
-    source = lib.mkDefault (sourceRoot + "/.config/${name}");
-    recursive = lib.mkDefault true;
+    source = (lib.mkOverride 1100) (sourceRoot + "/.config/${name}");
+    recursive = (lib.mkOverride 1100) true;
   });
   # Powerlevel10k's prompt; without it p10k starts its configuration wizard.
-  home.file.".p10k.zsh".source = lib.mkDefault (sourceRoot + "/.p10k.zsh");
+  home.file.".p10k.zsh".source = (lib.mkOverride 1100) (sourceRoot + "/.p10k.zsh");
 }

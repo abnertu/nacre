@@ -7,6 +7,9 @@
   ...
 }:
 let
+  baseline = import ../../lib/home-baseline.nix lib;
+  # Each default at priority 1100: a machine's plain definition replaces it.
+  when = condition: body: lib.mkIf condition (baseline body);
   systemBin = "/usr/bin";
   bin = name: "${systemBin}/${name}";
   hyprpolkitagentExecutable = "/usr/lib/hyprpolkitagent/hyprpolkitagent";
@@ -39,10 +42,10 @@ in
   systemd.user = {
     # Start new units, restart changed ones and stop removed ones; unchanged
     # units keep running.
-    startServices = "sd-switch";
+    startServices = baseline "sd-switch";
 
     services = {
-      hyprpolkitagent = lib.mkIf capabilities.desktop.hyprpolkitagent.enable {
+      hyprpolkitagent = when capabilities.desktop.hyprpolkitagent.enable {
         Unit = graphicalUnit // {
           Description = "Hyprland Polkit authentication agent";
         };
@@ -53,7 +56,7 @@ in
         Install.WantedBy = [ "graphical-session.target" ];
       };
 
-      vicinae = lib.mkIf capabilities.programs.vicinae.enable {
+      vicinae = when capabilities.programs.vicinae.enable {
         Unit = trayConsumerUnit // {
           Description = "Vicinae launcher daemon";
           Documentation = [ "https://docs.vicinae.com" ];
@@ -89,7 +92,7 @@ in
         Install.WantedBy = [ "graphical-session.target" ];
       };
 
-      quickshell-overview = lib.mkIf capabilities.desktop.overview.enable {
+      quickshell-overview = when capabilities.desktop.overview.enable {
         Unit = graphicalUnit // {
           Description = "Quickshell workspace overview";
         };
@@ -100,7 +103,7 @@ in
         Install.WantedBy = [ "graphical-session.target" ];
       };
 
-      polychromatic-tray = lib.mkIf hardware.openrazer {
+      polychromatic-tray = when hardware.openrazer {
         Unit = trayConsumerUnit // {
           Description = "Polychromatic tray applet";
           After = trayConsumerUnit.After ++ [ "openrazer-daemon.service" ];
@@ -113,7 +116,7 @@ in
         Install.WantedBy = [ "graphical-session.target" ];
       };
 
-      tailscale-systray = lib.mkIf (capabilities.tailscale && capabilities.desktop.tailscaleTray.enable) {
+      tailscale-systray = when (capabilities.tailscale && capabilities.desktop.tailscaleTray.enable) {
         Unit = trayConsumerUnit // {
           Description = "Tailscale systray";
         };
@@ -124,7 +127,7 @@ in
         Install.WantedBy = [ "graphical-session.target" ];
       };
 
-      vesktop = lib.mkIf capabilities.programs.vesktop.enable {
+      vesktop = when capabilities.programs.vesktop.enable {
         Unit = trayConsumerUnit // {
           Description = "Vesktop communication client";
         };
@@ -143,10 +146,10 @@ in
   xdg.configFile = {
     # The Arch launcher reads this after electron-flags.conf. Do not force all
     # Electron applications onto XWayland or replace the native executable.
-    "vesktop-flags.conf" = lib.mkIf capabilities.programs.vesktop.enable {
+    "vesktop-flags.conf" = when capabilities.programs.vesktop.enable {
       text = "${vesktopPlatformFlag}\n";
     };
-    "vicinae/nix-managed.json" = lib.mkIf capabilities.programs.vicinae.enable {
+    "vicinae/nix-managed.json" = when capabilities.programs.vicinae.enable {
       text = builtins.toJSON {
         providers.applications.entrypoints = {
           "com.mitchellh.ghostty".preferences.defaultAction = "launch";
@@ -154,14 +157,14 @@ in
         };
       };
     };
-    "systemd/user/openrazer-daemon.service.d/delay.conf" = lib.mkIf hardware.openrazer {
+    "systemd/user/openrazer-daemon.service.d/delay.conf" = when hardware.openrazer {
       text = ''
         [Service]
         ExecStartPre=${bin "sleep"} 20
       '';
     };
     "systemd/user/app-dev.lizardbyte.app.Sunshine.service.d/override.conf" =
-      lib.mkIf capabilities.programs.sunshine.enable
+      when capabilities.programs.sunshine.enable
         {
           text = ''
             [Service]

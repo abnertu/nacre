@@ -148,7 +148,7 @@ users.users.alice.homeModules = [ ./homes/alice/home.nix ];
 }
 ```
 
-Nacre uses `lib.mkDefault` for these defaults, so plain home definitions win. Keep the reviewed Noctalia snapshot at `homes/<user>/noctalia/config.toml`. The CLI and `checkhealth` look for it there.
+Nacre sets these defaults at priority 1100, as roles do, so a plain home definition or `lib.mkDefault` replaces each one. Lists, such as `home.packages`, and the `.zprofile` text keep merging, so your definitions add to them. Keep the reviewed Noctalia snapshot at `homes/<user>/noctalia/config.toml`. The CLI and `checkhealth` look for it there.
 
 After you edit, run `nacre build`. Then review `nacre plan`.
 

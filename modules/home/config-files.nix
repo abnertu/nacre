@@ -10,10 +10,10 @@
 let
   sourceRoot = ../../files/home;
   directory = name: {
-    source = lib.mkDefault (sourceRoot + "/.config/${name}");
-    recursive = lib.mkDefault true;
+    source = (lib.mkOverride 1100) (sourceRoot + "/.config/${name}");
+    recursive = (lib.mkOverride 1100) true;
   };
-  file = name: { source = lib.mkDefault (sourceRoot + "/.config/${name}"); };
+  file = name: { source = (lib.mkOverride 1100) (sourceRoot + "/.config/${name}"); };
   # qt5ct and qt6ct need an absolute path to the palette Noctalia generates.
   qtConfig =
     version:
@@ -25,8 +25,8 @@ in
   xdg.configFile =
     lib.genAttrs [ "cava" "ghostty" "gtk-3.0" "gtk-4.0" "quickshell" "swappy" ] directory
     // {
-      "qt5ct/qt5ct.conf".text = lib.mkDefault (qtConfig "5");
-      "qt6ct/qt6ct.conf".text = lib.mkDefault (qtConfig "6");
+      "qt5ct/qt5ct.conf".text = (lib.mkOverride 1100) (qtConfig "5");
+      "qt6ct/qt6ct.conf".text = (lib.mkOverride 1100) (qtConfig "6");
       "electron-flags.conf" = file "electron-flags.conf";
       "vesktop/settings.json" = lib.mkIf capabilities.programs.vesktop.enable (
         file "vesktop/settings.json"

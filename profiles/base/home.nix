@@ -5,6 +5,10 @@
   pkgs,
   ...
 }:
+let
+  # Priority 1100: a machine's plain definition or lib.mkDefault replaces it.
+  baseline = lib.mkOverride 1100;
+in
 {
   imports = [ ../../modules/home/shell-files.nix ];
 
@@ -34,45 +38,45 @@
   # must still merge with Home Manager's generated definitions.
   programs = {
     fzf = {
-      enable = lib.mkDefault true;
-      enableZshIntegration = lib.mkDefault true;
+      enable = baseline true;
+      enableZshIntegration = baseline true;
     };
 
     git = {
-      enable = lib.mkDefault true;
+      enable = baseline true;
       settings = {
         # Show non-ASCII file names as they are.
-        core.quotePath = lib.mkDefault false;
-        diff.algorithm = lib.mkDefault "histogram";
-        fetch.prune = lib.mkDefault true;
-        init.defaultBranch = lib.mkDefault "main";
-        merge.conflictStyle = lib.mkDefault "zdiff3";
-        pull.rebase = lib.mkDefault true;
-        rebase.autoStash = lib.mkDefault true;
+        core.quotePath = baseline false;
+        diff.algorithm = baseline "histogram";
+        fetch.prune = baseline true;
+        init.defaultBranch = baseline "main";
+        merge.conflictStyle = baseline "zdiff3";
+        pull.rebase = baseline true;
+        rebase.autoStash = baseline true;
       };
     };
 
     zsh = {
-      enable = lib.mkDefault true;
-      autosuggestion.enable = lib.mkDefault true;
-      enableCompletion = lib.mkDefault true;
-      syntaxHighlighting.enable = lib.mkDefault true;
+      enable = baseline true;
+      autosuggestion.enable = baseline true;
+      enableCompletion = baseline true;
+      syntaxHighlighting.enable = baseline true;
       history = {
-        ignoreAllDups = lib.mkDefault true;
-        ignoreSpace = lib.mkDefault true;
-        save = lib.mkDefault 50000;
-        share = lib.mkDefault true;
-        size = lib.mkDefault 50000;
+        ignoreAllDups = baseline true;
+        ignoreSpace = baseline true;
+        save = baseline 50000;
+        share = baseline true;
+        size = baseline 50000;
       };
       shellAliases = {
-        l = lib.mkDefault "lsd -l";
-        la = lib.mkDefault "lsd -a";
-        ll = lib.mkDefault "lsd -al";
-        lt = lib.mkDefault "lsd --tree";
-        v = lib.mkDefault "nvim";
+        l = baseline "lsd -l";
+        la = baseline "lsd -a";
+        ll = baseline "lsd -al";
+        lt = baseline "lsd --tree";
+        v = baseline "nvim";
       };
       oh-my-zsh = {
-        enable = lib.mkDefault true;
+        enable = baseline true;
         plugins = [ "git" ];
       };
       initContent = lib.mkMerge [
