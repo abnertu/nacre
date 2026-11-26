@@ -27,6 +27,8 @@ USAGE = (
     "usage: arch-switch [--check | --plan | --update | --purge | --forget RECORD]"
     " [--verbose]"
 )
+# Record kinds of the core adapter (core/receipts.py); the others are system's.
+CORE_KINDS = ("file", "repository", "group", "capability", "sysctl", "module")
 # An optional adapter exits 20 only while its preparation has never completed.
 NOT_READY = 20
 
@@ -455,9 +457,9 @@ class Switch:
     def forget(self, record: str) -> None:
         """Drop one receipt record; the native state stays.
 
-        Core owns `file:` records; the system adapter owns the other kinds.
+        Core owns its CORE_KINDS records; the system adapter owns the others.
         """
-        name = "core" if record.startswith("file:") else "system"
+        name = "core" if record.partition(":")[0] in CORE_KINDS else "system"
         packaged = Path(self.config["adapters"][name]["manifest"])
         manifest = json.loads(packaged.read_text())
         manifest["forget"] = record

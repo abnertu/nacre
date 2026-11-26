@@ -13,9 +13,11 @@ from typing import Any, cast
 from nix_adapter import AdapterContext, BaseAdapter, Change, Conflict, Files, Native
 from receipts import (
     INTENT,
+    KINDS,
     RECEIPT,
     RECEIPT_LINE,
     STATE,
+    SYSCTL_DIRS,
     VERSION,
     FileRecord,
     Intent,
@@ -129,6 +131,7 @@ class Core(BaseAdapter[CoreRequest]):
                 "version": VERSION,
                 "records": {},
                 "triggers": {},
+                "state": {},
             }
         return self._receipt
 
@@ -287,15 +290,132 @@ class Core(BaseAdapter[CoreRequest]):
         """Drop one record and its original; leave the native state as it is."""
         record = self.desired.get("forget", "")
         kind, _, name = record.partition(":")
-        if kind != "file" or not name:
-            raise Conflict(
-                f"unknown record {record}; core records look like file:<name>"
-            )
-        if record not in self.records:
+        if kind not in KINDS or not name:
+            raise Conflict(f"unknown record {record}; see `nacre forget` in the guide")
+        if kind != "file" and record in self.receipt["state"]:
+            self.drop_state(record)
+        elif kind == "file" and record in self.records:
+            self.drop(record)
+        else:
             raise Conflict(f"Nacre has no record {record}")
-        path = self.records[record]["path"]
-        self.drop(record)
-        print(f"forgot {record}; {path} stays as it is, unmanaged")
+        print(f"forgot {record}; the native state stays as it is, unmanaged")
+
+    # Runtime state: groups, capabilities, sysctl keys, modules and the
+    # repository, recorded when Nacre changes them.
+
+    @property
+    def state_records(self) -> dict[str, dict[str, Any]]:
+        return self.receipt["state"]
+
+    def record_state(self, key: str, value: dict[str, Any]) -> None:
+        if self.state_records.get(key) != value:
+            self.state_records[key] = dict(value)
+            self.save_receipt()
+
+    def drop_state(self, key: str) -> None:
+        del self.state_records[key]
+        self.save_receipt()
+
+    def state_withdrawn(self, kind: str, declared: set[str], purge: bool) -> list[str]:
+        """The keys of `kind` records whose name the manifest no longer declares."""
+        return [
+            key
+            for key, record in self.state_records.items()
+            if record["kind"] == kind and (purge or record["name"] not in declared)
+        ]
+
+    def check_runtime(self, purge: bool = False) -> None:
+        """Raise `Conflict` if withdrawn runtime state changed since Nacre set it."""
+        d = self.desired
+        for key in self.state_withdrawn("sysctl", set(d["sysctl"]), purge):
+            record = self.state_records[key]
+            live = self.run("sysctl", "-n", record["name"]).stdout.strip()
+            if live != record["applied"]:
+                raise Conflict(
+                    f"sysctl {record['name']} changed since Nacre set it; restore it, "
+                    f"or run `nacre forget {key}` to leave it unmanaged"
+                )
+        declared = {entry["path"] for entry in d["fileCapabilities"]}
+        for key in self.state_withdrawn("capability", declared, purge):
+            record = self.state_records[key]
+            current = self.run("getcap", record["target"]).stdout.strip()
+            if current and current != f"{record['target']} {record['capability']}":
+                raise Conflict(
+                    f"the capability of {record['target']} changed since Nacre set "
+                    f"it; run `nacre forget {key}` to leave it unmanaged"
+                )
+
+    def boot_value(self, key: str) -> str | None:
+        """The value that the sysctl.d files give `key` at boot, if any."""
+        chosen: dict[str, str] = {}
+        for directory in reversed(SYSCTL_DIRS):  # Higher precedence overrides.
+            path = self.files.path(directory)
+            if path.is_dir():
+                for file in sorted(path.glob("*.conf")):
+                    chosen[file.name] = self.files.system_name(file)
+        value = None
+        for name in sorted(chosen):
+            for line in self.files.read(chosen[name]).splitlines():
+                setting, separator, assigned = line.partition("=")
+                setting = setting.strip().lstrip("-")
+                if separator and setting == key:
+                    value = assigned.strip()
+        return value
+
+    def withdraw_groups(self, purge: bool = False) -> None:
+        user = self.desired["user"]
+        current = set(self.run("id", "-nG", user).stdout.split())
+        for key in self.state_withdrawn("group", set(self.desired["groups"]), purge):
+            group = self.state_records[key]["name"]
+            # wheel keeps the deployment user an administrator: never remove it.
+            if group != "wheel" and group in current:
+                self.run("gpasswd", "--delete", user, group)
+                self.actions += 1
+            self.drop_state(key)
+
+    def withdraw_runtime(self, purge: bool = False) -> None:
+        """Withdraw capabilities, sysctl keys and modules that Nacre set."""
+        d = self.desired
+        declared = {entry["path"] for entry in d["fileCapabilities"]}
+        for key in self.state_withdrawn("capability", declared, purge):
+            target = self.state_records[key]["target"]
+            if self.run("getcap", target).stdout.strip():
+                self.run("setcap", "-r", target)
+                self.actions += 1
+            self.drop_state(key)
+        for key in self.state_withdrawn("sysctl", set(d["sysctl"]), purge):
+            record = self.state_records[key]
+            value = self.boot_value(record["name"]) or record["previous"]
+            if value is not None and value != record["applied"]:
+                self.run("sysctl", "-w", f"{record['name']}={value}")
+                self.actions += 1
+            self.drop_state(key)
+        for key in self.state_withdrawn("module", set(d["kernelModules"]), purge):
+            self.withdraw_module(key)
+
+    def withdraw_module(self, key: str) -> None:
+        """Unload a module that Nacre loaded, unless something still uses it."""
+        module = self.state_records[key]["name"]
+        directory = self.root / "sys/module" / module
+        refcnt = directory / "refcnt"
+        users = refcnt.read_text().strip() if refcnt.is_file() else "0"
+        if not directory.is_dir():
+            self.drop_state(key)
+        elif users == "0":
+            self.run("modprobe", "-r", module)
+            self.actions += 1
+            self.drop_state(key)
+        else:
+            print(
+                f"kernel module {module} is in use; {module} stays loaded until reboot"
+            )
+
+    def withdraw_repository(self) -> None:
+        """Drop a repository that the manifest no longer declares."""
+        for key in self.state_withdrawn("repository", set(), purge=True):
+            record = self.state_records[key]
+            self.purge_repository(cast(Repository, record))
+            self.drop_state(key)
 
     def write_entry(self, entry: EtcEntry) -> None:
         key = file_key(entry["name"])
@@ -496,6 +616,7 @@ class Core(BaseAdapter[CoreRequest]):
                 "required native core commands are missing: " + " ".join(missing)
             )
         self.check_etc(converging=False)
+        self.check_runtime()
         for block in d["blocks"]:
             self.without_block(block)
         repository = d["repository"]
@@ -514,7 +635,17 @@ class Core(BaseAdapter[CoreRequest]):
     def repositories(self) -> None:
         repository = self.desired["repository"]
         if not repository:
+            self.withdraw_repository()
             return
+        self.record_state(
+            f"repository:{repository['name']}",
+            {
+                "kind": "repository",
+                "name": repository["name"],
+                "path": repository["path"],
+                "include": repository["include"],
+            },
+        )
         self.put(repository["path"], repository["text"])
         pacman = self.files.read("/etc/pacman.conf")
         if repository["include"] not in pacman.splitlines():
@@ -544,6 +675,7 @@ class Core(BaseAdapter[CoreRequest]):
             self.put(block["path"], self.with_block(block), block["action"])
         self.initramfs()
         groups_changed = self.groups()
+        self.withdraw_groups()
         if self.pending("units"):
             self.systemd.daemon_reload()
             self.clear("units")
@@ -623,6 +755,7 @@ class Core(BaseAdapter[CoreRequest]):
         for group in self.desired["groups"]:
             if group not in current:
                 self.run("gpasswd", "--add", user, group)
+                self.record_state(f"group:{group}", {"kind": "group", "name": group})
                 changed = True
         return changed
 
@@ -639,23 +772,59 @@ class Core(BaseAdapter[CoreRequest]):
             self.actions += 1
         self.restart_units()
         # Compare runtime values too: unchanged files must not conceal drift.
+        self.converge_kernel()
+        self.converge_capabilities()
+        self.withdraw_runtime()
+        print(
+            f"Core runtime converged: 0 files updated, {self.actions} runtime actions."
+        )
+
+    def converge_kernel(self) -> None:
+        """Load the declared modules and set the declared sysctl values."""
+        d = self.desired
         for module in d["kernelModules"]:
             if not (self.root / "sys/module" / module).is_dir():
                 self.run("modprobe", module)
+                self.record_state(
+                    f"module:{module}", {"kind": "module", "name": module}
+                )
                 self.actions += 1
         for key, value in d["sysctl"].items():
-            if self.run("sysctl", "-n", key).stdout.strip() != value:
+            current = self.run("sysctl", "-n", key).stdout.strip()
+            record = self.state_records.get(f"sysctl:{key}")
+            if current != value:
                 self.run("sysctl", "-w", f"{key}={value}")
                 self.actions += 1
+            if current != value or record is not None:
+                previous = record["previous"] if record else current
+                self.record_state(
+                    f"sysctl:{key}",
+                    {
+                        "kind": "sysctl",
+                        "name": key,
+                        "applied": value,
+                        "previous": previous,
+                    },
+                )
+
+    def converge_capabilities(self) -> None:
+        """Set the declared file capabilities."""
+        d = self.desired
         for entry in d["fileCapabilities"]:
             target = self.resolve(entry["path"])
             expected = f"{target} {entry['capability']}"
             if self.run("getcap", target).stdout.strip() != expected:
                 self.run("setcap", entry["capability"].replace("=", "+"), target)
+                self.record_state(
+                    f"capability:{entry['path']}",
+                    {
+                        "kind": "capability",
+                        "name": entry["path"],
+                        "target": target,
+                        "capability": entry["capability"],
+                    },
+                )
                 self.actions += 1
-        print(
-            f"Core runtime converged: 0 files updated, {self.actions} runtime actions."
-        )
 
     def resolve(self, name: str) -> str:
         real = Path(os.path.realpath(self.root / name.lstrip("/")))
@@ -709,7 +878,42 @@ class Core(BaseAdapter[CoreRequest]):
             for restart in d["restarts"]
             if self.pending(restart["action"])
         ]
-        return changes + self.plan_kernel() + self.plan_capabilities()
+        return (
+            changes
+            + self.plan_kernel()
+            + self.plan_capabilities()
+            + self.plan_runtime_withdrawals()
+        )
+
+    def plan_runtime_withdrawals(self) -> list[Change]:
+        """The runtime state that withdrawal returns to its state before Nacre."""
+        d = self.desired
+        changes: list[Change] = []
+        for key in self.state_withdrawn("group", set(d["groups"]), purge=False):
+            group = self.state_records[key]["name"]
+            if group != "wheel":
+                changes.append(Change("~", f"remove {d['user']} from group {group}"))
+        declared = {entry["path"] for entry in d["fileCapabilities"]}
+        for key in self.state_withdrawn("capability", declared, purge=False):
+            record = self.state_records[key]
+            note = f"clear {record['capability']} on {record['target']}"
+            changes.append(Change("~", note))
+        for key in self.state_withdrawn("sysctl", set(d["sysctl"]), purge=False):
+            record = self.state_records[key]
+            value = self.boot_value(record["name"]) or record["previous"]
+            if value is not None and value != record["applied"]:
+                note = f"sysctl {record['name']}: {record['applied']} -> {value}"
+                changes.append(Change("~", note))
+        for key in self.state_withdrawn("module", set(d["kernelModules"]), purge=False):
+            changes.append(
+                Change("~", f"unload kernel module {self.state_records[key]['name']}")
+            )
+        if d["repository"] is None:
+            changes += [
+                Change("~", f"remove repository {self.state_records[key]['name']}")
+                for key in self.state_withdrawn("repository", set(), purge=True)
+            ]
+        return changes
 
     def plan_restart(self, unit: UnitEntry) -> list[Change]:
         """The start, enable and restart changes of one unit."""

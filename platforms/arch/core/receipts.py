@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Literal, NotRequired, TypedDict, cast
+from typing import Any, Literal, NotRequired, TypedDict, cast
 
 from nix_adapter import Conflict, Files
 
@@ -21,6 +21,14 @@ VERSION = 1
 # Written into the nix.conf settings block: a host with the block but without
 # this line was deployed by a Nacre version without receipts.
 RECEIPT_LINE = "# nix-config receipts 1"
+# Record kinds of the core adapter, which `nacre forget` routes here.
+KINDS = ("file", "repository", "group", "capability", "sysctl", "module")
+SYSCTL_DIRS = (
+    "/etc/sysctl.d",
+    "/run/sysctl.d",
+    "/usr/local/lib/sysctl.d",
+    "/usr/lib/sysctl.d",
+)
 
 
 class FileRecord(TypedDict):
@@ -66,6 +74,9 @@ class Receipt(TypedDict):
     records: dict[str, FileRecord]
     # The applied restartTriggers hash of each unit that has triggers.
     triggers: dict[str, str]
+    # Runtime state that Nacre changed, keyed kind:name: repository, group,
+    # capability, sysctl and module.
+    state: dict[str, dict[str, Any]]
 
 
 def digest(text: str) -> str:
@@ -109,6 +120,7 @@ def load_receipt(files: Files) -> Receipt | None:
         raise Conflict(f"receipt {RECEIPT} has an unknown format")
     receipt = cast(Receipt, value)
     receipt.setdefault("triggers", {})
+    receipt.setdefault("state", {})
     return receipt
 
 

@@ -109,7 +109,8 @@ class Fake(FakeNative):
         self.groups = {"wheel"}
         self.units: dict[str, dict[str, bool]] = {}
         self.sysctl: dict[str, str] = {}
-        self.capabilities: set[str] = set()
+        # The capability that each binary carries.
+        self.capabilities: dict[str, str] = {}
         self.stay_inactive: set[str] = set()
         self.unmanaged_repository = False
         # Units that systemd does not know yet, such as one whose file is unwritten.
@@ -145,7 +146,10 @@ class Fake(FakeNative):
         return FakeProcess(stdout=out, returncode=code)
 
     def gpasswd(self, rest):
-        self.groups.add(rest[-1])
+        if rest[0] == "--delete":
+            self.groups.discard(rest[-1])
+        else:
+            self.groups.add(rest[-1])
         return 0, ""
 
     def systemctl(self, rest):
@@ -182,7 +186,13 @@ class Fake(FakeNative):
         return 0, ""
 
     def modprobe(self, rest):
-        (self.root / "sys/module" / rest[0]).mkdir(parents=True)
+        module = self.root / "sys/module" / rest[-1]
+        if rest[0] == "-r":
+            (module / "refcnt").unlink(missing_ok=True)
+            module.rmdir()
+        else:
+            module.mkdir(parents=True)
+            (module / "refcnt").write_text("0\n")
         return 0, ""
 
     def mkinitcpio(self, _):
@@ -190,10 +200,14 @@ class Fake(FakeNative):
         return 0, ""
 
     def getcap(self, rest):
-        return 0, f"{rest[0]} cap_sys_admin=p" if rest[0] in self.capabilities else ""
+        capability = self.capabilities.get(rest[0])
+        return 0, f"{rest[0]} {capability}" if capability else ""
 
     def setcap(self, rest):
-        self.capabilities.add(rest[-1])
+        if rest[0] == "-r":
+            self.capabilities.pop(rest[-1], None)
+        else:
+            self.capabilities[rest[-1]] = rest[0].replace("+", "=")
         return 0, ""
 
     def pacman(self, rest):
@@ -840,6 +854,121 @@ class EtcTests(Harness):
             {"enabled": True, "active": True},
         )
         self.assertEqual(self.systemctl("disable", "stop"), [])
+
+    def runtime_state(self):
+        return self.receipt()["state"]
+
+    def bare(self):
+        """A manifest without runtime state, so a test declares only its own."""
+        self.manifest.update(
+            groups=[], fileCapabilities=[], sysctl={}, kernelModules=[]
+        )
+        self.manifest["repository"] = None
+
+    def test_withdrawn_repository_drops_its_include_then_its_file(self):
+        self.manifest = copy.deepcopy(MANIFEST)
+        self.deploy()
+        self.manifest["repository"] = None
+        self.deploy()
+        self.assertNotIn(INCLUDE, (self.root / "etc/pacman.conf").read_text())
+        self.assertFalse(
+            (self.root / "etc/pacman.d/nix-config-lizardbyte.conf").exists()
+        )
+        self.assertNotIn("repository:lizardbyte", self.runtime_state())
+
+    def test_withdrawn_group_that_nacre_added_goes_and_wheel_stays(self):
+        self.bare()
+        self.native.groups |= {"audio"}
+        self.manifest["groups"] = ["wheel", "i2c", "audio"]
+        self.deploy()
+        self.assertEqual(set(self.runtime_state()), {"group:i2c"})
+        self.manifest["groups"] = []
+        self.deploy()
+        self.assertEqual(self.native.groups, {"wheel", "audio"})
+        self.assertEqual(self.runtime_state(), {})
+
+    def test_withdrawn_capability_is_cleared_or_dropped_with_a_new_binary(self):
+        self.bare()
+        self.manifest["fileCapabilities"] = MANIFEST["fileCapabilities"]
+        self.deploy()
+        self.manifest["fileCapabilities"] = []
+        self.deploy()
+        self.assertEqual(self.native.capabilities, {})
+        self.manifest["fileCapabilities"] = MANIFEST["fileCapabilities"]
+        self.deploy()
+        self.native.capabilities.clear()  # A package upgrade replaced the binary.
+        self.manifest["fileCapabilities"] = []
+        self.native.calls.clear()
+        self.deploy()
+        self.assertFalse(
+            any(call[:2] == ("setcap", "-r") for call in self.native.calls)
+        )
+        self.assertEqual(self.runtime_state(), {})
+
+    def test_changed_capability_stops_and_names_forget(self):
+        self.bare()
+        self.manifest["fileCapabilities"] = MANIFEST["fileCapabilities"]
+        self.deploy()
+        self.native.capabilities["/usr/bin/sunshine"] = "cap_net_admin=p"
+        self.manifest["fileCapabilities"] = []
+        with self.assertRaisesRegex(
+            Conflict, "nacre forget capability:/usr/bin/sunshine"
+        ):
+            self.core().preflight()
+
+    def test_withdrawn_sysctl_key_takes_the_remaining_files_or_its_old_value(self):
+        self.bare()
+        self.manifest["sysctl"] = {"net.ipv4.ip_forward": "1", "vm.swappiness": "10"}
+        self.native.sysctl.update({"net.ipv4.ip_forward": "0", "vm.swappiness": "60"})
+        self.deploy()
+        self.existing("sysctl.d/10-operator.conf", "vm.swappiness = 30\n")
+        self.manifest["sysctl"] = {}
+        self.deploy()
+        self.assertEqual(self.native.sysctl["net.ipv4.ip_forward"], "0")
+        self.assertEqual(self.native.sysctl["vm.swappiness"], "30")
+        self.assertEqual(self.runtime_state(), {})
+
+    def test_changed_sysctl_value_stops_and_names_forget(self):
+        self.bare()
+        self.manifest["sysctl"] = {"net.ipv4.ip_forward": "1"}
+        self.deploy()
+        self.native.sysctl["net.ipv4.ip_forward"] = "5"
+        self.manifest["sysctl"] = {}
+        with self.assertRaisesRegex(
+            Conflict, "nacre forget sysctl:net.ipv4.ip_forward"
+        ):
+            self.core().preflight()
+
+    def test_withdrawn_module_unloads_unless_in_use(self):
+        self.bare()
+        self.manifest["kernelModules"] = ["br_netfilter", "veth"]
+        self.deploy()
+        (self.root / "sys/module/veth/refcnt").write_text("2\n")
+        self.manifest["kernelModules"] = []
+        self.deploy()
+        self.assertFalse((self.root / "sys/module/br_netfilter").exists())
+        self.assertTrue((self.root / "sys/module/veth").exists())
+        self.assertIn("veth stays loaded until reboot", self.output.getvalue())
+        self.assertEqual(set(self.runtime_state()), {"module:veth"})
+        (self.root / "sys/module/veth/refcnt").unlink()
+        (self.root / "sys/module/veth").rmdir()  # The host rebooted.
+        self.deploy()
+        self.assertEqual(self.runtime_state(), {})
+
+    def test_plan_names_runtime_withdrawals(self):
+        self.manifest = copy.deepcopy(MANIFEST)
+        self.manifest["etc"] = []
+        self.deploy()
+        self.bare()
+        lines = self.plan()
+        for expected in (
+            "~ remove tester from group i2c",
+            "~ clear cap_sys_admin=p on /usr/bin/sunshine",
+            "~ sysctl net.ipv4.ip_forward: 1 -> 0",
+            "~ unload kernel module br_netfilter",
+            "~ remove repository lizardbyte",
+        ):
+            self.assertIn(expected, lines)
 
     def test_forget_drops_only_the_record_and_its_original(self):
         self.existing("hosts", "operator\n")
