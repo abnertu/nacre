@@ -10,7 +10,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
-from firewall import Firewall
+from firewall import Firewall, declared_rules, withdraw_rule, withdraw_state
 from hotspot import Hotspot
 from nix_adapter import (
     AdapterContext,
@@ -59,7 +59,7 @@ NATIVE_COMMANDS: dict[str, tuple[str, ...]] = {
     "journal": ("systemctl", "systemd-tmpfiles", "journalctl"),
     "trim": ("systemctl", "lsblk"),
     "hotspot": ("nmcli", "ip", "iw"),
-    "firewall": ("systemctl", "ufw", "iptables", "ip6tables"),
+    "firewall": ("systemctl", "ufw", "iptables", "ip6tables", "ss"),
 }
 # The pending-marker action of each setting.
 PENDING_ACTIONS = {
@@ -180,6 +180,10 @@ class System(BaseAdapter[SystemRequest]):
         kind = record["kind"]
         if kind == "dropin":
             return record["name"] in self.desired_dropins()
+        if kind == "ufw":
+            return record["name"] in declared_rules(self)
+        if kind == "firewall":
+            return d["firewall"] is not None
         setting = {
             "locale": "locale",
             "console": "console",
@@ -220,6 +224,8 @@ class System(BaseAdapter[SystemRequest]):
     def drift(self, key: str, record: dict[str, Any]) -> bool:
         """Whether the state of a withdrawn record changed since Nacre set it."""
         kind = record["kind"]
+        if kind in ("ufw", "firewall"):
+            return False  # Withdrawal checks UFW itself.
         if kind == "timezone":
             return self.localtime() != record["applied"]
         if kind == "hostname":
@@ -266,8 +272,18 @@ class System(BaseAdapter[SystemRequest]):
                 self.run("systemctl", "try-restart", units[name])
             elif name == "logind":
                 print("logind settings apply after the next boot.")
-        for key, record in withdrawn.items():
-            if record["kind"] != "dropin":
+        # Rules go before the UFW state that they belong to.
+        ordered = sorted(
+            withdrawn.items(), key=lambda item: item[1]["kind"] == "firewall"
+        )
+        for key, record in ordered:
+            if record["kind"] in ("ufw", "firewall"):
+                if not purge:  # Purge keeps UFW and only drops the records.
+                    if record["kind"] == "ufw":
+                        withdraw_rule(self, key, record)
+                    else:
+                        withdraw_state(self, key, record)
+            elif record["kind"] != "dropin":
                 self.restore(key, record)
             self.drop(key)
         return removed
@@ -313,6 +329,10 @@ class System(BaseAdapter[SystemRequest]):
                 changes.append(Change("~", f"hostname -> {record['previous']}"))
             elif key == "locale:gen":
                 changes.append(Change("~", f"{record['path']} (remove managed block)"))
+            elif kind == "ufw":
+                changes.append(Change("~", f"ufw delete {record['name']}"))
+            elif kind == "firewall":
+                changes.append(Change("~", "UFW returns to its state before Nacre"))
             elif self.files.path(record["path"]).exists():
                 note = (
                     "restore original"

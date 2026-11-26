@@ -13,6 +13,7 @@ from nix_adapter import Change, Conflict, Native, assignments
 from schema import Hotspot, Rule
 
 UFW_DEFAULTS = "/etc/default/ufw"
+LOGGING_LEVELS = ("off", "low", "medium", "high", "full")
 
 if TYPE_CHECKING:
     from runtime import System
@@ -265,6 +266,14 @@ class Firewall:
         self.run("ufw", *command)
         self.system.actions += 1
 
+    def add(self, *command: str) -> None:
+        """Add a rule and record it, so its withdrawal can delete it."""
+        self.act(*command)
+        text = " ".join(command)
+        self.system.record(
+            f"ufw:{text}", {"kind": "ufw", "name": text, "command": list(command)}
+        )
+
     def snapshot(self) -> dict[str, Any]:
         return parse_ufw_status(self.run("ufw", "status", "verbose").stdout)
 
@@ -380,6 +389,18 @@ class Firewall:
         logging = self.desired["logging"]
         profiles = "skip"
         state = self.snapshot()
+        if "firewall:state" not in self.system.records:
+            # The UFW state before Nacre, which a withdrawal returns to.
+            self.system.record(
+                "firewall:state",
+                {
+                    "kind": "firewall",
+                    "name": "state",
+                    "active": state["active"],
+                    "logging": state.get("logging"),
+                    "profiles": state.get("profiles"),
+                },
+            )
         pending = self.files.pending("firewall")
         expected = {
             (
@@ -397,7 +418,7 @@ class Firewall:
                 not {(port, rule["protocol"], v6) for v6 in (False, True)}
                 <= state["rules"]
             ):
-                self.act("allow", "in", f"{port}/{rule['protocol']}")
+                self.add("allow", "in", f"{port}/{rule['protocol']}")
         if state.get("logging") != logging:
             self.act("logging", logging)
         if state.get("profiles") != profiles:
@@ -429,7 +450,7 @@ class Firewall:
         existing = self.existing_rules()
         for command, _ in rules:
             if canonical_rule(command) not in existing:
-                self.act(*command)
+                self.add(*command)
 
         def missing() -> bool:
             return any(
@@ -441,3 +462,107 @@ class Firewall:
             self.act("reload")
         if missing():
             raise Conflict("hotspot firewall rules did not converge")
+
+
+def declared_rules(system: System) -> set[str]:
+    """The text of each UFW rule that the manifest declares."""
+    firewall = system.desired["firewall"]
+    if firewall is None:
+        return set()
+    declared = {
+        f"allow in {format_port_range(rule['fromPort'], rule.get('toPort'))}/"
+        f"{rule['protocol']}"
+        for rule in firewall["rules"]
+    }
+    if (hotspot := system.desired.get("hotspot")) is not None:
+        declared |= {
+            " ".join(command)
+            for command, _ in hotspot_firewall_rules(
+                hotspot["interface"], hotspot["uplink"], hotspot["address"]
+            )
+        }
+    return declared
+
+
+def rule_ports(command: list[str]) -> set[str]:
+    """The local TCP ports that a rule admits, as ss prints them."""
+    ports: set[str] = set()
+    if command[-1].endswith("/tcp"):
+        span = command[-1].removesuffix("/tcp")
+        low, _, high = span.partition(":")
+        ports |= {str(port) for port in range(int(low), int(high or low) + 1)}
+    elif "port" in command and command[command.index("proto") + 1] == "tcp":
+        ports.add(command[command.index("port") + 1])
+    return ports
+
+
+def established_ports(system: System) -> set[str]:
+    """Local ports of established inbound TCP connections; never peer addresses."""
+    output = system.run("ss", "-Htn", "state", "established").stdout
+    ports: set[str] = set()
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) >= 3:
+            ports.add(fields[2].rpartition(":")[2])
+    return ports
+
+
+def withdraw_rule(system: System, key: str, record: dict[str, Any]) -> None:
+    """Delete a rule that Nacre added, unless a live connection uses its port."""
+    command: list[str] = record["command"]
+    if rule_ports(command) & established_ports(system):
+        raise Conflict(
+            f"UFW rule '{record['name']}' admits an established connection; "
+            f"run `nacre forget {key}` to keep it unmanaged, or run "
+            f"`sudo ufw delete {record['name']}` from a local console"
+        )
+    if rule_present(system, command):
+        # A route rule deletes as `ufw route delete allow ...`.
+        routed = command[:1] == ["route"]
+        delete = ["route", "delete", *command[1:]] if routed else ["delete", *command]
+        system.run("ufw", *delete)
+        system.actions += 1
+
+
+def rule_present(system: System, command: list[str]) -> bool:
+    """Whether UFW still has the rule that `command` added."""
+    if "on" in command:
+        wanted = canonical_rule(command)
+        return any(
+            canonical_rule(shlex.split(line)) == wanted
+            for line in system.run("ufw", "show", "added").stdout.splitlines()
+            if line.startswith("ufw ")
+        )
+    port, _, protocol = command[-1].partition("/")
+    state = parse_ufw_status(system.run("ufw", "status", "verbose").stdout)
+    return any((port, protocol, v6) in state["rules"] for v6 in (False, True))
+
+
+def withdraw_state(system: System, key: str, record: dict[str, Any]) -> None:
+    """Return UFW to its state before Nacre, unless that loosens protection."""
+    state = parse_ufw_status(system.run("ufw", "status", "verbose").stdout)
+    if not state["active"]:
+        return
+    stop = f"then run `nacre forget {key}`"
+    if not record["active"]:
+        raise Conflict(
+            f"UFW was inactive before Nacre; run `sudo ufw disable` from a local "
+            f"console if you want that, {stop}"
+        )
+    previous, current = record["logging"], state["logging"]
+    if LOGGING_LEVELS.index(previous) < LOGGING_LEVELS.index(current):
+        raise Conflict(
+            f"UFW logging was lower before Nacre; run `sudo ufw logging {previous}` "
+            f"if you want that, {stop}"
+        )
+    if record["profiles"] == "allow" and state["profiles"] != "allow":
+        raise Conflict(
+            "UFW allowed new application profiles before Nacre; run "
+            f"`sudo ufw app default allow` if you want that, {stop}"
+        )
+    if previous != current:
+        system.run("ufw", "logging", previous)
+        system.actions += 1
+    if record["profiles"] != state["profiles"]:
+        system.run("ufw", "app", "default", record["profiles"])
+        system.actions += 1

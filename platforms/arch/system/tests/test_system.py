@@ -77,6 +77,8 @@ class Fake(FakeNative):
         self.up = set()
         self.radio_follows = True
         self.radio = None
+        # Local ports of established inbound TCP connections: ss -Htn.
+        self.established: list[str] = []
 
     def unit(self, name):
         return self.units.setdefault(
@@ -106,6 +108,12 @@ class Fake(FakeNative):
             "ip": self.ip,
             "lsblk": lambda _: (0, json.dumps({"blockdevices": self.disks})),
             "ufw": self.ufw,
+            "ss": lambda _: (
+                0,
+                "".join(
+                    f"0 0 10.0.0.2:{port} 10.0.0.9:51000\n" for port in self.established
+                ),
+            ),
             "iptables": lambda rest: self.iptables(rest, v6=False),
             "ip6tables": lambda rest: self.iptables(rest, v6=True),
         }.get(cmd)
@@ -173,6 +181,8 @@ class Fake(FakeNative):
             return 0, out + "".join(
                 "ufw " + " ".join(rule) + "\n" for rule in self.added
             )
+        if "delete" in rest[:2]:
+            return self.ufw_delete(list(rest))
         if "on" in rest:
             self.added.append(list(rest))
             self.hotspot_kernel.add(self.hotspot_rules[tuple(rest)])
@@ -194,11 +204,26 @@ class Fake(FakeNative):
             raise AssertionError(rest)
         return 0, ""
 
+    def ufw_delete(self, rest):
+        # Real UFW deletes a route rule only as `ufw route delete ...`.
+        if rest[:2] == ["delete", "route"]:
+            raise AssertionError("ufw: Invalid syntax")
+        command = ["route", *rest[2:]] if rest[0] == "route" else rest[1:]
+        if "on" in command:
+            self.added.remove(command)
+            self.hotspot_kernel.discard(self.hotspot_rules[tuple(command)])
+        else:
+            port, protocol = command[-1].split("/")
+            self.rules -= {(port, protocol, v6) for v6 in (False, True)}
+            self.kernel = set(self.rules)
+        return 0, ""
+
     def ufw_status(self):
         if not self.active:
             return "Status: inactive\n"
+        logging = "off" if self.logging == "off" else f"on ({self.logging})"
         out = (
-            f"Status: active\nLogging: on ({self.logging})\n"
+            f"Status: active\nLogging: {logging}\n"
             "Default: deny (incoming), allow (outgoing), deny (routed)\n"
             f"New profiles: {self.profiles}\n\nTo Action From\n-- ------ ----\n"
         )
@@ -833,6 +858,92 @@ class SystemTests(unittest.TestCase):
             ActiveState="active", UnitFileState="enabled"
         )
 
+    def ufw_calls(self, verb):
+        return [call for call in self.native.calls if call[:2] == ("ufw", verb)]
+
+    def nacre_rule(self):
+        self.firewall()
+        self.d["firewall"]["rules"].append(
+            {"protocol": "tcp", "fromPort": 1234, "toPort": None}
+        )
+        self.converge()
+
+    def test_withdrawn_rule_that_nacre_added_is_deleted_and_others_stay(self):
+        self.nacre_rule()
+        self.d["firewall"]["rules"] = [
+            {"protocol": "tcp", "fromPort": 7777, "toPort": None}
+        ]
+        self.native.calls.clear()
+        self.converge()
+        self.assertEqual(
+            self.ufw_calls("delete"), [("ufw", "delete", "allow", "in", "1234/tcp")]
+        )
+        self.assertIn(("7777", "tcp", False), self.native.rules)
+        self.assertNotIn(("1234", "tcp", False), self.native.rules)
+
+    def test_rule_with_an_established_connection_is_kept_and_names_forget(self):
+        self.nacre_rule()
+        self.native.established = ["1234"]
+        self.d["firewall"]["rules"] = [
+            {"protocol": "tcp", "fromPort": 7777, "toPort": None}
+        ]
+        with self.assertRaisesRegex(
+            Conflict, "nacre forget ufw:allow in 1234/tcp.*ufw delete"
+        ):
+            self.converge()
+        self.assertIn(("1234", "tcp", False), self.native.rules)
+        System(
+            dict(self.d, forget="ufw:allow in 1234/tcp"), self.files, self.native
+        ).forget()
+        self.converge()
+        self.assertIn(("1234", "tcp", False), self.native.rules)
+
+    def test_firewall_withdrawal_that_would_disable_ufw_stops(self):
+        self.firewall()
+        self.native.active = False
+        self.converge()
+        self.d["firewall"] = None
+        with self.assertRaisesRegex(
+            Conflict, "ufw disable.*nacre forget firewall:state"
+        ):
+            self.converge()
+        self.assertTrue(self.native.active)
+
+    def test_firewall_withdrawal_restores_stricter_values_and_refuses_lower_logging(
+        self,
+    ):
+        self.firewall()
+        self.native.logging = "medium"
+        self.converge()
+        self.d["firewall"] = None
+        self.converge()
+        self.assertEqual(self.native.logging, "medium")
+        self.firewall()
+        self.native.logging = "off"
+        self.converge()
+        self.d["firewall"] = None
+        with self.assertRaisesRegex(Conflict, "ufw logging off"):
+            self.converge()
+
+    def test_withdrawn_hotspot_rules_are_deleted_with_their_own_syntax(self):
+        self.firewall()
+        self.hotspot()
+        self.converge()
+        self.assertTrue(self.native.added)
+        self.d["hotspot"] = None
+        self.native.calls.clear()
+        self.converge()
+        self.assertEqual(self.native.added, [])
+        self.assertTrue(self.ufw_calls("route"))
+
+    def test_purge_keeps_ufw_rules_and_drops_their_records(self):
+        self.nacre_rule()
+        self.native.calls.clear()
+        System(self.d, self.files, self.native).purge()
+        self.assertEqual(self.ufw_calls("delete"), [])
+        self.assertIn(("1234", "tcp", False), self.native.rules)
+        self.assertEqual(self.receipt(), {})
+
     def test_firewall_adopts_rules_and_preserves_unowned_rules(self):
         self.firewall()
         self.native.rules.add(("1234", "udp", False))
@@ -865,7 +976,10 @@ class SystemTests(unittest.TestCase):
         self.d["firewall"] = None
         self.native.calls.clear()
         self.system.converge()
-        self.assertEqual(self.native.calls, [])
+        # Withdrawal reads UFW, finds the state before Nacre, and changes nothing.
+        self.assertEqual(
+            [call for call in self.native.calls if call[:2] != ("ufw", "status")], []
+        )
         self.assertTrue(self.native.active)
 
     def test_firewall_conflicting_owner_and_unsafe_builtins(self):

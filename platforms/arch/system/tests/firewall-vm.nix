@@ -87,7 +87,7 @@ pkgs.testers.runNixOSTest {
     machine.succeed("mkdir -p /etc/ufw /etc/default /usr/bin")
     machine.succeed("cp -r ${ufw}/etc/ufw/* /etc/ufw/; cp ${ufw}/etc/default/ufw /etc/default/ufw; chmod -R u+w /etc/ufw /etc/default/ufw")
     machine.succeed("ln -s ${ufw}/bin/ufw-fixture /usr/bin/ufw")
-    for command in ["systemctl", "iptables", "ip6tables"]:
+    for command in ["systemctl", "iptables", "ip6tables", "ss"]:
         machine.succeed(f"ln -s $(command -v {command}) /usr/bin/{command}")
     # Separate namespaces exercise packets without exposing ports on the host.
     machine.succeed("ip netns add client; ip link add inside type veth peer name outside; ip link set outside netns client")
@@ -152,6 +152,13 @@ pkgs.testers.runNixOSTest {
     machine.succeed("iptables -A LIBVIRT_FWI -s 198.51.100.0/24 -j ACCEPT; iptables -A LIBVIRT_FWI -d 198.51.100.0/24 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT")
     nat_probe = "ip netns exec guest sh -c 'echo routed | socat -T2 - TCP4:192.0.2.2:9999,connect-timeout=2' | grep routed"
     machine.wait_until_succeeds(nat_probe)
+    # The manifest without the hotspot withdraws the rules that the hotspot added.
+    machine.succeed(adapter)
+    machine.fail("iptables -C ufw-user-forward -i guestbridge -o inside -s 198.51.100.0/24 -j ACCEPT")
+    for protocol, port in [("UDP", 67), ("UDP", 53), ("TCP", 53)]:
+        timeout = ",connect-timeout=2" if protocol == "TCP" else ""
+        machine.fail(f"ip netns exec guest sh -c 'echo hotspot | socat -T2 - {protocol}4:198.51.100.1:{port}{timeout}' | grep hotspot")
+    machine.succeed("iptables -C ufw-user-input -p tcp --dport 12345 -j ACCEPT")
     # Healthy repeat preserves rule files and repair restores a deleted kernel rule.
     machine.succeed("sha256sum /etc/ufw/user.rules /etc/ufw/user6.rules > /tmp/rules.before")
     assert "0 files updated, 0 runtime actions" in machine.succeed(adapter)
