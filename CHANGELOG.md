@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.12.0 (2026-11-26)
+
+### Features
+
+- **cli**: Rename doctor to checkhealth (breaking)
+- **etc**: Declare /etc files and withdraw them on removal (breaking)
+- **systemd**: Declare system units with systemd.units and services (breaking)
+- **system**: Withdraw the drop-ins of settings that go away
+- **system**: Restore the locale, console, time zone and hostname
+- **firewall**: Withdraw the UFW rules that Nacre added
+- **hotspot**: Restore the hotspot connection when it goes away
+- **system**: Purge returns system settings to their values before Nacre (breaking)
+- **core**: Withdraw groups, capabilities, sysctl, modules and the repository
+- **purge**: Uninstall Nacre through the withdrawal path (breaking)
+- **kernel**: Let features declare the forwarding they need (breaking)
+- **extensions**: Retire a removed extension with its last adapter (breaking)
+- **packages**: Exclude default packages with packages.exclude
+- **home**: Let machine home modules replace any Nacre default
+- **ai**: Withdraw the AI services when AI or its proxy goes away (breaking)
+
+### Fixes
+
+- Make withdrawal safe across crashes, purge and plan
+
 ## 0.11.0 (2026-11-24)
 
 ### Features
