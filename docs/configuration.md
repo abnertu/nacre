@@ -126,7 +126,7 @@ Nacre reloads systemd after each unit-file change. These rules apply when a decl
 - A drop-in goes away, and systemd reloads.
 - A packaged unit keeps running. Nacre stops managing it.
 
-systemd refuses to restart a socket while its service runs, and the deployment then stops. For such a socket, set `restartIfChanged = false` and restart the socket and its service by hand.
+A changed socket restarts with its service. Nacre stops the socket and the units that it triggers, then starts the socket and the units that ran. This interrupts the service, even when the service sets `restartIfChanged = false`. An `Accept=yes` socket restarts and keeps its open connections.
 
 The desktop autologin is the drop-in `systemd.services."getty@tty1"`. It sets `restartIfChanged = false`, so a change never ends the running session.
 

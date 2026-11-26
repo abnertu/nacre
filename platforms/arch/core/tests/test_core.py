@@ -1,6 +1,7 @@
 # pyright: standard
 """Core adapter contracts on a temporary root with a stateful fake runner."""
 
+import collections
 import contextlib
 import copy
 import hashlib
@@ -101,6 +102,10 @@ class Fake(FakeNative):
         self.fail: tuple[str, ...] | None = None
         self.groups = {"wheel"}
         self.units: dict[str, dict[str, bool]] = {}
+        # Socket properties: Accept=yes sockets, Triggers= and restart counts.
+        self.accepting: set[str] = set()
+        self.triggers: dict[str, list[str]] = {}
+        self.restarts: collections.Counter[str] = collections.Counter()
         self.sysctl: dict[str, str] = {}
         # The capability that each binary carries.
         self.capabilities: dict[str, str] = {}
@@ -140,6 +145,14 @@ class Fake(FakeNative):
             raise Conflict(f"fake native failed: {args}")
         return FakeProcess(stdout=out, returncode=code)
 
+    def refuses_restart(self, name):
+        """systemd refuses to restart an Accept=no socket while its service runs."""
+        return (
+            name.endswith(".socket")
+            and name not in self.accepting
+            and any(self.unit(other)["active"] for other in self.triggers.get(name, []))
+        )
+
     def gpasswd(self, rest):
         if rest[0] == "--delete":
             self.groups.discard(rest[-1])
@@ -147,18 +160,23 @@ class Fake(FakeNative):
             self.groups.add(rest[-1])
         return 0, ""
 
+    def show(self, name):
+        if name in self.unknown:
+            return "LoadState=not-found\nActiveState=inactive\nUnitFileState=\n"
+        unit = self.unit(name)
+        active = "active" if unit["active"] else "inactive"
+        enabled = "enabled" if unit["enabled"] else "disabled"
+        accept = "yes" if name in self.accepting else "no"
+        return (
+            f"LoadState=loaded\nActiveState={active}\nUnitFileState={enabled}\n"
+            f"Accept={accept}\nTriggers={' '.join(self.triggers.get(name, []))}\n"
+        )
+
     def systemctl(self, rest):
         verb, *units = [value for value in rest if value not in ("--quiet", "--now")]
         unit = self.unit(units[0]) if units else {}
-        if verb == "show" and units[0] in self.unknown:
-            return 0, "LoadState=not-found\nActiveState=inactive\nUnitFileState=\n"
         if verb == "show":
-            active = "active" if unit["active"] else "inactive"
-            enabled = "enabled" if unit["enabled"] else "disabled"
-            return (
-                0,
-                f"LoadState=loaded\nActiveState={active}\nUnitFileState={enabled}\n",
-            )
+            return 0, self.show(units[0])
         if verb == "is-enabled":
             return (0 if unit["enabled"] else 1), ""
         if verb == "is-active":
@@ -167,8 +185,13 @@ class Fake(FakeNative):
             unit["enabled"] = True
         elif verb == "disable":
             unit.update(enabled=False, active=False)
+        elif verb == "restart" and self.refuses_restart(units[0]):
+            return 1, ""
         elif verb in ("start", "restart"):
             unit["active"] = units[0] not in self.stay_inactive
+            self.restarts[units[0]] += verb == "restart"
+        elif verb == "stop":
+            unit["active"] = False
         elif verb != "daemon-reload":
             raise AssertionError(rest)
         return 0, ""
@@ -853,6 +876,64 @@ class EtcTests(Harness):
                     ),
                     expected,
                 )
+
+    def socket(self, name="demo.socket", accept=False, text="[Socket]\n"):
+        """A running authored socket whose service runs; returns the service."""
+        service = "demo@1.service" if accept else "demo.service"
+        self.manifest["units"] = [unit(name)]
+        self.manifest["etc"] = [entry(f"systemd/system/{name}", text, unit=name)]
+        self.deploy()
+        if accept:
+            self.native.accepting.add(name)
+        self.native.triggers[name] = [service]
+        self.native.unit(service)["active"] = True
+        return service
+
+    def test_changed_socket_restarts_with_its_running_service(self):
+        service = self.socket()
+        self.manifest["etc"][0]["text"] += "# changed\n"
+        self.deploy()
+        self.assertTrue(self.native.unit("demo.socket")["active"])
+        self.assertTrue(self.native.unit(service)["active"])
+        self.assertFalse(self.marker("restart-demo.socket").exists())
+
+    def test_changed_accepting_socket_restarts_and_keeps_its_connections(self):
+        instance = self.socket(accept=True)
+        self.manifest["etc"][0]["text"] += "# changed\n"
+        self.deploy()
+        self.assertEqual(self.native.restarts["demo.socket"], 1)
+        self.assertTrue(self.native.unit(instance)["active"])
+
+    def test_interrupted_socket_restart_starts_the_saved_service(self):
+        service = self.socket()
+        self.native.unit("demo.socket")["active"] = False
+        self.native.unit(service)["active"] = False
+        self.marker("restart-demo.socket").write_text(f'["{service}"]\n')
+        self.deploy()
+        self.assertTrue(self.native.unit("demo.socket")["active"])
+        self.assertTrue(self.native.unit(service)["active"])
+        self.assertEqual(self.native.restarts["demo.socket"], 0)
+        self.assertFalse(self.marker("restart-demo.socket").exists())
+
+    def test_plan_names_the_service_that_a_socket_restart_stops(self):
+        self.socket()
+        self.marker("restart-demo.socket").write_text("")
+        self.assertIn("~ restart demo.socket and its service (pending)", self.plan())
+        self.native.unit("demo.service")["active"] = False
+        self.assertIn("~ restart demo.socket (pending)", self.plan())
+
+    def test_changed_timer_and_path_restart_like_services(self):
+        names = ("demo.timer", "demo.path")
+        self.manifest["units"] = [unit(name) for name in names]
+        self.manifest["etc"] = [
+            entry(f"systemd/system/{name}", "[Unit]\n", unit=name) for name in names
+        ]
+        self.deploy()
+        for item in self.manifest["etc"]:
+            item["text"] += "# changed\n"
+        self.deploy()
+        for name in names:
+            self.assertEqual(self.native.restarts[name], 1, name)
 
     def test_withdrawn_authored_unit_stops_before_its_file_goes(self):
         name = "systemd/system/demo.service"

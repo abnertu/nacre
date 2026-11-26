@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import os
 import shutil
 import stat
@@ -792,7 +793,8 @@ class Core(BaseAdapter[CoreRequest]):
         name = unit["name"]
         running = self.systemctl_ok("is-active", "--quiet", name)
         self.converge_unit(name)
-        if not running:
+        # A socket restart that stopped after its stops still has units to start.
+        if not running and self.saved_triggered(name) is None:
             if unit["triggers"] is not None:
                 self.receipt["triggers"][name] = unit["triggers"]
                 self.save_receipt()
@@ -807,8 +809,12 @@ class Core(BaseAdapter[CoreRequest]):
             changed = wanted is not None and triggers.get(name) != wanted
             pending = self.pending(restart_action(name))
             running = self.systemctl_ok("is-active", "--quiet", name)
-            if (changed or pending) and running:
-                self.systemd.restart(name)
+            saved = self.saved_triggered(name)
+            if saved is not None:
+                self.start_socket(name, saved)
+                self.actions += 1
+            elif (changed or pending) and running:
+                self.restart_unit(name)
                 self.actions += 1
             if changed and wanted is not None:
                 triggers[name] = wanted
@@ -827,6 +833,56 @@ class Core(BaseAdapter[CoreRequest]):
             unit = marker.name.removeprefix("restart-").removesuffix(".pending")
             if unit not in declared:
                 marker.unlink()
+
+    def stopping_triggers(self, name: str) -> list[str] | None:
+        """The units that a restart of `name` must stop, or None for a plain restart.
+
+        systemd refuses to restart an Accept=no socket while its service
+        runs. An Accept=yes socket restarts and keeps its connections.
+        """
+        if not name.endswith(".socket"):
+            return None
+        props = self.systemd.show(name, properties=["Accept", "Triggers"])
+        if props.get("Accept") == "yes":
+            return None
+        return props.get("Triggers", "").split()
+
+    def restart_unit(self, name: str) -> None:
+        triggered = self.stopping_triggers(name)
+        if triggered is None:
+            self.systemd.restart(name)
+            return
+        active = [
+            unit
+            for unit in triggered
+            if self.systemctl_ok("is-active", "--quiet", unit)
+        ]
+        # Record the units to start again before the first stop.
+        self.files.write(self.marker(restart_action(name)), json.dumps(active) + "\n")
+        self.systemd.stop(name)
+        for unit in triggered:
+            self.systemd.stop(unit)
+        self.start_socket(name, active)
+
+    def saved_triggered(self, name: str) -> list[str] | None:
+        """The units that an interrupted socket restart still has to start."""
+        text = self.files.read(self.marker(restart_action(name))).strip()
+        if not text:
+            return None
+        try:
+            saved = json.loads(text)
+        except json.JSONDecodeError:
+            saved = None
+        if not isinstance(saved, list) or not all(
+            isinstance(unit, str) for unit in cast(list[Any], saved)
+        ):
+            raise Conflict(f"invalid restart marker of {name}")
+        return cast(list[str], saved)
+
+    def start_socket(self, name: str, triggered: list[str]) -> None:
+        self.systemd.start(name)
+        for unit in triggered:
+            self.systemd.start(unit)
 
     def initramfs(self) -> None:
         images = self.desired["initramfsImages"]
@@ -1038,13 +1094,21 @@ class Core(BaseAdapter[CoreRequest]):
         if not self.systemctl_ok("is-active", "--quiet", name):
             return changes
         if self.pending(restart_action(name)):
-            changes.append(Change("~", f"restart {name} (pending)"))
+            changes.append(Change("~", f"{self.restart_label(name)} (pending)"))
         elif (
             unit["triggers"] is not None
             and self.receipt["triggers"].get(name) != unit["triggers"]
         ):
-            changes.append(Change("~", f"restart {name} (triggers changed)"))
+            changes.append(
+                Change("~", f"{self.restart_label(name)} (triggers changed)")
+            )
         return changes
+
+    def restart_label(self, name: str) -> str:
+        triggered = self.stopping_triggers(name) or []
+        if any(self.systemctl_ok("is-active", "--quiet", unit) for unit in triggered):
+            return f"restart {name} and its service"
+        return f"restart {name}"
 
     def plan_kernel(self) -> list[Change]:
         """The kernel modules to load and the sysctl values to set."""
