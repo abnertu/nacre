@@ -14,10 +14,18 @@ in
     })
   ];
   options.programs.ai = import ./options.nix { inherit lib; };
-  config.arch.aur =
-    lib.optionals (cfg.enable && cfg.codex.enable) packages.codex
-    ++ lib.optionals (cfg.enable && cfg.claude.enable) packages.claude
-    ++ lib.optionals (
-      cfg.enable && cfg.claudeDesktop.enable && config.desktop.enable
-    ) packages.claudeDesktop;
+  config.arch.inventory = {
+    codex = {
+      enable = cfg.enable && cfg.codex.enable;
+      aur.required = packages.codex;
+    };
+    claude = {
+      enable = cfg.enable && cfg.claude.enable;
+      aur.required = packages.claude;
+    };
+    claude-desktop = {
+      enable = cfg.enable && cfg.claudeDesktop.enable && config.desktop.enable;
+      aur.required = packages.claudeDesktop;
+    };
+  };
 }

@@ -6,6 +6,29 @@ let
   inherit (lib) mkOption types optionals;
   desktop = config.desktop.enable;
   baseline = lib.mkOverride 1100;
+  packageSet = source: {
+    required = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "${source} packages that the inventory's feature needs; exclusion fails.";
+    };
+    defaults = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "${source} packages that `packages.exclude` may withdraw.";
+    };
+  };
+  # The packages of one source from the enabled inventories, without exclusions.
+  derived =
+    source: extra:
+    lib.unique (
+      extra
+      ++ lib.concatMap (
+        inventory:
+        inventory.${source}.required
+        ++ lib.filter (name: !builtins.elem name config.packages.exclude) inventory.${source}.defaults
+      ) (lib.filter (inventory: inventory.enable) (builtins.attrValues config.arch.inventory))
+    );
   files = ./files;
   # Paths that other owners write; environment.etc must not name them.
   # A trailing slash reserves a directory and everything under it.
@@ -77,19 +100,37 @@ let
 in
 {
   options.arch = {
+    inventory = mkOption {
+      type = types.attrsOf (
+        types.submodule {
+          options = {
+            enable = mkOption {
+              type = types.bool;
+              description = "Whether the feature of this inventory is enabled.";
+            };
+            pacman = packageSet "Arch repository";
+            aur = packageSet "AUR";
+          };
+        }
+      );
+      default = { };
+      internal = true;
+      description = ''
+        Package inventories by owner, registered whether or not they are enabled.
+        A required package is one that a Nacre unit, session or file starts or loads.
+      '';
+    };
     pacman = mkOption {
       type = types.listOf types.str;
-      default = [ ];
-      apply = lib.unique;
       internal = true;
-      description = "Arch repository packages.";
+      readOnly = true;
+      description = "Arch repository packages, derived from the enabled inventories.";
     };
     aur = mkOption {
       type = types.listOf types.str;
-      default = [ ];
-      apply = lib.unique;
       internal = true;
-      description = "AUR packages, installed through yay as the login user.";
+      readOnly = true;
+      description = "AUR packages, installed through yay as the login user; derived from the inventories.";
     };
     lizardbyte = mkOption {
       type = types.listOf types.str;
@@ -250,62 +291,96 @@ in
     };
   };
 
-  config.arch = {
-    etc = etcFiles ++ unitFiles;
-    units = managedUnits;
-    systemUnits = map (unit: unit.name) (lib.filter (unit: unit.start) managedUnits);
-    etcReserved =
-      reservedPaths
-      ++ lib.concatMap (extension: extension.reservedPaths) (builtins.attrValues config.arch.extensions);
-    inherit (config.packages) hold;
-    pacman =
-      config.packages.extra.pacman
-      ++ [
+  config.arch.inventory = {
+    base = {
+      enable = true;
+      pacman.required = [
         "base-devel"
         "ca-certificates"
         "ca-certificates-utils"
         "coreutils"
         "curl"
-        "dnsmasq"
+        "iproute2"
+        "p11-kit"
+        "procps-ng"
+        "shadow"
+        "systemd"
+        "util-linux"
+        "zsh"
+      ];
+      pacman.defaults = [
         "hostapd"
         "i2c-tools"
         "inxi"
-        "iproute2"
         "libnewt"
         "libva-utils"
         "linux-headers"
         "mtr"
         "nvtop"
         "pacman-contrib"
-        "p11-kit"
-        "procps-ng"
         "realtime-privileges"
         "rt-tests"
         "rtirq"
         "schedtool"
-        "shadow"
-        "systemd"
         "tuna"
-        "util-linux"
         "vulkan-tools"
         "yt-dlp"
-        "zsh"
-      ]
-      ++ optionals config.networking.networkmanager.enable [
-        "network-manager-applet"
+      ];
+    };
+    networkmanager = {
+      enable = config.networking.networkmanager.enable;
+      # main.conf selects dnsmasq for DNS.
+      pacman.required = [
         "networkmanager"
+        "dnsmasq"
+      ];
+      pacman.defaults = [
+        "network-manager-applet"
         "networkmanager-openconnect"
         "networkmanager-openvpn"
         "nm-connection-editor"
-      ]
-      ++ optionals config.hardware.bluetooth.enable [
-        "bluez"
+      ];
+    };
+    bluetooth = {
+      enable = config.hardware.bluetooth.enable;
+      pacman.required = [ "bluez" ];
+      pacman.defaults = [
         "bluez-utils"
         "blueman"
-      ]
-      ++ optionals config.services.powerProfilesDaemon.enable [ "power-profiles-daemon" ]
-      ++ optionals config.services.tailscale.enable [ "tailscale" ]
-      ++ optionals desktop [
+      ];
+    };
+    power-profiles = {
+      enable = config.services.powerProfilesDaemon.enable;
+      pacman.required = [ "power-profiles-daemon" ];
+    };
+    tailscale = {
+      enable = config.services.tailscale.enable;
+      pacman.required = [ "tailscale" ];
+    };
+    desktop = {
+      enable = desktop;
+      # The session, its portals, input method, terminal and themes engines.
+      pacman.required = [
+        "fcitx5"
+        "fcitx5-chewing"
+        "fcitx5-gtk"
+        "fcitx5-qt"
+        "ghostty"
+        "hyprland"
+        "hyprpolkitagent"
+        "noctalia"
+        "pipewire"
+        "pipewire-pulse"
+        "qt5ct"
+        "qt6-5compat"
+        "qt6ct"
+        "quickshell"
+        "uwsm"
+        "wireplumber"
+        "xdg-desktop-portal-gtk"
+        "xdg-desktop-portal-hyprland"
+      ];
+      pacman.defaults = [
         "adobe-source-code-pro-fonts"
         "adw-gtk-theme"
         "adwaita-cursors"
@@ -315,21 +390,13 @@ in
         "brightnessctl"
         "cliphist"
         "ddcutil"
-        "fcitx5"
-        "fcitx5-chewing"
         "fcitx5-configtool"
-        "fcitx5-gtk"
-        "fcitx5-qt"
         "ffmpegthumbnailer"
-        "ghostty"
         "grim"
         "gvfs"
         "gvfs-mtp"
-        "hyprland"
-        "noctalia"
         "hypridle"
         "hyprlock"
-        "hyprpolkitagent"
         "hyprsunset"
         "imagemagick"
         "inter-font"
@@ -343,15 +410,9 @@ in
         "otf-font-awesome"
         "papirus-icon-theme"
         "pavucontrol"
-        "pipewire"
         "pipewire-alsa"
         "pipewire-audio"
-        "pipewire-pulse"
         "playerctl"
-        "qt5ct"
-        "qt6-5compat"
-        "qt6ct"
-        "quickshell"
         "slurp"
         "swappy"
         "thunar"
@@ -364,47 +425,80 @@ in
         "ttf-jetbrains-mono"
         "ttf-jetbrains-mono-nerd"
         "tumbler"
-        "uwsm"
-        "wireplumber"
         "wl-clipboard"
         "xarchiver"
         "xdotool"
-        "xdg-desktop-portal-gtk"
-        "xdg-desktop-portal-hyprland"
         "xdg-user-dirs"
         "yad"
-      ]
-      ++ optionals (config.networking.networkmanager.enable && config.networking.hotspot.enable) [ "iw" ]
-      ++ optionals config.networking.firewall.enable [ "ufw" ]
-      ++ optionals (config.hardware.graphics == "amd") [
-        "amd-ucode"
-        "amdgpu_top"
-        "lib32-vulkan-radeon"
-        "vulkan-radeon"
-      ]
-      ++ optionals (config.hardware.openrazer.enable && desktop) [
-        "openrazer-daemon"
-        "openrazer-driver-dkms"
-      ]
-      ++ optionals config.i18n.enable [ "glibc" ]
-      ++ optionals config.time.enable [ "tzdata" ]
-      ++ optionals config.console.enable [ "kbd" ];
-
-    lizardbyte = optionals (desktop && config.programs.sunshine.enable) [ "sunshine" ];
-
-    aur =
-      config.packages.extra.aur
-      ++ optionals desktop [
+      ];
+      aur.defaults = [
         "bibata-cursor-theme-bin"
         "mpv-mpris"
         "mpvpaper"
         "noto-fonts-tc-vf"
         "ttf-victor-mono"
         "zen-browser-bin"
-      ]
-      ++ optionals (desktop && config.programs.vesktop.enable) [ "vesktop-bin" ]
-      ++ optionals (desktop && config.programs.vicinae.enable) [ "vicinae-bin" ]
-      ++ optionals (config.hardware.openrazer.enable && desktop) [ "polychromatic" ];
+      ];
+    };
+    hotspot = {
+      enable = config.networking.networkmanager.enable && config.networking.hotspot.enable;
+      pacman.required = [ "iw" ];
+    };
+    firewall = {
+      enable = config.networking.firewall.enable;
+      pacman.required = [ "ufw" ];
+    };
+    amd-graphics = {
+      enable = config.hardware.graphics == "amd";
+      pacman.required = [
+        "amd-ucode"
+        "lib32-vulkan-radeon"
+        "vulkan-radeon"
+      ];
+      pacman.defaults = [ "amdgpu_top" ];
+    };
+    openrazer = {
+      enable = config.hardware.openrazer.enable && desktop;
+      pacman.required = [
+        "openrazer-daemon"
+        "openrazer-driver-dkms"
+        "linux-headers"
+      ];
+      aur.defaults = [ "polychromatic" ];
+    };
+    vesktop = {
+      enable = desktop && config.programs.vesktop.enable;
+      aur.required = [ "vesktop-bin" ];
+    };
+    vicinae = {
+      enable = desktop && config.programs.vicinae.enable;
+      aur.required = [ "vicinae-bin" ];
+    };
+    locale = {
+      enable = config.i18n.enable;
+      pacman.required = [ "glibc" ];
+    };
+    time-zone = {
+      enable = config.time.enable;
+      pacman.required = [ "tzdata" ];
+    };
+    console = {
+      enable = config.console.enable;
+      pacman.required = [ "kbd" ];
+    };
+  };
+
+  config.arch = {
+    etc = etcFiles ++ unitFiles;
+    units = managedUnits;
+    systemUnits = map (unit: unit.name) (lib.filter (unit: unit.start) managedUnits);
+    etcReserved =
+      reservedPaths
+      ++ lib.concatMap (extension: extension.reservedPaths) (builtins.attrValues config.arch.extensions);
+    inherit (config.packages) hold;
+    pacman = derived "pacman" config.packages.extra.pacman;
+    aur = derived "aur" config.packages.extra.aur;
+    lizardbyte = optionals (desktop && config.programs.sunshine.enable) [ "sunshine" ];
 
     userServices =
       optionals (config.hardware.openrazer.enable && desktop) [ "openrazer-daemon.service" ]

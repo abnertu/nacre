@@ -43,6 +43,8 @@ A deployment has the name `<hostname>-<role>`. It is also available as `#deploym
 
 When you disable an Arch feature, Nacre keeps its packages, services, registrations and data. It withdraws the feature's [files under /etc](#files-under-etc). Home Manager still activates the newly declared home.
 
+`packages.exclude = [ "yt-dlp" ];` stops Nacre from installing a default package. Each feature lists required and default packages. A required package is one that a Nacre unit, session or configuration file starts or loads. Excluding a required package, a name that no feature offers as a default, or a name in `packages.extra` fails evaluation. Exclusion never removes an installed package; run `pacman -Rns` for that.
+
 `packages.hold = [ "ghostty" ];` excludes installed packages from Nacre's pacman and AUR upgrades. Missing held packages still install. Dependency resolution can fail if another package needs a newer version. Manual pacman operations ignore this declaration. Remove the hold to resume upgrades.
 
 Features declare the kernel settings that they need. Virtualization loads `bridge`, `br_netfilter` and `veth` and enables IPv4 and IPv6 forwarding and bridge filtering. The hotspot and Tailscale enable IPv4 forwarding. A machine without these features declares none of them. A service outside Nacre that needs forwarding, such as Docker, needs its own `boot.kernel.sysctl` keys. You can change the kernel settings in these ways:

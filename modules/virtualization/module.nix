@@ -9,10 +9,20 @@ in
 {
   options.virtualization = import ./options.nix { inherit lib; };
   config.arch = {
-    pacman =
-      lib.optionals kvm packages.kvm
-      ++ lib.optionals gui packages.gui
-      ++ lib.optionals (cfg.enable && cfg.podman.enable) packages.podman;
+    inventory = {
+      kvm = {
+        enable = kvm;
+        pacman.required = packages.kvm;
+      };
+      virt-manager = {
+        enable = gui;
+        pacman.required = packages.gui;
+      };
+      podman = {
+        enable = cfg.enable && cfg.podman.enable;
+        pacman.required = packages.podman;
+      };
+    };
     groups = lib.optional kvm "kvm";
   };
   config.systemd.units."libvirtd.socket" = lib.mkIf gui { };

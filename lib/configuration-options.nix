@@ -189,6 +189,16 @@ in
   };
 
   packages = {
+    exclude = mkOption {
+      type = types.listOf packageName;
+      default = [ ];
+      apply = lib.unique;
+      example = [ "yt-dlp" ];
+      description = ''
+        Default packages that Nacre does not install on this machine.
+        A required package cannot be excluded. Exclusion never removes an installed package.
+      '';
+    };
     hold = mkOption {
       type = types.listOf packageName;
       default = [ ];

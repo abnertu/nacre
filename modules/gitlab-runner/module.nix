@@ -28,7 +28,10 @@ in
 
   config.arch = lib.mkIf cfg.enable {
     # Shared container packages remain with virtualization.
-    pacman = [ "slirp4netns" ];
+    inventory.gitlab-runner = {
+      enable = true;
+      pacman.required = [ "slirp4netns" ];
+    };
     extensions.gitlab-runner = {
       label = "GitLab Runner";
       adapter = ./adapter.py;

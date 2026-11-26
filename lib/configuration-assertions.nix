@@ -48,46 +48,76 @@ let
       message = toString config.environment.etc.${name}.contentError;
     }
   ]) etcNames;
+  inventories = builtins.attrValues config.arch.inventory;
+  requiredBy =
+    name:
+    lib.attrNames (
+      lib.filterAttrs (
+        _: inventory:
+        inventory.enable && builtins.elem name (inventory.pacman.required ++ inventory.aur.required)
+      ) config.arch.inventory
+    );
+  offered = lib.concatMap (
+    inventory: inventory.pacman.defaults ++ inventory.aur.defaults
+  ) inventories;
+  extra = config.packages.extra.pacman ++ config.packages.extra.aur;
+  excludeAssertions = lib.concatMap (name: [
+    {
+      assertion = requiredBy name == [ ];
+      message = "packages.exclude names ${name}, which ${lib.concatStringsSep ", " (requiredBy name)} requires";
+    }
+    {
+      assertion = requiredBy name != [ ] || builtins.elem name offered;
+      message = "packages.exclude names ${name}, which no Nacre inventory offers as a default";
+    }
+    {
+      assertion = !builtins.elem name extra;
+      message = "packages.exclude and packages.extra both name ${name}";
+    }
+  ]) config.packages.exclude;
 in
 {
-  assertions = etcAssertions ++ [
-    {
-      assertion = !config.services.gitlabRunner.enable || config.services.gitlabRunner.configFiles != [ ];
-      message = "services.gitlabRunner.enable requires at least one public instance file";
-    }
-    {
-      assertion =
-        !config.services.gitlabRunner.enable
-        || (config.virtualization.enable && config.virtualization.podman.enable);
-      message = "services.gitlabRunner.enable requires virtualization.enable and virtualization.podman.enable";
-    }
-    {
-      assertion = lib.all (name: builtins.match "[a-z][a-z0-9_-]*" name != null) (
-        builtins.attrNames users
-      );
-      message = "login usernames must match [a-z][a-z0-9_-]*";
-    }
-    {
-      assertion = user != null;
-      message = "deployment.username must name a declared login user";
-    }
-    {
-      assertion = user == null || user.admin;
-      message = "the deployment user must be an administrator";
-    }
-    {
-      assertion = user == null || config.role != "workstation" || user.profiles.workstation.enable;
-      message = "the workstation role needs the deployment user's workstation profile";
-    }
-    {
-      assertion = builtins.length homes == builtins.length (lib.unique homes);
-      message = "login users must have distinct home directories";
-    }
-    {
-      assertion = lib.all (
-        image: !lib.elem ".." (lib.splitString "/" image)
-      ) config.hardware.initramfs.images;
-      message = "initramfs images must stay under /boot";
-    }
-  ];
+  assertions =
+    etcAssertions
+    ++ excludeAssertions
+    ++ [
+      {
+        assertion = !config.services.gitlabRunner.enable || config.services.gitlabRunner.configFiles != [ ];
+        message = "services.gitlabRunner.enable requires at least one public instance file";
+      }
+      {
+        assertion =
+          !config.services.gitlabRunner.enable
+          || (config.virtualization.enable && config.virtualization.podman.enable);
+        message = "services.gitlabRunner.enable requires virtualization.enable and virtualization.podman.enable";
+      }
+      {
+        assertion = lib.all (name: builtins.match "[a-z][a-z0-9_-]*" name != null) (
+          builtins.attrNames users
+        );
+        message = "login usernames must match [a-z][a-z0-9_-]*";
+      }
+      {
+        assertion = user != null;
+        message = "deployment.username must name a declared login user";
+      }
+      {
+        assertion = user == null || user.admin;
+        message = "the deployment user must be an administrator";
+      }
+      {
+        assertion = user == null || config.role != "workstation" || user.profiles.workstation.enable;
+        message = "the workstation role needs the deployment user's workstation profile";
+      }
+      {
+        assertion = builtins.length homes == builtins.length (lib.unique homes);
+        message = "login users must have distinct home directories";
+      }
+      {
+        assertion = lib.all (
+          image: !lib.elem ".." (lib.splitString "/" image)
+        ) config.hardware.initramfs.images;
+        message = "initramfs images must stay under /boot";
+      }
+    ];
 }

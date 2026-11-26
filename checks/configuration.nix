@@ -106,7 +106,8 @@ let
           name: child:
           if name == "enable" && child then
             [ (path ++ [ name ]) ]
-          else if name == "home" then
+          # Home configuration and the derived, internal arch tree are not switches.
+          else if name == "home" || (path == [ ] && name == "arch") then
             [ ]
           else
             enablePaths (path ++ [ name ]) child
@@ -315,6 +316,21 @@ assert
     keys = [ "net.ipv4.ip_forward" ];
     modules = [ ];
   };
+assert
+  !builtins.elem "yt-dlp" (evaluate [ { packages.exclude = [ "yt-dlp" ]; } ]).config.arch.pacman;
+assert
+  etcFailed { packages.exclude = [ "hyprland" ]; } == [
+    "packages.exclude names hyprland, which desktop requires"
+  ];
+assert
+  etcFailed { packages.exclude = [ "not-a-package" ]; } == [
+    "packages.exclude names not-a-package, which no Nacre inventory offers as a default"
+  ];
+assert
+  etcFailed {
+    packages.exclude = [ "yt-dlp" ];
+    packages.extra.pacman = [ "yt-dlp" ];
+  } == [ "packages.exclude and packages.extra both name yt-dlp" ];
 assert hotspotOverride.host.systemSettings.hotspot.channel == 149;
 assert hotspotOff.host.systemSettings.hotspot == null;
 assert hotspotParentOff.host.systemSettings.hotspot == null;

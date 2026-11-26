@@ -17,7 +17,10 @@ in
     restartTriggers = [ config.environment.etc."pwrstatd.conf".content ];
   };
   config.arch = {
-    aur = lib.optional enable "powerpanel";
+    inventory.powerpanel = {
+      inherit enable;
+      aur.required = [ "powerpanel" ];
+    };
     groups = lib.optional enable "power";
   };
 }
