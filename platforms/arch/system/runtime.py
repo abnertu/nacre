@@ -4,6 +4,7 @@ The caller holds the arch-switch deployment lock. Tests inject a filesystem and
 native runner directly; production accepts no root/command overrides.
 """
 
+import copy
 import hashlib
 import os
 from collections.abc import Callable, Mapping
@@ -11,7 +12,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from firewall import Firewall, declared_rules, withdraw_rule, withdraw_state
-from hotspot import Hotspot
+from hotspot import Hotspot, hotspot_drifted, withdraw_hotspot
 from nix_adapter import (
     AdapterContext,
     BaseAdapter,
@@ -138,7 +139,8 @@ class System(BaseAdapter[SystemRequest]):
 
     def record(self, key: str, value: dict[str, Any]) -> None:
         if self.records.get(key) != value:
-            self.records[key] = value
+            # A copy: a caller that keeps changing its dict must save again.
+            self.records[key] = copy.deepcopy(value)
             self.save_receipt()
 
     def drop(self, key: str) -> None:
@@ -184,6 +186,9 @@ class System(BaseAdapter[SystemRequest]):
             return record["name"] in declared_rules(self)
         if kind == "firewall":
             return d["firewall"] is not None
+        if kind == "hotspot":
+            hotspot = d["hotspot"]
+            return hotspot is not None and hotspot["connection"] == record["name"]
         setting = {
             "locale": "locale",
             "console": "console",
@@ -226,6 +231,8 @@ class System(BaseAdapter[SystemRequest]):
         kind = record["kind"]
         if kind in ("ufw", "firewall"):
             return False  # Withdrawal checks UFW itself.
+        if kind == "hotspot":
+            return hotspot_drifted(self, record)
         if kind == "timezone":
             return self.localtime() != record["applied"]
         if kind == "hostname":
@@ -254,9 +261,21 @@ class System(BaseAdapter[SystemRequest]):
         Return the names of the removed drop-ins.
         """
         withdrawn = self.withdrawn(purge)
+        removed = self.withdraw_dropins(list(withdrawn.values()))
+        # Rules go before the UFW state that they belong to.
+        ordered = sorted(
+            withdrawn.items(), key=lambda item: item[1]["kind"] == "firewall"
+        )
+        for key, record in ordered:
+            self.withdraw_record(key, record, purge)
+            self.drop(key)
+        return removed
+
+    def withdraw_dropins(self, records: list[dict[str, Any]]) -> list[str]:
+        """Remove withdrawn drop-ins and apply the change; return their names."""
         removed = [
             record["name"]
-            for record in withdrawn.values()
+            for record in records
             if record["kind"] == "dropin" and self.remove(record["path"])
         ]
         if removed:
@@ -272,21 +291,24 @@ class System(BaseAdapter[SystemRequest]):
                 self.run("systemctl", "try-restart", units[name])
             elif name == "logind":
                 print("logind settings apply after the next boot.")
-        # Rules go before the UFW state that they belong to.
-        ordered = sorted(
-            withdrawn.items(), key=lambda item: item[1]["kind"] == "firewall"
-        )
-        for key, record in ordered:
-            if record["kind"] in ("ufw", "firewall"):
-                if not purge:  # Purge keeps UFW and only drops the records.
-                    if record["kind"] == "ufw":
-                        withdraw_rule(self, key, record)
-                    else:
-                        withdraw_state(self, key, record)
-            elif record["kind"] != "dropin":
-                self.restore(key, record)
-            self.drop(key)
         return removed
+
+    def withdraw_record(self, key: str, record: dict[str, Any], purge: bool) -> None:
+        """Withdraw one record other than a drop-in.
+
+        Purge keeps UFW and the hotspot connection and only drops their records.
+        """
+        kind = record["kind"]
+        if kind == "dropin" or (purge and kind in ("ufw", "firewall", "hotspot")):
+            return
+        if kind == "ufw":
+            withdraw_rule(self, key, record)
+        elif kind == "firewall":
+            withdraw_state(self, key, record)
+        elif kind == "hotspot":
+            withdraw_hotspot(self, record)
+        else:
+            self.restore(key, record)
 
     def restore(self, key: str, record: dict[str, Any]) -> None:
         """Return one withdrawn value or file to its state before Nacre."""
@@ -333,6 +355,13 @@ class System(BaseAdapter[SystemRequest]):
                 changes.append(Change("~", f"ufw delete {record['name']}"))
             elif kind == "firewall":
                 changes.append(Change("~", "UFW returns to its state before Nacre"))
+            elif kind == "hotspot":
+                changes.append(
+                    Change(
+                        "~",
+                        f"hotspot {record['name']} returns to its properties before Nacre",
+                    )
+                )
             elif self.files.path(record["path"]).exists():
                 note = (
                     "restore original"

@@ -252,10 +252,8 @@ class Fake(FakeNative):
             return self.connection[rest[3]] + "\n"
         if rest[-1] == "--active":
             return "".join(uuid + "\n" for uuid in self.up)
-        if rest[:2] == ["connection", "modify"]:
-            pairs = rest[4:]
-            self.connection.update(zip(pairs[::2], pairs[1::2], strict=True))
-            return ""
+        if rest[:2] in (["connection", "modify"], ["connection", "down"]):
+            return self.nmcli_change(rest)
         if rest[:2] == ["connection", "up"]:
             self.up.add(self.uuid)
             if self.radio_follows:
@@ -267,6 +265,14 @@ class Fake(FakeNative):
                 )
             return ""
         raise AssertionError(rest)
+
+    def nmcli_change(self, rest):
+        if rest[1] == "down":
+            self.up.discard(rest[-1])
+        else:
+            pairs = rest[4:]
+            self.connection.update(zip(pairs[::2], pairs[1::2], strict=True))
+        return ""
 
 
 class SystemTests(unittest.TestCase):
@@ -799,6 +805,39 @@ class SystemTests(unittest.TestCase):
             for call in self.native.calls
             if call[:1] == ("nmcli",) and call[1] == "connection" and call[2] != "show"
         ]
+
+    def test_withdrawn_hotspot_gets_its_properties_back_and_goes_down(self):
+        self.hotspot()
+        before = dict(self.native.connection)
+        self.converge()
+        self.assertIn(self.native.uuid, self.native.up)
+        self.d["hotspot"] = None
+        self.converge()
+        for field in (
+            "802-11-wireless.ssid",
+            "802-11-wireless.channel",
+            "connection.interface-name",
+        ):
+            self.assertEqual(self.native.connection[field], before[field], field)
+        self.assertNotIn(self.native.uuid, self.native.up)
+        self.assertEqual(self.receipt(), {})
+
+    def test_hotspot_that_was_up_before_nacre_stays_up(self):
+        self.hotspot()
+        self.native.up.add(self.native.uuid)
+        self.converge()
+        self.d["hotspot"] = None
+        self.converge()
+        self.assertIn(self.native.uuid, self.native.up)
+
+    def test_changed_withdrawn_hotspot_stops_and_names_forget(self):
+        self.hotspot()
+        self.converge()
+        self.native.connection["802-11-wireless.ssid"] = "renamed"
+        self.d["hotspot"] = None
+        with self.assertRaisesRegex(Conflict, "nacre forget hotspot:hotspot"):
+            self.converge()
+        self.assertEqual(self.native.connection["802-11-wireless.ssid"], "renamed")
 
     def test_hotspot_adopts_changed_properties_and_repeat_is_quiet(self):
         self.hotspot()

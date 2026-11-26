@@ -46,6 +46,61 @@ def hotspot_properties(desired: HotspotSettings) -> dict[str, str]:
     }
 
 
+def normalized(field: str, value: str) -> str:
+    """A property value as nmcli prints it, in the form that Nacre writes."""
+    value = value.strip()
+    if field == "ipv4.shared-dhcp-lease-time":
+        value = value.split()[0] if value else value
+    return "" if value == "--" else value
+
+
+def read_property(system: System, uuid: str, field: str) -> str:
+    output = system.run(
+        "nmcli", "--escape", "no", "-g", field, "connection", "show", "uuid", uuid
+    ).stdout
+    return normalized(field, output)
+
+
+def connection_uuid(system: System, name: str) -> str | None:
+    """The UUID of the connection named `name`, or None if it is gone."""
+    lines = system.run(
+        "nmcli", "--escape", "no", "-t", "-f", "UUID,NAME", "connection", "show"
+    ).stdout.splitlines()
+    matches = [
+        line.split(":", 1)[0] for line in lines if line.partition(":")[2] == name
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def hotspot_drifted(system: System, record: dict[str, Any]) -> bool:
+    """Whether a withdrawn hotspot changed since Nacre set its properties."""
+    uuid = connection_uuid(system, record["name"])
+    return uuid is not None and any(
+        read_property(system, uuid, field) != value
+        for field, value in record["applied"].items()
+    )
+
+
+def withdraw_hotspot(system: System, record: dict[str, Any]) -> None:
+    """Restore the properties that Nacre changed; take down an AP it raised."""
+    uuid = connection_uuid(system, record["name"])
+    if uuid is None:
+        return
+    changes = [
+        part
+        for field, value in record["previous"].items()
+        if read_property(system, uuid, field) != value
+        for part in (field, value)
+    ]
+    if changes:
+        system.run("nmcli", "connection", "modify", "uuid", uuid, *changes)
+        system.actions += 1
+    active = system.run("nmcli", "-g", "UUID", "connection", "show", "--active")
+    if record["activated"] and uuid in active.stdout.splitlines():
+        system.run("nmcli", "connection", "down", "uuid", uuid)
+        system.actions += 1
+
+
 class Hotspot:
     def __init__(self, system: System):
         desired = system.desired["hotspot"]
@@ -196,6 +251,22 @@ class Hotspot:
 
     def converge(self) -> None:
         self.preflight()
+        key = f"hotspot:{self.desired['connection']}"
+        record = dict(self.system.records.get(key) or {})
+        if not record:
+            # The connection before Nacre, which a withdrawal returns to.
+            record = {
+                "kind": "hotspot",
+                "name": self.desired["connection"],
+                "previous": {
+                    field: read_property(self.system, self.uuid, field)
+                    for field in hotspot_properties(self.desired)
+                },
+                "applied": {},
+                "wasActive": self.selected(),
+                "activated": False,
+            }
+            self.system.record(key, record)
         changes: list[str] = []
         for field, (_, expected) in self.differences().items():
             changes.extend((field, expected))
@@ -223,4 +294,7 @@ class Hotspot:
                 raise Conflict(
                     "hotspot activation did not converge; pending action retained"
                 )
+            record["activated"] = record["activated"] or not record["wasActive"]
+        record["applied"] = hotspot_properties(self.desired)
+        self.system.record(key, record)
         self.files.clear("hotspot")
