@@ -239,6 +239,12 @@ in
     };
   };
 
+  # The hotspot shares its uplink and Tailscale routes subnets: both forward IPv4.
+  config.boot.kernel.sysctl."net.ipv4.ip_forward" = lib.mkIf (
+    (config.networking.networkmanager.enable && config.networking.hotspot.enable)
+    || config.services.tailscale.enable
+  ) (lib.mkDefault 1);
+
   config.systemd = {
     services = {
       NetworkManager = lib.mkIf config.networking.networkmanager.enable {

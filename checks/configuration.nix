@@ -187,6 +187,21 @@ let
     modules: name:
     (lib.findFirst (entry: entry.name == name) null (evaluate modules).config.arch.etc).text;
   mainConf = "NetworkManager/conf.d/main.conf";
+  # Forwarding keys and container modules belong to the features that need them.
+  forwarding = [
+    "net.bridge.bridge-nf-call-iptables"
+    "net.ipv4.ip_forward"
+    "net.ipv6.conf.all.forwarding"
+  ];
+  kernelOf =
+    extra:
+    let
+      inherit (evaluate [ (disabledModule // extra) ]) host;
+    in
+    {
+      keys = lib.filter (key: builtins.elem key forwarding) (builtins.attrNames host.sysctl);
+      modules = host.kernelModules;
+    };
   demoService = {
     systemd.services.demo = {
       description = "Demo";
@@ -273,6 +288,33 @@ assert
       ]).config.systemd.units."demo.service".text
       true
   )).success;
+assert
+  kernelOf { } == {
+    keys = [ ];
+    modules = [ ];
+  };
+assert
+  kernelOf { virtualization.enable = true; } == {
+    keys = forwarding;
+    modules = [
+      "bridge"
+      "br_netfilter"
+      "veth"
+    ];
+  };
+assert
+  kernelOf {
+    networking.networkmanager.enable = true;
+    networking.hotspot.enable = true;
+  } == {
+    keys = [ "net.ipv4.ip_forward" ];
+    modules = [ ];
+  };
+assert
+  kernelOf { services.tailscale.enable = true; } == {
+    keys = [ "net.ipv4.ip_forward" ];
+    modules = [ ];
+  };
 assert hotspotOverride.host.systemSettings.hotspot.channel == 149;
 assert hotspotOff.host.systemSettings.hotspot == null;
 assert hotspotParentOff.host.systemSettings.hotspot == null;

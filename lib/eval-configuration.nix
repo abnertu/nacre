@@ -15,18 +15,10 @@ let
       ../roles
       ../platforms/arch/module.nix
       {
-        # Container networking and throughput defaults; override individual keys.
-        boot.kernelModules = lib.mkDefault [
-          "bridge"
-          "br_netfilter"
-          "veth"
-        ];
+        # Throughput defaults; features add the keys they need. Override individual keys.
         boot.kernel.sysctl = lib.mapAttrs (_: lib.mkDefault) {
           "net.core.default_qdisc" = "fq";
           "net.ipv4.tcp_congestion_control" = "bbr";
-          "net.ipv4.ip_forward" = 1;
-          "net.ipv6.conf.all.forwarding" = 1;
-          "net.bridge.bridge-nf-call-iptables" = 1;
         };
       }
     ]
