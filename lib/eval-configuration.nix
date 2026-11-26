@@ -10,6 +10,7 @@ let
     modules = [
       { options = import ./configuration-options.nix { inherit lib; }; }
       ./environment-options.nix
+      ./systemd-options.nix
       ./configuration-assertions.nix
       ../roles
       ../platforms/arch/module.nix

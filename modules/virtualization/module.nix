@@ -14,6 +14,6 @@ in
       ++ lib.optionals gui packages.gui
       ++ lib.optionals (cfg.enable && cfg.podman.enable) packages.podman;
     groups = lib.optional kvm "kvm";
-    systemUnits = lib.optional gui "libvirtd.socket";
   };
+  config.systemd.units."libvirtd.socket" = lib.mkIf gui { };
 }

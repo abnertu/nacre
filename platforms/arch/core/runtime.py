@@ -28,9 +28,15 @@ from receipts import (
     original_name,
     save_json,
 )
-from schema import Block, CoreRequest, EtcEntry, Repository
+from schema import Block, CoreRequest, EtcEntry, Repository, UnitEntry
 
 __all__ = ["RECEIPT_LINE", "Core"]
+
+
+def restart_action(unit: str) -> str:
+    """The pending action that restarts `unit` after its file changed."""
+    return f"restart-{unit}"
+
 
 # A file state: text, mode, UID and GID.
 type FileState = tuple[str, int, int, int]
@@ -122,6 +128,7 @@ class Core(BaseAdapter[CoreRequest]):
             self._receipt = load_receipt(self.files) or {
                 "version": VERSION,
                 "records": {},
+                "triggers": {},
             }
         return self._receipt
 
@@ -317,12 +324,21 @@ class Core(BaseAdapter[CoreRequest]):
             "mode": entry["mode"],
             "uid": files.identity[0],
             "gid": files.identity[1],
-            "action": entry["action"],
+            "unit": entry["unit"],
+            "dropin": entry["dropin"],
             "original": original,
         }
         save_json(self.files, INTENT, {"op": "write", "key": key, "record": new})
         if files.write(entry["path"], entry["text"], mode):
-            self.mark(entry["action"])
+            if entry["unit"] is not None:
+                self.mark("units")
+                # A new unit starts with its file; a changed one restarts.
+                if (
+                    record is not None
+                    and not entry["dropin"]
+                    and entry["restartIfChanged"]
+                ):
+                    self.mark(restart_action(entry["unit"]))
             self.updates += 1
             print(f"{'overwrote drifted' if drifted else 'updated'} {entry['path']}")
         self.records[key] = new
@@ -333,13 +349,26 @@ class Core(BaseAdapter[CoreRequest]):
         """Restore the adopted original of a withdrawn file, or remove the file."""
         key = file_key(record["name"])
         save_json(self.files, INTENT, {"op": "withdraw", "key": key})
+        unit = record["unit"]
+        if (
+            unit is not None
+            and not record["dropin"]
+            and (
+                self.systemctl_ok("is-enabled", "--quiet", unit)
+                or self.systemctl_ok("is-active", "--quiet", unit)
+            )
+        ):
+            # An authored unit stops before its file goes away; a drop-in only reloads.
+            self.systemd.disable(unit, now=True)
+            self.actions += 1
         if self.state(record["path"]) is not None:
             if record["original"] is None:
                 self.remove(record["path"])
                 print(f"removed {record['path']}")
             else:
                 self.restore(record)
-            self.mark(record["action"])
+            if unit is not None:
+                self.mark("units")
             self.updates += 1
         self.drop(key)
         self.clear_intent()
@@ -373,13 +402,12 @@ class Core(BaseAdapter[CoreRequest]):
             if self.state(record["path"]) is None:
                 continue
             original = self.saved_original(record)
-            changes.append(
-                Change(
-                    "~", f"{record['path']} (restore original from {original['date']})"
-                )
-                if original
-                else Change("~", f"{record['path']} (withdrawn, remove)")
+            stops = record["unit"] is not None and not record["dropin"]
+            removal = (
+                "withdrawn, stop, disable and remove" if stops else "withdrawn, remove"
             )
+            note = f"restore original from {original['date']}" if original else removal
+            changes.append(Change("~", f"{record['path']} ({note})"))
         for entry in self.desired["etc"]:
             changes.append(self.plan_entry(entry))
         return changes
@@ -521,12 +549,54 @@ class Core(BaseAdapter[CoreRequest]):
             self.clear("units")
             self.actions += 1
         for unit in d["units"]:
-            self.converge_unit(unit)
+            if unit["start"]:
+                self.start_unit(unit)
         print(
             f"Core converged: {self.updates} files updated, {self.actions} runtime actions."
         )
         if groups_changed:
             print("Group membership changed; log out and back in.")
+
+    def start_unit(self, unit: UnitEntry) -> None:
+        """Enable and start a unit; a unit started now needs no trigger restart."""
+        name = unit["name"]
+        running = self.systemctl_ok("is-active", "--quiet", name)
+        self.converge_unit(name)
+        if not running:
+            if unit["triggers"] is not None:
+                self.receipt["triggers"][name] = unit["triggers"]
+                self.save_receipt()
+            self.clear(restart_action(name))
+
+    def restart_units(self) -> None:
+        """Restart running units whose file or triggers changed; record triggers."""
+        triggers = self.receipt["triggers"]
+        declared = {unit["name"]: unit for unit in self.desired["units"]}
+        for name, unit in declared.items():
+            wanted = unit["triggers"]
+            changed = wanted is not None and triggers.get(name) != wanted
+            pending = self.pending(restart_action(name))
+            running = self.systemctl_ok("is-active", "--quiet", name)
+            if (changed or pending) and running:
+                self.systemd.restart(name)
+                self.actions += 1
+            if changed and wanted is not None:
+                triggers[name] = wanted
+                self.save_receipt()
+            self.clear(restart_action(name))
+        stale = [
+            name
+            for name in triggers
+            if name not in declared or declared[name]["triggers"] is None
+        ]
+        for name in stale:
+            del triggers[name]
+            self.save_receipt()
+        # Restart markers of withdrawn units have nothing left to restart.
+        for marker in self.files.path(STATE).glob("restart-*.pending"):
+            unit = marker.name.removeprefix("restart-").removesuffix(".pending")
+            if unit not in declared:
+                marker.unlink()
 
     def initramfs(self) -> None:
         images = self.desired["initramfsImages"]
@@ -567,6 +637,7 @@ class Core(BaseAdapter[CoreRequest]):
                 self.systemd.restart(restart["unit"])
             self.clear(restart["action"])
             self.actions += 1
+        self.restart_units()
         # Compare runtime values too: unchanged files must not conceal drift.
         for module in d["kernelModules"]:
             if not (self.root / "sys/module" / module).is_dir():
@@ -632,13 +703,36 @@ class Core(BaseAdapter[CoreRequest]):
         if self.pending("units"):
             changes.append(Change("~", "reload systemd units"))
         for unit in d["units"]:
-            changes += self.plan_unit(unit)
+            changes += self.plan_restart(unit)
         changes += [
             Change("~", f"restart {restart['unit']} (pending)")
             for restart in d["restarts"]
             if self.pending(restart["action"])
         ]
         return changes + self.plan_kernel() + self.plan_capabilities()
+
+    def plan_restart(self, unit: UnitEntry) -> list[Change]:
+        """The start, enable and restart changes of one unit."""
+        name = unit["name"]
+        authored = {
+            entry["unit"]: entry["path"]
+            for entry in self.desired["etc"]
+            if entry["unit"] is not None and not entry["dropin"]
+        }
+        if name in authored and self.state(authored[name]) is None:
+            # systemd cannot know a unit whose file convergence writes first.
+            return [Change("+", f"enable and start {name}")] if unit["start"] else []
+        changes = self.plan_unit(name) if unit["start"] else []
+        if not self.systemctl_ok("is-active", "--quiet", name):
+            return changes
+        if self.pending(restart_action(name)):
+            changes.append(Change("~", f"restart {name} (pending)"))
+        elif (
+            unit["triggers"] is not None
+            and self.receipt["triggers"].get(name) != unit["triggers"]
+        ):
+            changes.append(Change("~", f"restart {name} (triggers changed)"))
+        return changes
 
     def plan_kernel(self) -> list[Change]:
         """The kernel modules to load and the sysctl values to set."""
@@ -692,8 +786,9 @@ class Core(BaseAdapter[CoreRequest]):
         """Disable the managed units and remove the unit files that Nacre owns."""
         d = self.desired
         for unit in d["units"]:
-            if self.systemctl_ok("is-enabled", "--quiet", unit):
-                self.systemd.disable(unit, now=True)
+            name = unit["name"]
+            if unit["start"] and self.systemctl_ok("is-enabled", "--quiet", name):
+                self.systemd.disable(name, now=True)
         reload = False
         for owned in d["purge"]["ownedUnits"]:
             if self.files.path(owned["path"]).exists():

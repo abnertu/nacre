@@ -16,6 +16,12 @@
     "net.bridge.bridge-nf-call-iptables" = lib.mkForce null;
     "net.ipv4.tcp_congestion_control" = lib.mkForce null;
   };
+  # An authored service: real systemd must load, enable and start it.
+  systemd.services.nacre-demo = {
+    description = "Nacre container demo";
+    serviceConfig.ExecStart = "/usr/bin/sleep infinity";
+    wantedBy = [ "multi-user.target" ];
+  };
   # Local worktrees do not exist inside the container.
   users.users.${config.deployment.username}.development = lib.mkForce {
     neovimPath = null;

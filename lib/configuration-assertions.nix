@@ -18,7 +18,19 @@ let
     || lib.hasPrefix "/" name
     || lib.hasSuffix "/" name
     || lib.any (part: part == "" || part == "." || part == "..") (lib.splitString "/" name);
+  # Paths that authored units and drop-ins render to, relative to /etc.
+  unitPaths = lib.mapAttrsToList (
+    name: unit:
+    if unit.overrideStrategy == "asDropin" then
+      "systemd/system/${name}.d/overrides.conf"
+    else
+      "systemd/system/${name}"
+  ) (lib.filterAttrs (_: unit: unit.enable && unit.text != null) config.systemd.units);
   etcAssertions = lib.concatMap (name: [
+    {
+      assertion = !builtins.elem name unitPaths;
+      message = "environment.etc.\"${name}\" is the file of a systemd.units declaration";
+    }
     {
       assertion = !badName name;
       message = "environment.etc.\"${name}\" must be a relative path without empty, . or .. components";

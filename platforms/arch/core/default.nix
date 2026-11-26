@@ -75,29 +75,18 @@ let
     user = username;
     inherit etc;
     inherit repository;
-    units = arch.systemUnits;
+    inherit (arch) units;
     blocks = lib.optional capabilities.initramfs initramfsBlock ++ [ nixBlock ];
     initramfsImages = lib.optionals capabilities.initramfs hardware.initramfsImages;
     groups = lib.unique (
       arch.groups ++ deploymentUser.groups ++ lib.optional deploymentUser.admin "wheel"
     );
-    # Every action stays listed, so a withdrawn file's marker always clears.
+    # The nix.conf block restarts nix-daemon; units restart by their triggers.
     restarts = [
-      {
-        action = "network";
-        unit = "NetworkManager.service";
-        # Without networking, a withdrawn file restarts only a running manager.
-        onlyIfActive = !capabilities.networking;
-      }
       {
         action = "nix-daemon";
         unit = "nix-daemon.service";
         onlyIfActive = false;
-      }
-      {
-        action = "pwrstatd";
-        unit = "pwrstatd.service";
-        onlyIfActive = true;
       }
     ];
     inherit kernelModules;

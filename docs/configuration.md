@@ -87,6 +87,41 @@ Built-in files use the same option. Override the NetworkManager files with a pla
 
 Evaluation rejects absolute names, `.` and `..` components, nested entries and paths that another owner writes. The system settings, AI, the repository, managed blocks and account databases own reserved paths. An extension reserves the paths that its adapter writes with `arch.extensions.<name>.reservedPaths`.
 
+## System units
+
+`systemd.units.<unit>` declares a system unit by its full name. `systemd.services.<name>` declares a service without the `.service` suffix and renders it into `systemd.units`:
+
+```nix
+systemd.services.backup = {
+  description = "Nightly backup";
+  after = [ "network-online.target" ];
+  serviceConfig = {
+    ExecStart = "/usr/bin/restic backup /srv";
+    NoNewPrivileges = true;
+  };
+  wantedBy = [ "multi-user.target" ];
+};
+systemd.units."libvirtd.socket" = { };
+```
+
+A unit without content is a packaged unit. Nacre enables it and keeps it running. A unit with `text`, or a service with any rendered option, is an authored unit. Nacre writes it under `/etc/systemd/system`.
+
+| Option | Behavior |
+| --- | --- |
+| `wantedBy` | Nacre enables and starts an authored unit only when a target wants it. |
+| `overrideStrategy` | `asDropin` writes `<unit>.d/overrides.conf` over the packaged unit. A drop-in never enables, starts or stops its unit. |
+| `restartTriggers` | A change of these values restarts the running unit once. |
+| `restartIfChanged` | Set it to `false` to keep a running unit when its file changes. |
+| `serviceConfig`, `unitConfig` | Section keys. A list repeats its key. An empty string resets it. |
+
+Nacre reloads systemd after each unit-file change. These rules apply when a declaration goes away:
+
+- An authored unit stops, is disabled, and its file goes away.
+- A drop-in goes away, and systemd reloads.
+- A packaged unit keeps running. Nacre stops managing it.
+
+The desktop autologin is the drop-in `systemd.services."getty@tty1"`. It sets `restartIfChanged = false`, so a change never ends the running session.
+
 Read [local AI](ai.md) before you select models, offload or context under `programs.ai.llama.models`.
 Read [GitLab Runner](gitlab-runner.md) before you declare instances under `services.gitlabRunner`.
 
@@ -117,7 +152,7 @@ After you edit, run `nacre build`. Then review `nacre plan`.
 
 ## Machine extensions
 
-Features and machine modules contribute native resources through `arch`. A machine can add packages, groups and units through `arch.pacman`, `arch.aur`, `arch.groups`, `arch.systemUnits` and `arch.userServices`. Register privileged adapters under `arch.extensions`:
+Features and machine modules contribute native resources through `arch`. A machine can add packages, groups and user units through `arch.pacman`, `arch.aur`, `arch.groups` and `arch.userServices`. Declare system units with [`systemd.units` and `systemd.services`](#system-units). Register privileged adapters under `arch.extensions`:
 
 ```nix
 { my-service }:

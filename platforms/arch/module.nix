@@ -40,6 +40,41 @@ let
     "systemd/system/llama-swap.service"
   ];
   relative = path: lib.removePrefix "/etc/" path;
+  units = lib.filterAttrs (_: unit: unit.enable) config.systemd.units;
+  dropin = unit: unit.overrideStrategy == "asDropin";
+  unitPath =
+    name: unit:
+    if dropin unit then "systemd/system/${name}.d/overrides.conf" else "systemd/system/${name}";
+  # Authored units and drop-ins become files beside environment.etc.
+  unitFiles = lib.mapAttrsToList (name: unit: {
+    name = unitPath name unit;
+    path = "/etc/${unitPath name unit}";
+    inherit (unit) text adopt restartIfChanged;
+    mode = "0644";
+    group = "root";
+    unit = name;
+    dropin = dropin unit;
+  }) (lib.filterAttrs (_: unit: unit.text != null) units);
+  etcFiles = lib.mapAttrsToList (name: entry: {
+    inherit name;
+    path = "/etc/${name}";
+    text = entry.content;
+    inherit (entry) mode group adopt;
+    unit = null;
+    dropin = false;
+    restartIfChanged = false;
+  }) (lib.filterAttrs (_: entry: entry.enable && entry.content != null) config.environment.etc);
+  managedUnits = lib.mapAttrsToList (name: unit: {
+    inherit name;
+    # A packaged unit always runs; an authored one only when a target wants it.
+    start = unit.text == null || unit.wantedBy != [ ];
+    triggers =
+      if unit.restartTriggers == [ ] then
+        null
+      else
+        builtins.hashString "sha256" (builtins.toJSON unit.restartTriggers);
+  }) (lib.filterAttrs (_: unit: !dropin unit) units);
+  etcText = name: config.environment.etc.${name}.content;
 in
 {
   options.arch = {
@@ -80,10 +115,15 @@ in
     };
     systemUnits = mkOption {
       type = types.listOf types.str;
-      default = [ ];
-      apply = lib.unique;
       internal = true;
-      description = "System units to enable and keep active.";
+      readOnly = true;
+      description = "System units to enable and keep active, derived from systemd.units.";
+    };
+    units = mkOption {
+      type = types.listOf types.attrs;
+      internal = true;
+      readOnly = true;
+      description = "Enabled non-drop-in units for the core manifest: name, start and trigger hash.";
     };
     userServices = mkOption {
       type = types.listOf types.str;
@@ -177,14 +217,12 @@ in
     "NetworkManager/conf.d/main.conf" = lib.mkIf config.networking.networkmanager.enable {
       source = baseline (files + "/NetworkManager-main.conf");
       adopt = baseline true;
-      action = "network";
     };
     "NetworkManager/conf.d/99-tailscale.conf" =
       lib.mkIf (config.networking.networkmanager.enable && config.services.tailscale.enable)
         {
           source = baseline (files + "/NetworkManager-tailscale.conf");
           adopt = baseline true;
-          action = "network";
         };
     # Derived from typed options at normal priority: change those options instead.
     "modules-load.d/nix-config-podman.conf" = {
@@ -199,27 +237,36 @@ in
       );
       adopt = baseline true;
     };
-    "systemd/system/getty@tty1.service.d/override.conf" = lib.mkIf desktop {
-      text = lib.replaceStrings [ "@USER@" ] [ config.deployment.username ] (
-        builtins.readFile (files + "/tty1-autologin.conf")
-      );
-      adopt = baseline true;
-      action = "units";
+  };
+
+  config.systemd = {
+    services = {
+      NetworkManager = lib.mkIf config.networking.networkmanager.enable {
+        restartTriggers = lib.filter (text: text != null) [
+          (etcText "NetworkManager/conf.d/main.conf")
+          (config.environment.etc."NetworkManager/conf.d/99-tailscale.conf".content or null)
+        ];
+      };
+      bluetooth = lib.mkIf config.hardware.bluetooth.enable { };
+      power-profiles-daemon = lib.mkIf config.services.powerProfilesDaemon.enable { };
+      tailscaled = lib.mkIf config.services.tailscale.enable { };
+      # Autologin on tty1 starts the desktop session. A restart would end it.
+      "getty@tty1" = lib.mkIf desktop {
+        overrideStrategy = "asDropin";
+        restartIfChanged = false;
+        adopt = baseline true;
+        serviceConfig.ExecStart = [
+          ""
+          "-/sbin/agetty --autologin ${config.deployment.username} --noclear %I $TERM"
+        ];
+      };
     };
   };
 
   config.arch = {
-    etc = lib.mapAttrsToList (name: entry: {
-      inherit name;
-      path = "/etc/${name}";
-      text = entry.content;
-      inherit (entry)
-        mode
-        group
-        adopt
-        action
-        ;
-    }) (lib.filterAttrs (_: entry: entry.enable && entry.content != null) config.environment.etc);
+    etc = etcFiles ++ unitFiles;
+    units = managedUnits;
+    systemUnits = map (unit: unit.name) (lib.filter (unit: unit.start) managedUnits);
     etcReserved =
       reservedPaths
       ++ lib.concatMap (
@@ -373,12 +420,6 @@ in
       ++ optionals (desktop && config.programs.vesktop.enable) [ "vesktop-bin" ]
       ++ optionals (desktop && config.programs.vicinae.enable) [ "vicinae-bin" ]
       ++ optionals (config.hardware.openrazer.enable && desktop) [ "polychromatic" ];
-
-    systemUnits =
-      optionals config.networking.networkmanager.enable [ "NetworkManager.service" ]
-      ++ optionals config.hardware.bluetooth.enable [ "bluetooth.service" ]
-      ++ optionals config.services.powerProfilesDaemon.enable [ "power-profiles-daemon.service" ]
-      ++ optionals config.services.tailscale.enable [ "tailscaled.service" ];
 
     userServices =
       optionals (config.hardware.openrazer.enable && desktop) [ "openrazer-daemon.service" ]

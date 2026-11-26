@@ -45,12 +45,6 @@ let
             Nacre saves the original and restores it when the entry goes away.
           '';
         };
-        action = mkOption {
-          type = types.nullOr types.str;
-          default = null;
-          internal = true;
-          description = "Core restart action that a change of this file marks.";
-        };
         content = mkOption {
           type = types.nullOr types.str;
           internal = true;

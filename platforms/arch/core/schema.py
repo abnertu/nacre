@@ -14,7 +14,20 @@ class EtcEntry(TypedDict):
     mode: str
     group: str
     adopt: bool
-    action: str | None
+    # The unit whose file this is: a whole unit, or a drop-in when `dropin`.
+    unit: str | None
+    dropin: bool
+    restartIfChanged: bool
+
+
+class UnitEntry(TypedDict):
+    """An enabled unit that is not a drop-in."""
+
+    name: str
+    # Enable and keep active: packaged units, and authored units that a target wants.
+    start: bool
+    # sha256 of restartTriggers, or None without triggers.
+    triggers: str | None
 
 
 class Block(TypedDict):
@@ -58,7 +71,7 @@ class CoreManifest(TypedDict):
     user: str
     etc: list[EtcEntry]
     repository: Repository | None
-    units: list[str]
+    units: list[UnitEntry]
     blocks: list[Block]
     initramfsImages: list[str]
     groups: list[str]

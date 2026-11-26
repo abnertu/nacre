@@ -11,11 +11,13 @@ in
       config = config.services.powerpanel;
     };
     adopt = lib.mkOverride 1100 true;
-    action = "pwrstatd";
+  };
+  # pwrstatd reads its configuration only when it starts.
+  config.systemd.services.pwrstatd = lib.mkIf enable {
+    restartTriggers = [ config.environment.etc."pwrstatd.conf".content ];
   };
   config.arch = {
     aur = lib.optional enable "powerpanel";
     groups = lib.optional enable "power";
-    systemUnits = lib.optional enable "pwrstatd.service";
   };
 }

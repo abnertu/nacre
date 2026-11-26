@@ -33,7 +33,9 @@ class FileRecord(TypedDict):
     mode: str
     uid: int
     gid: int
-    action: str | None
+    # The unit of a unit file or drop-in, which a withdrawal reloads or stops.
+    unit: str | None
+    dropin: bool
     # The adopted original to restore on withdrawal; None when Nacre created it.
     original: str | None
 
@@ -62,6 +64,8 @@ class Intent(TypedDict):
 class Receipt(TypedDict):
     version: int
     records: dict[str, FileRecord]
+    # The applied restartTriggers hash of each unit that has triggers.
+    triggers: dict[str, str]
 
 
 def digest(text: str) -> str:
@@ -103,7 +107,9 @@ def load_receipt(files: Files) -> Receipt | None:
         or not isinstance(cast("dict[str, object]", value).get("records"), dict)
     ):
         raise Conflict(f"receipt {RECEIPT} has an unknown format")
-    return cast(Receipt, value)
+    receipt = cast(Receipt, value)
+    receipt.setdefault("triggers", {})
+    return receipt
 
 
 def save_json(files: Files, name: str, value: object) -> None:

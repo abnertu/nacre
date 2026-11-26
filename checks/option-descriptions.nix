@@ -12,6 +12,19 @@ let
   # Option sets that one declaration reuses under several paths. A field of
   # such a set may repeat its text across the prefixes of one group.
   reusedSets = [
+    # systemd.services shares the unit fields of systemd.units.
+    [
+      [
+        "systemd"
+        "units"
+        "<name>"
+      ]
+      [
+        "systemd"
+        "services"
+        "<name>"
+      ]
+    ]
     [
       [
         "programs"

@@ -26,7 +26,7 @@ spec.loader.exec_module(runtime)
 INCLUDE = "Include = /etc/pacman.d/nix-config-lizardbyte.conf"
 
 
-def entry(name, text, action=None, mode="0644", group="root", adopt=True):
+def entry(name, text, mode="0644", group="root", adopt=True, unit=None, **options):
     return {
         "name": name,
         "path": f"/etc/{name}",
@@ -34,8 +34,17 @@ def entry(name, text, action=None, mode="0644", group="root", adopt=True):
         "mode": mode,
         "group": group,
         "adopt": adopt,
-        "action": action,
+        "unit": unit,
+        "dropin": options.get("dropin", False),
+        "restartIfChanged": options.get("restartIfChanged", True),
     }
+
+
+def unit(name, start=True, triggers=None):
+    return {"name": name, "start": start, "triggers": triggers}
+
+
+UNIT_NAMES = ("NetworkManager.service", "libvirtd.socket")
 
 
 NIX_BLOCK = {
@@ -48,9 +57,9 @@ NIX_BLOCK = {
 MANIFEST = {
     "user": "tester",
     "etc": [
-        entry("NetworkManager/conf.d/main.conf", "[main]\n", "network"),
+        entry("NetworkManager/conf.d/main.conf", "[main]\n"),
         entry("sysctl.d/99-nix-config.conf", "a = 1\n"),
-        entry("pwrstatd.conf", "runtime-threshold = 300\n", "pwrstatd"),
+        entry("pwrstatd.conf", "runtime-threshold = 300\n"),
     ],
     "repository": {
         "name": "lizardbyte",
@@ -71,11 +80,9 @@ MANIFEST = {
     ],
     "initramfsImages": ["/boot/initramfs-linux.img"],
     "groups": ["wheel", "i2c"],
-    "units": ["NetworkManager.service", "libvirtd.socket"],
+    "units": [unit("NetworkManager.service", triggers="nm-1"), unit("libvirtd.socket")],
     "restarts": [
-        {"action": "network", "unit": "NetworkManager.service", "onlyIfActive": False},
         {"action": "nix-daemon", "unit": "nix-daemon.service", "onlyIfActive": False},
-        {"action": "pwrstatd", "unit": "pwrstatd.service", "onlyIfActive": True},
     ],
     "kernelModules": ["br_netfilter"],
     "sysctl": {"net.ipv4.ip_forward": "1"},
@@ -105,6 +112,8 @@ class Fake(FakeNative):
         self.capabilities: set[str] = set()
         self.stay_inactive: set[str] = set()
         self.unmanaged_repository = False
+        # Units that systemd does not know yet, such as one whose file is unwritten.
+        self.unknown: set[str] = set()
         # Package that owns each path, with its version: pacman -Qqo and -Q.
         self.owners: dict[str, tuple[str, str]] = {}
 
@@ -142,6 +151,8 @@ class Fake(FakeNative):
     def systemctl(self, rest):
         verb, *units = [value for value in rest if value not in ("--quiet", "--now")]
         unit = self.unit(units[0]) if units else {}
+        if verb == "show" and units[0] in self.unknown:
+            return 0, "LoadState=not-found\nActiveState=inactive\nUnitFileState=\n"
         if verb == "show":
             active = "active" if unit["active"] else "inactive"
             enabled = "enabled" if unit["enabled"] else "disabled"
@@ -271,7 +282,7 @@ class CoreTests(Harness):
         self.assertIn(INCLUDE, (self.root / "etc/pacman.conf").read_text())
         self.assertTrue((self.root / "boot/initramfs-linux.img").is_file())
         self.assertIn("i2c", self.native.groups)
-        self.assertTrue(all(self.native.unit(u)["active"] for u in MANIFEST["units"]))
+        self.assertTrue(all(self.native.unit(u)["active"] for u in UNIT_NAMES))
         self.assertEqual(self.native.sysctl["net.ipv4.ip_forward"], "1")
         self.assertTrue((self.root / "sys/module/br_netfilter").is_dir())
         self.assertIn("/usr/bin/sunshine", self.native.capabilities)
@@ -333,8 +344,6 @@ class CoreTests(Harness):
         main = self.root / "etc/NetworkManager/conf.d/main.conf"
         main.parent.mkdir(parents=True)
         main.write_text("operator\n")
-        self.marker("network").parent.mkdir(parents=True)
-        self.marker("network").touch()
         for key in (
             "etc",
             "blocks",
@@ -350,17 +359,25 @@ class CoreTests(Harness):
         self.manifest["repository"] = None
         self.deploy()
         self.assertEqual(main.read_text(), "operator\n")
-        self.assertTrue(self.marker("network").exists())
         self.assertEqual((self.root / "etc/pacman.conf").read_text(), "[options]\n")
 
-    def test_failed_restart_stays_pending_and_is_retried(self):
+    def test_failed_trigger_restart_keeps_the_old_hash_and_is_retried(self):
+        self.deploy()
+        self.manifest["units"][0]["triggers"] = "nm-2"
         self.native.fail = ("systemctl", "restart", "NetworkManager.service")
         with self.assertRaises(Conflict):
             self.deploy()
-        self.assertTrue(self.marker("network").exists())
         self.native.fail = None
+        self.native.calls.clear()
         self.deploy()
-        self.assertFalse(self.marker("network").exists())
+        self.assertIn(
+            ("systemctl", "restart", "NetworkManager.service"), self.native.calls
+        )
+        self.native.calls.clear()
+        self.deploy()
+        self.assertNotIn(
+            ("systemctl", "restart", "NetworkManager.service"), self.native.calls
+        )
 
     def test_failed_initramfs_is_retried_and_a_missing_image_rebuilt(self):
         self.native.fail = ("mkinitcpio",)
@@ -392,14 +409,44 @@ class CoreTests(Harness):
         ):
             self.deploy()
 
-    def test_inactive_powerpanel_is_not_restarted(self):
+    def test_trigger_change_restarts_only_a_running_unit(self):
+        self.manifest["units"].append(
+            unit("pwrstatd.service", start=False, triggers="p-1")
+        )
         self.deploy()
-        self.marker("pwrstatd").touch()
+        self.native.unit("NetworkManager.service")["active"] = True
+        for item in self.manifest["units"]:
+            item["triggers"] = item["triggers"] and item["triggers"] + "-new"
+        self.native.calls.clear()
+        self.deploy()
+        restarts = [
+            call for call in self.native.calls if call[:2] == ("systemctl", "restart")
+        ]
+        self.assertEqual(restarts, [("systemctl", "restart", "NetworkManager.service")])
+
+    def test_unit_started_now_is_not_restarted_and_a_running_one_without_hash_is(self):
+        self.native.calls.clear()
+        self.deploy()
+        restarts = [
+            call
+            for call in self.native.calls
+            if call[:2] == ("systemctl", "restart") and "nix-daemon" not in call[2]
+        ]
+        self.assertEqual(restarts, [])
+        receipt = self.root / "var/lib/nix-config/arch/receipts/core.json"
+        data = json.loads(receipt.read_text())
+        data["triggers"] = {}
+        receipt.write_text(json.dumps(data))
+        self.native.calls.clear()
+        self.deploy()
+        self.assertIn(
+            ("systemctl", "restart", "NetworkManager.service"), self.native.calls
+        )
+        self.native.calls.clear()
         self.deploy()
         self.assertNotIn(
-            ("systemctl", "restart", "pwrstatd.service"), self.native.calls
+            ("systemctl", "restart", "NetworkManager.service"), self.native.calls
         )
-        self.assertFalse(self.marker("pwrstatd").exists())
 
     def test_unterminated_block_fails_preflight_without_writes(self):
         path = self.root / "etc/mkinitcpio.conf"
@@ -445,7 +492,7 @@ class CoreTests(Harness):
             "nix-config modules", (self.root / "etc/mkinitcpio.conf").read_text()
         )
         self.assertFalse(unit.exists())
-        self.assertFalse(any(self.native.unit(u)["enabled"] for u in MANIFEST["units"]))
+        self.assertFalse(any(self.native.unit(u)["enabled"] for u in UNIT_NAMES))
         self.assertIn(("systemctl", "restart", "nix-daemon.service"), self.native.calls)
         self.assertIn(("systemctl", "daemon-reload"), self.native.calls)
         self.assertFalse((self.root / "var/lib/nix-config/arch").exists())
@@ -523,7 +570,7 @@ class EtcTests(Harness):
     def test_adoption_saves_the_original_and_withdrawal_restores_it(self):
         self.existing("hosts", "operator\n")
         self.path("hosts").chmod(0o600)
-        self.manifest["etc"] = [entry("hosts", "nacre\n", "network", adopt=True)]
+        self.manifest["etc"] = [entry("hosts", "nacre\n", adopt=True)]
         self.deploy()
         self.assertEqual(self.path("hosts").read_text(), "nacre\n")
         self.assertIn("operator", self.original("hosts").read_text())
@@ -535,9 +582,6 @@ class EtcTests(Harness):
         self.assertEqual(self.path("hosts").stat().st_mode & 0o777, 0o600)
         self.assertFalse(self.original("hosts").exists())
         self.assertNotIn("file:hosts", self.receipt()["records"])
-        self.assertIn(
-            ("systemctl", "restart", "NetworkManager.service"), self.native.calls
-        )
 
     def test_identical_file_is_adopted_without_adopt_and_kept_on_withdrawal(self):
         self.existing("hosts", "same\n")
@@ -685,16 +729,117 @@ class EtcTests(Harness):
         self.assertFalse(self.path("new.conf").exists())
         self.assertFalse((self.root / STATE).exists())
 
-    def test_withdrawn_unit_drop_in_reloads_systemd_and_clears_its_marker(self):
-        name = "systemd/system/getty@tty1.service.d/override.conf"
-        self.manifest["etc"] = [entry(name, "[Service]\n", "units")]
+    def systemctl(self, *verbs):
+        return [
+            call
+            for call in self.native.calls
+            if call[:1] == ("systemctl",) and call[1] in verbs
+        ]
+
+    def test_authored_unit_is_written_reloaded_enabled_and_started(self):
+        self.manifest["etc"] = [
+            entry("systemd/system/demo.service", "[Service]\n", unit="demo.service")
+        ]
+        self.manifest["units"] = [unit("demo.service")]
+        self.deploy()
+        self.assertTrue(self.path("systemd/system/demo.service").is_file())
+        self.assertEqual(
+            self.native.unit("demo.service"), {"enabled": True, "active": True}
+        )
+        self.assertEqual(
+            self.systemctl("daemon-reload"), [("systemctl", "daemon-reload")]
+        )
+        first = self.native.calls.index(("systemctl", "daemon-reload"))
+        self.assertLess(
+            first, self.native.calls.index(("systemctl", "enable", "demo.service"))
+        )
+
+    def test_changed_authored_unit_restarts_unless_restart_if_changed_is_off(self):
+        name = "systemd/system/demo.service"
+        self.manifest["units"] = [unit("demo.service")]
+        for restart, expected in ((True, 1), (False, 0)):
+            with self.subTest(restart=restart):
+                self.manifest["etc"] = [
+                    entry(
+                        name,
+                        f"[Service]\n# {restart}\n",
+                        unit="demo.service",
+                        restartIfChanged=restart,
+                    )
+                ]
+                self.deploy()
+                self.manifest["etc"][0]["text"] += "# changed\n"
+                self.native.calls.clear()
+                self.deploy()
+                self.assertEqual(len(self.systemctl("daemon-reload")), 1)
+                self.assertEqual(
+                    len(self.systemctl("restart"))
+                    - len(
+                        [c for c in self.systemctl("restart") if "nix-daemon" in c[2]]
+                    ),
+                    expected,
+                )
+
+    def test_withdrawn_authored_unit_stops_before_its_file_goes(self):
+        name = "systemd/system/demo.service"
+        self.manifest["etc"] = [entry(name, "[Service]\n", unit="demo.service")]
+        self.manifest["units"] = [unit("demo.service")]
         self.deploy()
         self.manifest["etc"] = []
+        self.manifest["units"] = []
         self.native.calls.clear()
         self.deploy()
+        self.assertEqual(
+            self.native.unit("demo.service"), {"enabled": False, "active": False}
+        )
         self.assertFalse(self.path(name).exists())
-        self.assertIn(("systemctl", "daemon-reload"), self.native.calls)
-        self.assertFalse((self.root / STATE / "units.pending").exists())
+        self.assertLess(
+            self.native.calls.index(("systemctl", "disable", "--now", "demo.service")),
+            self.native.calls.index(("systemctl", "daemon-reload")),
+        )
+
+    def test_drop_in_only_writes_reloads_and_withdraws_its_file(self):
+        name = "systemd/system/getty@tty1.service.d/overrides.conf"
+        dropin = entry(name, "[Service]\n", unit="getty@tty1.service", dropin=True)
+        self.manifest["etc"] = [dropin]
+        self.deploy()
+        dropin["text"] += "# changed\n"
+        self.deploy()
+        self.manifest["etc"] = []
+        self.deploy()
+        self.assertFalse(self.path(name).exists())
+        self.assertEqual(len(self.systemctl("daemon-reload")), 3)
+        self.assertFalse(
+            any(
+                "getty@tty1.service" in call
+                for call in self.native.calls
+                if call[1] != "daemon-reload"
+            )
+        )
+        self.assertEqual(list((self.root / STATE).glob("*.pending")), [])
+
+    def test_plan_of_a_new_authored_unit_starts_it_without_a_conflict(self):
+        self.manifest["etc"] = [
+            entry("systemd/system/demo.service", "[Service]\n", unit="demo.service")
+        ]
+        self.manifest["units"] = [unit("demo.service")]
+        self.native.unknown.add("demo.service")
+        lines = self.plan()
+        self.assertIn("+ /etc/systemd/system/demo.service", lines)
+        self.assertIn("+ enable and start demo.service", lines)
+        self.assertFalse(any(line.startswith("!") for line in lines), lines)
+
+    def test_withdrawn_packaged_unit_keeps_running(self):
+        self.manifest["units"] = [unit("NetworkManager.service")]
+        self.deploy()
+        self.manifest["units"] = []
+        self.native.calls.clear()
+        self.deploy()
+        self.assertEqual(
+            self.native.unit("NetworkManager.service"),
+            {"enabled": True, "active": True},
+        )
+        self.assertEqual(self.systemctl("disable", "stop"), [])
 
     def test_forget_drops_only_the_record_and_its_original(self):
         self.existing("hosts", "operator\n")

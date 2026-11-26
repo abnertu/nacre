@@ -124,7 +124,9 @@ Assign one owner to each resource. Feature modules contribute native resources t
 - Leave unchanged files and healthy services untouched.
 - Failure diagnostics keep stdout, stderr and partial timeout output, with secrets redacted.
 - `--verbose` reaches Nix, Home Manager and privileged adapters.
-- A withdrawn `environment.etc` entry removes the file that Nacre created, or restores the adopted original. Other disabled declarations only withdraw management.
+- A withdrawn `environment.etc` entry removes the file that Nacre created, or restores the adopted original.
+- A withdrawn authored unit stops, is disabled and goes away. A withdrawn packaged unit keeps running.
+- Other disabled declarations only withdraw management.
 - A withdrawn file that changed since Nacre wrote it stops the deployment.
 - `--purge` removes the managed Arch deployment state and skips Home Manager. It keeps packages, accounts, registrations and mutable data.
 - Deployment does no directory backups or garbage collection. It saves only the original of an adopted file, to restore it on withdrawal.

@@ -16,7 +16,7 @@ When you disable a declaration, Nacre withdraws management. Purge removes owned 
 
 `services.powerpanel` manages `/etc/pwrstatd.conf`, the `powerpanel` AUR package and `pwrstatd.service`. On power failure, its shutdown policy waits for the remaining-runtime threshold. It does not shut down immediately. Before you change the policy, inspect `powerfailShutdown`, `runtimeThreshold` and `lowbattShutdown`.
 
-The deployment user joins `power`. Thus it can run `pwrstat -status` and `pwrstat -config` without root. A changed daemon configuration records pending work and restarts a running service.
+The deployment user joins `power`. Thus it can run `pwrstat -status` and `pwrstat -config` without root. A changed daemon configuration restarts a running service once, through `restartTriggers`.
 
 ## Changes and recovery
 

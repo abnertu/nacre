@@ -137,6 +137,8 @@ deploy missing.log || status=$?
 
 step 'Update installs packages and converges'
 deploy update.log --update || { show update.log; fail 'update failed'; }
+podman exec "$name" systemctl is-active --quiet nacre-demo.service ||
+  fail 'the declared nacre-demo.service is not active'
 
 step 'Repeat deployment changes nothing'
 deploy repeat.log || { show repeat.log; fail 'repeat deployment failed'; }
@@ -160,6 +162,10 @@ step 'Purge withdraws managed state and keeps pacman usable'
 deploy purge.log --purge || { show purge.log; fail 'purge failed'; }
 podman exec "$name" pacman -Q >/dev/null || fail 'pacman is unusable after purge'
 if podman exec "$name" test -e /var/lib/nix-config/arch; then fail 'purge kept pending state'; fi
+if podman exec "$name" test -e /etc/systemd/system/nacre-demo.service ||
+  podman exec "$name" systemctl is-active --quiet nacre-demo.service; then
+  fail 'purge kept the declared nacre-demo.service'
+fi
 
 step 'nacre install deploys a new minimal machine from the template'
 # The files Nix sees in this checkout, as the machine flake's nacre input.

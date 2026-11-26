@@ -187,6 +187,22 @@ let
     modules: name:
     (lib.findFirst (entry: entry.name == name) null (evaluate modules).config.arch.etc).text;
   mainConf = "NetworkManager/conf.d/main.conf";
+  demoService = {
+    systemd.services.demo = {
+      description = "Demo";
+      after = [ "network.target" ];
+      environment.A = "1";
+      serviceConfig = {
+        ExecStart = [
+          ""
+          "/usr/bin/true"
+        ];
+        NoNewPrivileges = true;
+        TimeoutSec = 5;
+      };
+      wantedBy = [ "multi-user.target" ];
+    };
+  };
   relativeMessage =
     name: "environment.etc.\"${name}\" must be a relative path without empty, . or .. components";
 in
@@ -228,6 +244,34 @@ assert
     builtins.deepSeq (etcText [
       { environment.etc."sysctl.d/99-nix-config.conf".text = "x = 1\n"; }
     ] "sysctl.d/99-nix-config.conf") true
+  )).success;
+assert
+  (evaluate [ demoService ]).config.systemd.units."demo.service".text == ''
+    [Unit]
+    After=network.target
+    Description=Demo
+
+    [Service]
+    Environment="A=1"
+    ExecStart=
+    ExecStart=/usr/bin/true
+    NoNewPrivileges=true
+    TimeoutSec=5
+
+    [Install]
+    WantedBy=multi-user.target
+  '';
+assert
+  etcFailed (demoService // { environment.etc."systemd/system/demo.service".text = "x"; })
+  == [ "environment.etc.\"systemd/system/demo.service\" is the file of a systemd.units declaration" ];
+assert
+  !(builtins.tryEval (
+    builtins.deepSeq
+      (evaluate [
+        demoService
+        { systemd.units."demo.service".text = "[Service]\n"; }
+      ]).config.systemd.units."demo.service".text
+      true
   )).success;
 assert hotspotOverride.host.systemSettings.hotspot.channel == 149;
 assert hotspotOff.host.systemSettings.hotspot == null;
