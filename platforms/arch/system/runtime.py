@@ -32,7 +32,15 @@ from nix_adapter.system import (
     set_timezone,
 )
 from schema import Console, Locale, SystemRequest
-from state import KINDS, Receipt, digest, load_receipt, save_receipt
+from state import (
+    KINDS,
+    Receipt,
+    digest,
+    load_original,
+    load_receipt,
+    save_original,
+    save_receipt,
+)
 
 # Host identifiers keep the nix-config namespace, so existing machines need no
 # migration.
@@ -66,6 +74,21 @@ PENDING_ACTIONS = {
     "firewall": "firewall",
     "hotspot": "hotspot",
 }
+
+
+def without_block(text: str, block: str) -> str:
+    """`text` without the managed block named `block`."""
+    begin, end = f"# BEGIN {block}", f"# END {block}"
+    kept: list[str] = []
+    inside = False
+    for line in text.splitlines(keepends=True):
+        if line.strip() == begin:
+            inside = True
+        elif line.strip() == end:
+            inside = False
+        elif not inside:
+            kept.append(line)
+    return "".join(kept)
 
 
 def locale_key(name: str) -> str:
@@ -151,35 +174,84 @@ class System(BaseAdapter[SystemRequest]):
             {"kind": "dropin", "name": name, "path": path, "sha256": digest(text)},
         )
 
+    def declared(self, record: dict[str, Any]) -> bool:
+        """Whether the manifest still declares the setting of `record`."""
+        d = self.desired
+        kind = record["kind"]
+        if kind == "dropin":
+            return record["name"] in self.desired_dropins()
+        setting = {
+            "locale": "locale",
+            "console": "console",
+            "timezone": "timeZone",
+            "hostname": "hostname",
+        }.get(kind)
+        return setting is not None and d.get(setting) is not None
+
     def withdrawn(self, purge: bool = False) -> dict[str, dict[str, Any]]:
         """The records whose setting the manifest no longer declares."""
-        declared = {} if purge else self.desired_dropins()
         return {
             key: record
             for key, record in self.records.items()
-            if record["kind"] == "dropin" and record["name"] not in declared
+            if purge or not self.declared(record)
         }
 
+    def remember_file(self, key: str, path: str) -> str | None:
+        """Save the file that the first write of `key` replaces."""
+        if key in self.records:
+            return self.records[key].get("original")
+        if not self.files.path(path).exists():
+            return None
+        return save_original(self.files, path, self.files.read(path))
+
+    def record_file(self, key: str, path: str, original: str | None) -> None:
+        kind, _, name = key.partition(":")
+        self.record(
+            key,
+            {
+                "kind": kind,
+                "name": name,
+                "path": path,
+                "sha256": digest(self.files.read(path)),
+                "original": original,
+            },
+        )
+
+    def drift(self, key: str, record: dict[str, Any]) -> bool:
+        """Whether the state of a withdrawn record changed since Nacre set it."""
+        kind = record["kind"]
+        if kind == "timezone":
+            return self.localtime() != record["applied"]
+        if kind == "hostname":
+            return get_hostname(native=self.native) != record["applied"]
+        if key == "locale:gen":
+            return False  # The block markers prove ownership.
+        path = record["path"]
+        exists = self.files.path(path).exists()
+        return exists and digest(self.files.read(path)) != record["sha256"]
+
     def check_withdrawn(self, purge: bool = False) -> None:
-        """Raise `Conflict` if a withdrawn drop-in changed since Nacre wrote it."""
+        """Raise `Conflict` if a withdrawn record changed since Nacre set it."""
         for key, record in self.withdrawn(purge).items():
-            text = self.files.read(record["path"])
-            if (
-                self.files.path(record["path"]).exists()
-                and digest(text) != record["sha256"]
-            ):
+            if self.drift(key, record):
+                subject = record.get(
+                    "path", key.partition(":")[0].replace("timezone", "time zone")
+                )
                 raise Conflict(
-                    f"{record['path']} changed since Nacre wrote it; restore or delete it, "
+                    f"{subject} changed since Nacre set it; restore it, "
                     f"or run `nacre forget {key}` to leave it unmanaged"
                 )
 
     def withdraw(self, purge: bool = False) -> list[str]:
-        """Remove withdrawn drop-ins and apply the change; return their names."""
+        """Return withdrawn settings to their state before Nacre.
+
+        Return the names of the removed drop-ins.
+        """
         withdrawn = self.withdrawn(purge)
         removed = [
             record["name"]
             for record in withdrawn.values()
-            if self.remove(record["path"])
+            if record["kind"] == "dropin" and self.remove(record["path"])
         ]
         if removed:
             self.systemd.daemon_reload()
@@ -194,9 +266,61 @@ class System(BaseAdapter[SystemRequest]):
                 self.run("systemctl", "try-restart", units[name])
             elif name == "logind":
                 print("logind settings apply after the next boot.")
-        for key in withdrawn:
+        for key, record in withdrawn.items():
+            if record["kind"] != "dropin":
+                self.restore(key, record)
             self.drop(key)
         return removed
+
+    def restore(self, key: str, record: dict[str, Any]) -> None:
+        """Return one withdrawn value or file to its state before Nacre."""
+        kind = record["kind"]
+        if kind == "timezone":
+            if record["previous"] is None:
+                target = self.files.path("/etc/localtime", symlink_leaf=True)
+                if target.is_symlink():
+                    target.unlink()
+            elif self.localtime() != record["previous"]:
+                set_timezone(record["previous"], native=self.native)
+        elif kind == "hostname":
+            for flag in ("--static", "--transient"):
+                set_hostname(record["previous"], native=self.native, kind=flag)
+        elif key == "locale:gen":
+            path = record["path"]
+            text = without_block(self.files.read(path), LOCALE_BLOCK)
+            if text != self.files.read(path):
+                self.files.write(path, text)
+                self.run("locale-gen")
+        elif record["original"] is not None:
+            self.files.write(
+                record["path"], load_original(self.files, record["original"])
+            )
+        else:
+            self.remove(record["path"])
+        self.actions += 1
+        print(f"withdrew {key}")
+
+    def plan_withdrawn(self) -> list[Change]:
+        """The withdrawal of each setting that the manifest no longer declares."""
+        changes: list[Change] = []
+        for key, record in self.withdrawn().items():
+            kind = record["kind"]
+            if kind == "timezone":
+                changes.append(
+                    Change("~", f"time zone -> {record['previous'] or 'unset'}")
+                )
+            elif kind == "hostname":
+                changes.append(Change("~", f"hostname -> {record['previous']}"))
+            elif key == "locale:gen":
+                changes.append(Change("~", f"{record['path']} (remove managed block)"))
+            elif self.files.path(record["path"]).exists():
+                note = (
+                    "restore original"
+                    if record.get("original")
+                    else "withdrawn, remove"
+                )
+                changes.append(Change("~", f"{record['path']} ({note})"))
+        return changes
 
     def boot_id(self) -> str:
         # A kernel pseudo-file, not a managed path: skip ownership checks.
@@ -460,6 +584,9 @@ class System(BaseAdapter[SystemRequest]):
             self.generated_locales(locale_gen_path, value["generated"]),
             "locale",
         )
+        self.record(
+            "locale:gen", {"kind": "locale", "name": "gen", "path": locale_gen_path}
+        )
 
         if f.pending("locale") or self.absent_locales(value["generated"]):
             f.mark("locale")
@@ -470,11 +597,13 @@ class System(BaseAdapter[SystemRequest]):
                     "required locales were not generated: " + " ".join(absent)
                 )
         locale_conf_path = self.path_str("localeConf", "/etc/locale.conf")
+        original = self.remember_file("locale:conf", locale_conf_path)
         self.write(
             locale_conf_path,
             self.locale_conf(locale_conf_path, value["lang"]),
             "locale",
         )
+        self.record_file("locale:conf", locale_conf_path, original)
         f.clear("locale")
 
     def converge_timezone(self, zone: str) -> None:
@@ -483,6 +612,11 @@ class System(BaseAdapter[SystemRequest]):
         localtime_path = self.path_str("localtime", "/etc/localtime")
         target = f.path(localtime_path, symlink_leaf=True)
         expected = "/usr/share/zoneinfo/" + zone
+        previous = (
+            self.records["timezone:zone"]["previous"]
+            if "timezone:zone" in self.records
+            else (self.localtime() if target.is_symlink() else None)
+        )
         matches = target.is_symlink() and os.readlink(target) in (
             expected,
             ".." + expected,
@@ -508,11 +642,20 @@ class System(BaseAdapter[SystemRequest]):
                 raise Conflict("timezone did not converge")
             self.updates += int(f.repair_metadata(localtime_path, symlink=True))
             f.clear("timezone")
+        self.record(
+            "timezone:zone",
+            {"kind": "timezone", "name": "zone", "applied": zone, "previous": previous},
+        )
 
     def converge_hostname(self, hostname: str) -> None:
         """Set the static and transient hostname, and repair /etc/hostname."""
         f = self.files
         hostname_path = self.path_str("hostnameFile", "/etc/hostname")
+        previous = (
+            self.records["hostname:static"]["previous"]
+            if "hostname:static" in self.records
+            else get_hostname(native=self.native)
+        )
         for kind in ("--static", "--transient"):
             actual = get_hostname(native=self.native, kind=kind)
             if actual != hostname or (
@@ -527,6 +670,15 @@ class System(BaseAdapter[SystemRequest]):
             f.mark("hostname")
             self.updates += int(f.repair_metadata(hostname_path))
         f.clear("hostname")
+        self.record(
+            "hostname:static",
+            {
+                "kind": "hostname",
+                "name": "static",
+                "applied": hostname,
+                "previous": previous,
+            },
+        )
 
     def converge_dropin(self, name: str, text: str) -> None:
         """Install the drop-in of service `name` and apply it."""
@@ -579,10 +731,12 @@ class System(BaseAdapter[SystemRequest]):
         """Prepare the console keymap and font for the next boot."""
         f = self.files
         vconsole_path = self.path_str("vconsole", "/etc/vconsole.conf")
+        original = self.remember_file("console:vconsole", vconsole_path)
         if self.write(vconsole_path, self.console(console), "console") or f.pending(
             "console"
         ):
             print("Console configuration is prepared for the next boot.")
+        self.record_file("console:vconsole", vconsole_path, original)
         f.clear("console")
 
     def converge_trim(self) -> None:
@@ -604,11 +758,7 @@ class System(BaseAdapter[SystemRequest]):
         """What converge would change, judged the way converge judges it."""
         self.preflight(installed=True)
         d = self.desired
-        changes: list[Change] = [
-            Change("~", f"{record['path']} (withdrawn, remove)")
-            for record in self.withdrawn().values()
-            if self.files.path(record["path"]).exists()
-        ]
+        changes = self.plan_withdrawn()
         if (locale := d["locale"]) is not None:
             changes += self.plan_locale(locale)
         if (zone := d["timeZone"]) is not None:

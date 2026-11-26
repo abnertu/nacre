@@ -419,6 +419,83 @@ class SystemTests(unittest.TestCase):
             lines,
         )
 
+    def test_withdrawn_locale_restores_locale_conf_and_drops_the_block(self):
+        self.locale()
+        self.converge()
+        self.assertIn("nix-config locales", self.files.read("/etc/locale.gen"))
+        self.d["locale"] = None
+        self.native.calls.clear()
+        self.converge()
+        self.assertEqual(
+            self.files.read("/etc/locale.conf"),
+            "# operator\nLANG=old\nLC_TIME=zh_TW.UTF-8\n",
+        )
+        self.assertEqual(
+            self.files.read("/etc/locale.gen"),
+            "# operator\nen_US.UTF-8 UTF-8  \nde_DE.UTF-8 UTF-8\n",
+        )
+        self.assertIn(("locale-gen",), self.native.calls)
+        self.assertEqual(self.receipt(), {})
+
+    def test_withdrawn_locale_removes_a_locale_conf_that_nacre_created(self):
+        self.locale()
+        self.files.path("/etc/locale.conf").unlink()
+        self.converge()
+        self.d["locale"] = None
+        self.converge()
+        self.assertFalse(self.files.path("/etc/locale.conf").exists())
+
+    def test_withdrawn_console_restores_vconsole_conf(self):
+        self.d["console"] = {"keymap": "us", "font": None}
+        self.write("/etc/vconsole.conf", "KEYMAP=de\nFONT=keep\n")
+        self.write("/usr/share/kbd/keymaps/us.map.gz", "fixture")
+        self.converge()
+        self.d["console"] = None
+        self.converge()
+        self.assertEqual(
+            self.files.read("/etc/vconsole.conf"), "KEYMAP=de\nFONT=keep\n"
+        )
+
+    def test_withdrawn_time_zone_and_hostname_return_to_their_originals(self):
+        self.timezone()
+        self.write("/usr/share/zoneinfo/Europe/Paris", "fixture")
+        self.native.timedatectl(["set-timezone", "Europe/Paris"])
+        self.d["hostname"] = "fixture"
+        self.converge()
+        self.assertEqual(
+            (self.native.zone, self.native.host["--static"]), ("Asia/Taipei", "fixture")
+        )
+        self.d.update(timeZone=None, hostname=None)
+        self.converge()
+        self.assertEqual(self.native.zone, "Europe/Paris")
+        self.assertEqual(self.native.host, {"--static": "old", "--transient": "old"})
+        self.assertEqual(self.receipt(), {})
+
+    def test_withdrawn_time_zone_without_an_original_removes_localtime(self):
+        self.timezone()
+        self.converge()
+        self.d["timeZone"] = None
+        self.converge()
+        localtime = self.files.path("/etc/localtime", symlink_leaf=True)
+        self.assertFalse(localtime.is_symlink() or localtime.exists())
+
+    def test_changed_withdrawn_values_stop_preflight_and_name_forget(self):
+        self.timezone()
+        self.d["hostname"] = "fixture"
+        self.write("/usr/share/zoneinfo/Europe/Paris", "fixture")
+        self.converge()
+        self.native.host["--static"] = "renamed"
+        self.native.timedatectl(["set-timezone", "Europe/Paris"])
+        self.d.update(timeZone=None, hostname=None)
+        with self.assertRaisesRegex(
+            Conflict, "nacre forget (timezone:zone|hostname:static)"
+        ):
+            System(self.d, self.files, self.native).preflight()
+        System(dict(self.d, forget="hostname:static"), self.files, self.native).forget()
+        System(dict(self.d, forget="timezone:zone"), self.files, self.native).forget()
+        self.converge()
+        self.assertEqual(self.native.host["--static"], "renamed")
+
     def test_purge_removes_owned_dropins_and_keeps_system_values(self):
         names = ("timesyncd", "journald", "logind")
         self.write("/etc/locale.conf", "LANG=en_US.UTF-8\n")
