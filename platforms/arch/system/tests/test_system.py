@@ -79,6 +79,8 @@ class Fake(FakeNative):
         self.radio = None
         # Local ports of established inbound TCP connections: ss -Htn.
         self.established: list[str] = []
+        # Listening ports for ss -Htln; None means the established ones.
+        self.listening: list[str] | None = None
 
     def unit(self, name):
         return self.units.setdefault(
@@ -108,12 +110,7 @@ class Fake(FakeNative):
             "ip": self.ip,
             "lsblk": lambda _: (0, json.dumps({"blockdevices": self.disks})),
             "ufw": self.ufw,
-            "ss": lambda _: (
-                0,
-                "".join(
-                    f"0 0 10.0.0.2:{port} 10.0.0.9:51000\n" for port in self.established
-                ),
-            ),
+            "ss": self.ss,
             "iptables": lambda rest: self.iptables(rest, v6=False),
             "ip6tables": lambda rest: self.iptables(rest, v6=True),
         }.get(cmd)
@@ -203,6 +200,16 @@ class Fake(FakeNative):
         else:
             raise AssertionError(rest)
         return 0, ""
+
+    def ss(self, rest):
+        if rest[0] == "-Htln":
+            ports = self.listening if self.listening is not None else self.established
+            return 0, "".join(
+                f"LISTEN 0 128 0.0.0.0:{port} 0.0.0.0:*\n" for port in ports
+            )
+        return 0, "".join(
+            f"0 0 10.0.0.2:{port} 10.0.0.9:51000\n" for port in self.established
+        )
 
     def ufw_delete(self, rest):
         # Real UFW deletes a route rule only as `ufw route delete ...`.
@@ -466,6 +473,29 @@ class SystemTests(unittest.TestCase):
             "# operator\nen_US.UTF-8 UTF-8  \nde_DE.UTF-8 UTF-8\n",
         )
         self.assertIn(("locale-gen",), self.native.calls)
+        self.assertEqual(self.receipt(), {})
+
+    def test_interrupted_locale_write_keeps_the_original(self):
+        self.locale()
+        self.converge()
+        records = self.root / "var/lib/nix-config/arch/receipts/system.json"
+        data = json.loads(records.read_text())
+        del data["records"]["locale:conf"]  # A crash before the record.
+        records.write_text(json.dumps(data))
+        self.converge()
+        self.d["locale"] = None
+        self.converge()
+        self.assertIn("LANG=old", self.files.read("/etc/locale.conf"))
+
+    def test_interrupted_hostname_change_is_not_drift(self):
+        self.d["hostname"] = "fixture"
+        self.native.fail = ("hostnamectl", "--static", "set-hostname")
+        with self.assertRaises(Conflict):
+            self.converge()
+        self.native.fail = None
+        self.d["hostname"] = None
+        self.converge()
+        self.assertEqual(self.native.host["--static"], "old")
         self.assertEqual(self.receipt(), {})
 
     def test_withdrawn_locale_removes_a_locale_conf_that_nacre_created(self):
@@ -955,16 +985,32 @@ class SystemTests(unittest.TestCase):
         self.converge()
         self.assertIn(("1234", "tcp", False), self.native.rules)
 
-    def test_firewall_withdrawal_that_would_disable_ufw_stops(self):
+    def test_firewall_withdrawal_that_would_disable_ufw_stops_before_any_change(self):
         self.firewall()
+        self.d["firewall"]["rules"].append(
+            {"protocol": "tcp", "fromPort": 22, "toPort": None}
+        )
         self.native.active = False
         self.converge()
         self.d["firewall"] = None
+        self.native.calls.clear()
         with self.assertRaisesRegex(
             Conflict, "ufw disable.*nacre forget firewall:state"
         ):
             self.converge()
         self.assertTrue(self.native.active)
+        self.assertIn(("22", "tcp", False), self.native.rules)
+        self.assertEqual(self.ufw_calls("delete"), [])
+
+    def test_outbound_connection_does_not_block_a_rule_withdrawal(self):
+        self.nacre_rule()
+        self.native.established = ["1234"]
+        self.native.listening = []
+        self.d["firewall"]["rules"] = [
+            {"protocol": "tcp", "fromPort": 7777, "toPort": None}
+        ]
+        self.converge()
+        self.assertNotIn(("1234", "tcp", False), self.native.rules)
 
     def test_firewall_withdrawal_restores_stricter_values_and_refuses_lower_logging(
         self,

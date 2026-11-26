@@ -65,6 +65,8 @@ class Core(BaseAdapter[CoreRequest]):
             context=context,
         )
         self._receipt: Receipt | None = None
+        # A host whose nix.conf block marks receipts but whose receipt is gone.
+        self.lost_receipt = False
 
     # Pending markers keep their historic names so interrupted runs resume.
     @property
@@ -74,7 +76,19 @@ class Core(BaseAdapter[CoreRequest]):
             "repositories": self.repositories,
             "finish": self.finish,
             "forget": self.forget,
+            "purgecheck": self.purge_check,
+            "retire": self.retire,
         }
+
+    def purge_check(self) -> None:
+        """Check every record for drift before purge changes anything."""
+        self.check_host()
+        self.check_etc(converging=False, purge=True)
+        self.check_runtime(purge=True)
+
+    def retire(self) -> None:
+        """Run the recorded purge phase of each removed extension."""
+        self.withdraw_extensions(purge=True)
 
     def marker(self, action: str) -> str:
         return f"{STATE}/{action}.pending"
@@ -131,7 +145,11 @@ class Core(BaseAdapter[CoreRequest]):
     @property
     def receipt(self) -> Receipt:
         if self._receipt is None:
-            self._receipt = load_receipt(self.files) or {
+            loaded = load_receipt(self.files)
+            if loaded is None:
+                lines = self.files.read("/etc/nix/nix.conf").splitlines()
+                self.lost_receipt = RECEIPT_LINE in lines
+            self._receipt = loaded or {
                 "version": VERSION,
                 "records": {},
                 "triggers": {},
@@ -335,8 +353,14 @@ class Core(BaseAdapter[CoreRequest]):
         d = self.desired
         for key in self.state_withdrawn("sysctl", set(d["sysctl"]), purge):
             record = self.state_records[key]
-            live = self.run("sysctl", "-n", record["name"]).stdout.strip()
-            if live != record["applied"]:
+            query = self.run("sysctl", "-n", record["name"], check=False)
+            # A missing key, the value before Nacre or the boot value is no edit.
+            expected = {
+                record["applied"],
+                record["previous"],
+                self.boot_value(record["name"]),
+            }
+            if query.returncode == 0 and query.stdout.strip() not in expected:
                 raise Conflict(
                     f"sysctl {record['name']} changed since Nacre set it; restore it, "
                     f"or run `nacre forget {key}` to leave it unmanaged"
@@ -352,7 +376,12 @@ class Core(BaseAdapter[CoreRequest]):
                 )
 
     def boot_value(self, key: str) -> str | None:
-        """The value that the sysctl.d files give `key` at boot, if any."""
+        """The value that the sysctl.d files give `key` at boot, if any.
+
+        A file that the manifest declares counts with its declared text, so a
+        plan sees the file that convergence writes.
+        """
+        declared = {entry["path"]: entry["text"] for entry in self.desired["etc"]}
         chosen: dict[str, str] = {}
         for directory in reversed(SYSCTL_DIRS):  # Higher precedence overrides.
             path = self.files.path(directory)
@@ -361,7 +390,10 @@ class Core(BaseAdapter[CoreRequest]):
                     chosen[file.name] = self.files.system_name(file)
         value = None
         for name in sorted(chosen):
-            for line in self.files.read(chosen[name]).splitlines():
+            text = declared.get(chosen[name])
+            if text is None:
+                text = self.files.read(chosen[name])
+            for line in text.splitlines():
                 setting, separator, assigned = line.partition("=")
                 setting = setting.strip().lstrip("-")
                 if separator and setting == key:
@@ -391,8 +423,9 @@ class Core(BaseAdapter[CoreRequest]):
             self.drop_state(key)
         for key in self.state_withdrawn("sysctl", set(d["sysctl"]), purge):
             record = self.state_records[key]
+            query = self.run("sysctl", "-n", record["name"], check=False)
             value = self.boot_value(record["name"]) or record["previous"]
-            if value is not None and value != record["applied"]:
+            if query.returncode == 0 and value not in (None, query.stdout.strip()):
                 self.run("sysctl", "-w", f"{record['name']}={value}")
                 self.actions += 1
             self.drop_state(key)
@@ -486,7 +519,13 @@ class Core(BaseAdapter[CoreRequest]):
         )
         if record is not None:
             original = record["original"]
-        elif current is None or "nix-config" in Path(entry["path"]).name:
+        elif (
+            current is None
+            or "nix-config" in Path(entry["path"]).name
+            # On a lost-receipt host, a file identical to its declaration is
+            # Nacre's own: withdrawal removes it instead of restoring it.
+            or (self.lost_receipt and current[0] == entry["text"])
+        ):
             original = None
         else:
             original = self.save_original(entry["path"], current)
@@ -810,8 +849,9 @@ class Core(BaseAdapter[CoreRequest]):
         changed = False
         for group in self.desired["groups"]:
             if group not in current:
-                self.run("gpasswd", "--add", user, group)
+                # Record first: a crash after the change still leaves its record.
                 self.record_state(f"group:{group}", {"kind": "group", "name": group})
+                self.run("gpasswd", "--add", user, group)
                 changed = True
         return changed
 
@@ -836,21 +876,22 @@ class Core(BaseAdapter[CoreRequest]):
         )
 
     def converge_kernel(self) -> None:
-        """Load the declared modules and set the declared sysctl values."""
+        """Load the declared modules and set the declared sysctl values.
+
+        Each record is saved before its change, so a crash in between still
+        leaves a record that withdrawal reverts.
+        """
         d = self.desired
         for module in d["kernelModules"]:
             if not (self.root / "sys/module" / module).is_dir():
-                self.run("modprobe", module)
                 self.record_state(
                     f"module:{module}", {"kind": "module", "name": module}
                 )
+                self.run("modprobe", module)
                 self.actions += 1
         for key, value in d["sysctl"].items():
             current = self.run("sysctl", "-n", key).stdout.strip()
             record = self.state_records.get(f"sysctl:{key}")
-            if current != value:
-                self.run("sysctl", "-w", f"{key}={value}")
-                self.actions += 1
             if current != value or record is not None:
                 previous = record["previous"] if record else current
                 self.record_state(
@@ -862,15 +903,17 @@ class Core(BaseAdapter[CoreRequest]):
                         "previous": previous,
                     },
                 )
+            if current != value:
+                self.run("sysctl", "-w", f"{key}={value}")
+                self.actions += 1
 
     def converge_capabilities(self) -> None:
-        """Set the declared file capabilities."""
+        """Set the declared file capabilities, each recorded before its change."""
         d = self.desired
         for entry in d["fileCapabilities"]:
             target = self.resolve(entry["path"])
             expected = f"{target} {entry['capability']}"
             if self.run("getcap", target).stdout.strip() != expected:
-                self.run("setcap", entry["capability"].replace("=", "+"), target)
                 self.record_state(
                     f"capability:{entry['path']}",
                     {
@@ -880,6 +923,7 @@ class Core(BaseAdapter[CoreRequest]):
                         "capability": entry["capability"],
                     },
                 )
+                self.run("setcap", entry["capability"].replace("=", "+"), target)
                 self.actions += 1
 
     def resolve(self, name: str) -> str:
@@ -964,6 +1008,11 @@ class Core(BaseAdapter[CoreRequest]):
             changes.append(
                 Change("~", f"unload kernel module {self.state_records[key]['name']}")
             )
+        declared_extensions = {extension["name"] for extension in d["extensions"]}
+        for key in self.state_withdrawn("extension", declared_extensions, purge=False):
+            record = self.state_records[key]
+            action = "run the purge phase of" if record["purge"] else "forget"
+            changes.append(Change("~", f"{action} removed extension {record['name']}"))
         if d["repository"] is None:
             changes += [
                 Change("~", f"remove repository {self.state_records[key]['name']}")
@@ -1079,6 +1128,9 @@ class Core(BaseAdapter[CoreRequest]):
         """Remove a managed block; restart nix-daemon after its block changes."""
         text = self.without_block(block)
         if text is None or text == self.files.read(block["path"]):
+            # A purge that stopped before its rebuild resumes the rebuild.
+            if block["action"] == "initramfs" and self.pending("initramfs"):
+                self.initramfs()
             return
         if block["action"] == "initramfs":
             self.mark("initramfs")  # Record the intent before the boot change.

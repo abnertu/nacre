@@ -334,6 +334,12 @@ class ArchSwitchTests(unittest.TestCase):
         self.assertEqual(self.state["forget_adapter"], "/fixture/core-adapter")
         self.invoke("--forget", "extension:babu")
         self.assertEqual(self.state["forget_adapter"], "/fixture/core-adapter")
+        ai = self.root / "ai-manifest.json"
+        ai.write_text(json.dumps({"llama": False}))
+        self.config["adapters"]["ai"]["manifest"] = str(ai)
+        self.write_config()
+        self.invoke("--forget", "ai:serve")
+        self.assertEqual(self.state["forget_adapter"], "/fixture/ai-adapter")
         system = self.root / "system-manifest.json"
         system.write_text(json.dumps({"files": {}}))
         self.config["adapters"]["system"]["manifest"] = str(system)
@@ -353,11 +359,27 @@ class ArchSwitchTests(unittest.TestCase):
             with self.subTest(args):
                 self.invoke(*args, code=2)
 
+    def test_purge_stops_on_a_failed_check_before_any_hook_or_retirement(self):
+        self.config["extensions"][0]["purge"] = True
+        self.write_config()
+        for adapter in ("/fixture/core-adapter", "/fixture/system-adapter"):
+            with self.subTest(adapter):
+                (self.root / "commands.jsonl").unlink(missing_ok=True)
+                self.state["fail_phase"] = [adapter, "purgecheck"]
+                self.save()
+                self.invoke("--purge", code=1)
+                phases = [call[3] for call in self.commands() if call[0] == "python"]
+                self.assertNotIn("purge", phases)
+                self.assertNotIn("retire", phases)
+
     def test_purge_withdraws_ai_then_system_then_core(self):
         self.invoke("--purge")
         self.assertEqual(
             [call for call in self.commands() if call[0] == "python"],
             [
+                [*CORE, "purgecheck"],
+                [*SYSTEM, "purgecheck"],
+                [*CORE, "retire"],
                 ["python", "/fixture/ai-adapter", "/fixture/ai-manifest", "purge"],
                 [*SYSTEM, "purge"],
                 [*CORE, "purge"],

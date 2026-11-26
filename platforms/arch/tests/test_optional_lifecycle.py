@@ -165,8 +165,11 @@ class OptionalLifecycleTests(unittest.TestCase):
         self.assertEqual(
             [(call[1], call[3:]) for call in calls],
             [
+                ("/fixture/core-adapter", ["purgecheck", "--verbose"]),
+                ("/fixture/system-adapter", ["purgecheck", "--verbose"]),
                 ("/fixture/extension-adapter", ["purge", "--verbose"]),
                 ("/fixture/second-adapter", ["purge", "--verbose"]),
+                ("/fixture/core-adapter", ["retire", "--verbose"]),
                 ("/fixture/ai-adapter", ["purge", "--verbose"]),
                 ("/fixture/system-adapter", ["purge", "--verbose"]),
                 ("/fixture/core-adapter", ["purge", "--verbose"]),
@@ -197,10 +200,22 @@ class OptionalLifecycleTests(unittest.TestCase):
                     [
                         [
                             "python",
+                            "/fixture/core-adapter",
+                            "/fixture/core-manifest",
+                            "purgecheck",
+                        ],
+                        [
+                            "python",
+                            "/fixture/system-adapter",
+                            "/fixture/system-manifest",
+                            "purgecheck",
+                        ],
+                        [
+                            "python",
                             "/fixture/extension-adapter",
                             "/fixture/extension-manifest",
                             "purge",
-                        ]
+                        ],
                     ],
                 )
 

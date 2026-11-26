@@ -520,6 +520,16 @@ class CoreTests(Harness):
         self.assertFalse((self.root / "sys/module/br_netfilter").exists())
         self.assertFalse((self.root / STATE).exists())
 
+    def test_interrupted_purge_still_rebuilds_the_boot_images(self):
+        self.deploy()
+        self.native.fail = ("mkinitcpio",)
+        with self.assertRaises(Conflict):
+            self.core().purge()
+        self.native.fail = None
+        self.native.calls.clear()
+        self.core().purge()
+        self.assertIn(("mkinitcpio", "-P"), self.native.calls)
+
     def test_purge_stops_on_runtime_drift_before_any_change(self):
         self.deploy()
         self.native.sysctl["net.ipv4.ip_forward"] = "7"
@@ -748,6 +758,18 @@ class EtcTests(Harness):
         self.deploy()
         self.assertFalse(self.path("sysctl.d/99-nix-config.conf").exists())
 
+    def test_lost_receipt_records_an_identical_file_as_nacre_created(self):
+        name = "systemd/system/getty@tty1.service.d/overrides.conf"
+        self.manifest["etc"] = [
+            entry(name, "[Service]\n", unit="getty@tty1.service", dropin=True)
+        ]
+        self.deploy()
+        (self.root / STATE / "receipts/core.json").unlink()
+        self.deploy()
+        self.manifest["etc"] = []
+        self.deploy()
+        self.assertFalse(self.path(name).exists())
+
     def test_host_of_an_older_version_stops_preflight(self):
         (self.root / "etc/nix/nix.conf").write_text(OLD_BLOCK)
         with self.assertRaisesRegex(Conflict, "older Nacre.*nacre purge"):
@@ -903,6 +925,32 @@ class EtcTests(Harness):
         )
         self.assertNotIn("repository:lizardbyte", self.runtime_state())
 
+    def test_runtime_changes_are_recorded_before_they_happen(self):
+        self.bare()
+        self.manifest.update(groups=["i2c"], sysctl={"net.ipv4.ip_forward": "1"})
+        for command in (("gpasswd",), ("sysctl", "-w")):
+            with self.subTest(command):
+                self.native.fail = command
+                with self.assertRaises(Conflict):
+                    self.deploy()
+        self.native.fail = None
+        self.assertEqual(
+            set(self.runtime_state()), {"group:i2c", "sysctl:net.ipv4.ip_forward"}
+        )
+        self.bare()
+        self.deploy()  # The value never changed: no false drift, nothing to revert.
+        self.assertEqual(self.runtime_state(), {})
+
+    def test_reset_or_missing_sysctl_key_is_not_drift(self):
+        self.bare()
+        self.manifest["sysctl"] = {"net.ipv4.ip_forward": "1"}
+        self.deploy()
+        self.existing("sysctl.d/10-boot.conf", "net.ipv4.ip_forward = 2\n")
+        self.native.sysctl["net.ipv4.ip_forward"] = "2"  # A reboot applied the files.
+        self.bare()
+        self.deploy()
+        self.assertEqual(self.runtime_state(), {})
+
     def test_withdrawn_group_that_nacre_added_goes_and_wheel_stays(self):
         self.bare()
         self.native.groups |= {"audio"}
@@ -1057,6 +1105,23 @@ class EtcTests(Harness):
         self.deploy()
         self.core().purge()
         self.assertIsNone(self.root_link("python"))
+
+    def test_plan_reverts_a_key_that_nacre_s_own_sysctl_file_still_sets(self):
+        self.bare()
+        self.manifest["sysctl"] = {"net.ipv4.ip_forward": "1"}
+        self.manifest["etc"] = [
+            entry("sysctl.d/99-nix-config.conf", "net.ipv4.ip_forward = 1\n")
+        ]
+        self.deploy()
+        self.manifest["sysctl"] = {}
+        self.manifest["etc"] = [entry("sysctl.d/99-nix-config.conf", "")]
+        self.assertIn("~ sysctl net.ipv4.ip_forward: 1 -> 0", self.plan())
+
+    def test_plan_names_the_hook_of_a_removed_extension(self):
+        self.manifest["extensions"] = [self.extension()]
+        self.deploy()
+        self.manifest["extensions"] = []
+        self.assertIn("~ run the purge phase of removed extension babu", self.plan())
 
     def test_forget_drops_only_the_record_and_its_original(self):
         self.existing("hosts", "operator\n")

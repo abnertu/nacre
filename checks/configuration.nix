@@ -384,6 +384,10 @@ assert
     names = map (p: p.pname or p.name) (homeWith { home.packages = [ pkgs.hello ]; }).home.packages;
   in
   builtins.elem "cava" names && builtins.elem "hello" names;
+assert
+  etcFailed { systemd.services.llama-swap.serviceConfig.ExecStart = "/usr/bin/true"; } == [
+    "systemd.units.\"llama-swap.service\" renders a path that another Nacre owner writes"
+  ];
 assert hotspotOverride.host.systemSettings.hotspot.channel == 149;
 assert hotspotOff.host.systemSettings.hotspot == null;
 assert hotspotParentOff.host.systemSettings.hotspot == null;

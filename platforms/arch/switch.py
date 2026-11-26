@@ -465,9 +465,11 @@ class Switch:
     def forget(self, record: str) -> None:
         """Drop one receipt record; the native state stays.
 
-        Core owns its CORE_KINDS records; the system adapter owns the others.
+        Core owns its CORE_KINDS records, the AI adapter its `ai:` records,
+        and the system adapter the others.
         """
-        name = "core" if record.partition(":")[0] in CORE_KINDS else "system"
+        kind = record.partition(":")[0]
+        name = "core" if kind in CORE_KINDS else "ai" if kind == "ai" else "system"
         packaged = Path(self.config["adapters"][name]["manifest"])
         manifest = json.loads(packaged.read_text())
         manifest["forget"] = record
@@ -482,10 +484,15 @@ class Switch:
         """Remove the managed Arch state: optional services, drop-ins, then core."""
         with self.progress.task("Purge managed Arch state", total=1) as task:
             self.native("sudo", "-v")
+            # Every record is checked before any change, so drift stops purge first.
+            self.require("core", "purgecheck")
+            self.require("system", "purgecheck")
             # Retirement is explicit: readiness cannot skip an opted-in hook.
             for extension in self.config["extensions"]:
                 if extension.get("purge", False):
                     self.require(extension["name"], "purge")
+            # Removed extensions retire with their recorded adapters, before built-ins.
+            self.require("core", "retire")
             # Optional services first, then system drop-ins; core removes pending state.
             self.require("ai", "purge")
             self.require("system", "purge")

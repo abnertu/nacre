@@ -128,7 +128,9 @@ Assign one owner to each resource. Feature modules contribute native resources t
 - A withdrawn authored unit stops, is disabled and goes away. A withdrawn packaged unit keeps running.
 - A withdrawn system setting returns to its value before Nacre. UFW withdrawals that loosen protection stop, and purge keeps UFW.
 - A removed extension runs its recorded purge phase when it opted in with `purge = true`.
-- Other disabled declarations only withdraw management.
+- Withdrawn groups, file capabilities, sysctl keys, kernel modules, the repository and the AI services return to their state before Nacre. `wheel` stays.
+- Withdrawn packages and packaged units only leave management.
+- Save each receipt record before its native change, so a crash in between leaves a record that withdrawal can revert.
 - A withdrawn file that changed since Nacre wrote it stops the deployment.
 - `--purge` uninstalls Nacre through the withdrawal path and skips Home Manager. It keeps packages, accounts, registrations, mutable data and UFW.
 - Deployment does no directory backups or garbage collection. It saves only the original of an adopted file, to restore it on withdrawal.

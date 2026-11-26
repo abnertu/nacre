@@ -19,6 +19,17 @@ let
     || lib.hasSuffix "/" name
     || lib.any (part: part == "" || part == "." || part == "..") (lib.splitString "/" name);
   # Paths that authored units and drop-ins render to, relative to /etc.
+  unitPath =
+    name: unit:
+    if unit.overrideStrategy == "asDropin" then
+      "systemd/system/${name}.d/overrides.conf"
+    else
+      "systemd/system/${name}";
+  authoredUnits = lib.filterAttrs (_: unit: unit.enable && unit.text != null) config.systemd.units;
+  unitAssertions = lib.mapAttrsToList (name: unit: {
+    assertion = !isReserved (unitPath name unit);
+    message = "systemd.units.\"${name}\" renders a path that another Nacre owner writes";
+  }) authoredUnits;
   unitPaths = lib.mapAttrsToList (
     name: unit:
     if unit.overrideStrategy == "asDropin" then
@@ -79,6 +90,7 @@ in
 {
   assertions =
     etcAssertions
+    ++ unitAssertions
     ++ excludeAssertions
     ++ [
       {

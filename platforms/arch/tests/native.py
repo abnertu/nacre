@@ -37,8 +37,14 @@ ADAPTERS = {
 
 if command == "python":
     adapter, manifest, phase, *rest = args
+    if state.get("fail_phase") == [adapter, phase]:
+        sys.exit(1)
     if phase == "forget":
-        assert adapter in ("/fixture/core-adapter", "/fixture/system-adapter"), args
+        assert adapter in (
+            "/fixture/core-adapter",
+            "/fixture/system-adapter",
+            "/fixture/ai-adapter",
+        ), args
         state["forget_adapter"] = adapter
         state["forget_request"] = json.loads(Path(manifest).read_text())
         save()
@@ -53,7 +59,11 @@ if command == "python":
             "converge",
             "finish",
             "purge",
+            "purgecheck",
+            "retire",
         )
+    elif adapter == "/fixture/system-adapter":
+        assert phase in ("preflight", "plan", "converge", "purge", "purgecheck"), args
     else:
         assert phase in ("preflight", "plan", "converge", "purge"), args
     optional = ADAPTERS[adapter][1]

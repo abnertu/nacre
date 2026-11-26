@@ -61,3 +61,13 @@ class AIManifest(TypedDict):
     httpsPort: int
     paths: Paths
     generated: Generated
+
+
+class AIRequest(AIManifest, total=False):
+    """The manifest, plus the record that `arch-switch --forget` drops."""
+
+    forget: str
+
+
+class UnmanagedRequest(Unmanaged, total=False):
+    forget: str

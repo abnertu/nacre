@@ -11,7 +11,14 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
-from firewall import Firewall, declared_rules, withdraw_rule, withdraw_state
+from firewall import (
+    Firewall,
+    declared_rules,
+    rule_refusal,
+    state_refusal,
+    withdraw_rule,
+    withdraw_state,
+)
 from hotspot import Hotspot, hotspot_drifted, withdraw_hotspot
 from nix_adapter import (
     AdapterContext,
@@ -34,6 +41,7 @@ from nix_adapter.system import (
 )
 from schema import Console, Locale, SystemRequest
 from state import (
+    ADOPTED,
     KINDS,
     Receipt,
     digest,
@@ -119,7 +127,11 @@ class System(BaseAdapter[SystemRequest]):
 
     @property
     def phases(self) -> dict[str, Callable[[], None]]:
-        return {"forget": self.forget}
+        return {"forget": self.forget, "purgecheck": self.purge_check}
+
+    def purge_check(self) -> None:
+        """Check every record for drift before purge changes anything."""
+        self.check_withdrawn(purge=True)
 
     # The receipt records what this adapter changed, so a withdrawn setting
     # can return to the state before Nacre.
@@ -209,6 +221,10 @@ class System(BaseAdapter[SystemRequest]):
         """Save the file that the first write of `key` replaces."""
         if key in self.records:
             return self.records[key].get("original")
+        # A run that crashed after saving keeps its original: never save again.
+        saved = f"{ADOPTED}/{digest(path)}.json"
+        if self.files.path(saved).exists():
+            return saved
         if not self.files.path(path).exists():
             return None
         return save_original(self.files, path, self.files.read(path))
@@ -233,10 +249,12 @@ class System(BaseAdapter[SystemRequest]):
             return False  # Withdrawal checks UFW itself.
         if kind == "hotspot":
             return hotspot_drifted(self, record)
+        # A run that stopped before its change leaves the value before Nacre.
         if kind == "timezone":
-            return self.localtime() != record["applied"]
+            return self.localtime() not in (record["applied"], record["previous"])
         if kind == "hostname":
-            return get_hostname(native=self.native) != record["applied"]
+            live = get_hostname(native=self.native)
+            return live not in (record["applied"], record["previous"])
         if key == "locale:gen":
             return False  # The block markers prove ownership.
         path = record["path"]
@@ -254,6 +272,15 @@ class System(BaseAdapter[SystemRequest]):
                     f"{subject} changed since Nacre set it; restore it, "
                     f"or run `nacre forget {key}` to leave it unmanaged"
                 )
+        if purge:  # Purge keeps UFW, so nothing about it can stop purge.
+            return
+        # Refuse UFW withdrawals here, before any change of this run.
+        for key, record in self.withdrawn().items():
+            refuse = {"ufw": rule_refusal, "firewall": state_refusal}.get(
+                record["kind"]
+            )
+            if refuse is not None and (refusal := refuse(self, key, record)):
+                raise Conflict(refusal)
 
     def withdraw(self, purge: bool = False) -> list[str]:
         """Return withdrawn settings to their state before Nacre.
@@ -666,6 +693,11 @@ class System(BaseAdapter[SystemRequest]):
             if "timezone:zone" in self.records
             else (self.localtime() if target.is_symlink() else None)
         )
+        # Record first: a crash after the change still leaves its record.
+        self.record(
+            "timezone:zone",
+            {"kind": "timezone", "name": "zone", "applied": zone, "previous": previous},
+        )
         matches = target.is_symlink() and os.readlink(target) in (
             expected,
             ".." + expected,
@@ -691,10 +723,6 @@ class System(BaseAdapter[SystemRequest]):
                 raise Conflict("timezone did not converge")
             self.updates += int(f.repair_metadata(localtime_path, symlink=True))
             f.clear("timezone")
-        self.record(
-            "timezone:zone",
-            {"kind": "timezone", "name": "zone", "applied": zone, "previous": previous},
-        )
 
     def converge_hostname(self, hostname: str) -> None:
         """Set the static and transient hostname, and repair /etc/hostname."""
@@ -704,6 +732,15 @@ class System(BaseAdapter[SystemRequest]):
             self.records["hostname:static"]["previous"]
             if "hostname:static" in self.records
             else get_hostname(native=self.native)
+        )
+        self.record(
+            "hostname:static",
+            {
+                "kind": "hostname",
+                "name": "static",
+                "applied": hostname,
+                "previous": previous,
+            },
         )
         for kind in ("--static", "--transient"):
             actual = get_hostname(native=self.native, kind=kind)
@@ -719,15 +756,6 @@ class System(BaseAdapter[SystemRequest]):
             f.mark("hostname")
             self.updates += int(f.repair_metadata(hostname_path))
         f.clear("hostname")
-        self.record(
-            "hostname:static",
-            {
-                "kind": "hostname",
-                "name": "static",
-                "applied": hostname,
-                "previous": previous,
-            },
-        )
 
     def converge_dropin(self, name: str, text: str) -> None:
         """Install the drop-in of service `name` and apply it."""

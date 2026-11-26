@@ -38,6 +38,7 @@ class Native(FakeNative):
             },
         }
         self.serve = "{}"
+        self.serve_down = False
 
     def run(self, *args, check=True, **kwargs):
         self.calls.append(args)
@@ -55,7 +56,7 @@ class Native(FakeNative):
                 "enabled" if key == "UnitFileState" else "active"
             )
         if args[:4] == ("tailscale", "serve", "status", "--json"):
-            return FakeProcess(self.serve)
+            return FakeProcess(self.serve, returncode=1 if self.serve_down else 0)
         if args[:2] == ("stat", "--format=%a:%U:%G"):
             return FakeProcess("750:caddy:caddy\n")
         if args[:2] == ("stat", "--format=%F"):
@@ -311,6 +312,42 @@ class AITests(unittest.TestCase):
         self.assertTrue((self.root / "var/lib/llama/models/model.gguf").exists())
         self.assertEqual(self.receipt(), {})
         self.assertFalse(self.ai().preflight(installed=True))
+
+    def test_plan_names_the_withdrawals(self):
+        self.ai().converge()
+        self.desired["proxy"] = False
+        lines = [f"{c.kind} {c.text}" for c in self.ai().plan()]
+        self.assertIn("~ withdraw the Tailscale Serve route on port 443", lines)
+        self.assertIn("~ withdraw the Caddy site and restore the Caddyfile", lines)
+        self.desired = {"llama": False}
+        lines = [f"{c.kind} {c.text}" for c in self.ai().plan()]
+        self.assertIn("~ withdraw llama-swap.service and its configuration", lines)
+
+    def test_edited_caddyfile_stops_withdrawal_and_forget_recovers(self):
+        self.ai().converge()
+        (self.root / "etc/caddy/Caddyfile").write_text("operator edit\n")
+        self.desired["proxy"] = False
+        with self.assertRaisesRegex(runtime.Conflict, "nacre forget ai:caddy"):
+            self.ai().converge()
+        self.assertEqual(
+            (self.root / "etc/caddy/Caddyfile").read_text(), "operator edit\n"
+        )
+        runtime.AI(
+            dict(self.desired, forget="ai:caddy"), self.files, self.native
+        ).forget()
+        self.ai().converge()
+        self.assertEqual(
+            (self.root / "etc/caddy/Caddyfile").read_text(), "operator edit\n"
+        )
+        self.assertNotIn("caddy", self.receipt())
+
+    def test_unreadable_serve_status_keeps_the_route_record(self):
+        self.ai().converge()
+        self.native.serve_down = True
+        self.desired["proxy"] = False
+        with self.assertRaisesRegex(runtime.Conflict, "nacre forget ai:serve"):
+            self.ai().converge()
+        self.assertIn("serve", self.receipt())
 
     def test_withdrawn_proxy_keeps_the_router(self):
         self.ai().converge()

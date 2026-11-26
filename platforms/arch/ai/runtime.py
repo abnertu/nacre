@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
@@ -36,6 +36,44 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
             context=context,
         )
         self._records: dict[str, dict[str, Any]] | None = None
+
+    @property
+    def phases(self) -> dict[str, Callable[[], None]]:
+        return {"forget": self.forget}
+
+    def forget(self) -> None:
+        """Drop one record and its saved original; the native state stays."""
+        request = cast("dict[str, Any]", self.desired).get("forget", "")
+        kind, _, name = str(request).partition(":")
+        if kind != "ai" or name not in self.records:
+            raise Conflict(f"Nacre has no record {request}; AI records are ai:<name>")
+        if isinstance(original := self.records[name].get("original"), str):
+            self.remove(original)
+        del self.records[name]
+        self.save_records()
+        print(f"forgot {request}; the native state stays as it is, unmanaged")
+
+    @staticmethod
+    def digest(text: str) -> str:
+        return hashlib.sha256(text.encode()).hexdigest()
+
+    def check_unchanged(self, key: str, record: dict[str, Any]) -> None:
+        """Raise `Conflict` if a file that Nacre wrote changed since then."""
+        for path, digest in record.get("sha256", {}).items():
+            if (
+                self.files.path(path).exists()
+                and self.digest(self.files.read(path)) != digest
+            ):
+                raise Conflict(
+                    f"{path} changed since Nacre wrote it; restore it, "
+                    f"or run `nacre forget ai:{key}` to leave it unmanaged"
+                )
+
+    def remember_written(self, key: str, paths: list[str]) -> None:
+        """Record the checksums of the files that `key` just wrote."""
+        record = dict(self.records[key])
+        record["sha256"] = {path: self.digest(self.files.read(path)) for path in paths}
+        self.record(key, record)
 
     # The receipt records what this adapter wrote and changed: the router
     # files, the Caddy site with the Caddyfile before Nacre and whether Caddy
@@ -72,13 +110,37 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
         """Withdraw each record outside `keep`: the route, then Caddy, then the router."""
         for key in ("serve", "caddy", "router"):
             if key in self.records and key not in keep:
+                self.check_unchanged(key, self.records[key])
+        for key in ("serve", "caddy", "router"):
+            if key in self.records and key not in keep:
                 getattr(self, f"withdraw_{key}")(self.records[key])
                 del self.records[key]
                 self.save_records()
                 self.actions += 1
 
+    def plan_withdrawals(self, keep: set[str]) -> list[Change]:
+        """The withdrawal of each record outside `keep`."""
+        return [
+            Change("~", "withdraw " + self.withdrawal_note(key))
+            for key in ("serve", "caddy", "router")
+            if key in self.records and key not in keep
+        ]
+
+    def withdrawal_note(self, key: str) -> str:
+        if key == "serve":
+            return f"the Tailscale Serve route on port {self.records[key]['port']}"
+        if key == "caddy":
+            return "the Caddy site and restore the Caddyfile"
+        return "llama-swap.service and its configuration"
+
     def withdraw_serve(self, record: dict[str, Any]) -> None:
-        status = self.run("tailscale", "serve", "status", "--json", check=False).stdout
+        query = self.run("tailscale", "serve", "status", "--json", check=False)
+        if query.returncode != 0:
+            raise Conflict(
+                "cannot read the Tailscale Serve status to remove the route; start "
+                "tailscaled and rerun, or run `nacre forget ai:serve`"
+            )
+        status = query.stdout
         if record["target"] in status and record["port"] in status:
             self.run("tailscale", "serve", f"--https={record['port']}", "off")
 
@@ -313,10 +375,18 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
     def plan(self) -> list[Change]:
         """What converge would change, judged the way converge judges it."""
         if not self.desired["llama"]:
-            return [Change("=", "AI services unmanaged")]
-        d, f = self.managed(), self.files
+            return self.plan_withdrawals(keep=set()) or [
+                Change("=", "AI services unmanaged")
+            ]
+        d = self.managed()
         if not self.preflight(installed=True):
             return [Change("-", "AI preparation never completed; run nacre ai prepare")]
+        keep = {"router", "caddy", "serve"} if d["proxy"] else {"router"}
+        return self.plan_withdrawals(keep) + self.plan_converge(d)
+
+    def plan_converge(self, d: AIManifest) -> list[Change]:
+        """The router, proxy and route changes of a prepared, declared AI."""
+        f = self.files
         generated = d["generated"]
         config = self.plan_file(
             self.path_str("switcherConfig", "/etc/llama-swap/config.yaml"),
@@ -385,6 +455,8 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
         switcher_unit = self.path_str(
             "switcherUnit", "/etc/systemd/system/llama-swap.service"
         )
+        # Record first (without checksums), so a crash still leaves a record.
+        self.record("router", {"config": switcher_config, "unit": switcher_unit})
         config_changed = self.write(
             switcher_config, generated["switcherConfig"], "ai-llama"
         )
@@ -396,8 +468,8 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
         self.ensure_service(
             "llama-swap.service", "ai-llama", restart=pending or config_changed
         )
+        self.remember_written("router", [switcher_config, switcher_unit])
         self._curl_ready(d["server"]["port"])
-        self.record("router", {"config": switcher_config, "unit": switcher_unit})
         f.clear("ai-llama")
 
     def converge_caddy(self, d: AIManifest) -> None:
@@ -422,8 +494,13 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
                     "wasActive": state.get("ActiveState") == "active",
                 },
             )
+        # Drop the checksums while writing: a crash in between is no drift.
+        self.record(
+            "caddy", {k: v for k, v in self.records["caddy"].items() if k != "sha256"}
+        )
         self.write(caddy_file, self.caddy_main(), "ai-caddy")
         self.write(caddy_site, d["generated"]["caddySite"], "ai-caddy")
+        self.remember_written("caddy", [caddy_file, caddy_site])
         pending = f.pending("ai-caddy")
         runtime_dir = self.run("stat", "--format=%a:%U:%G", "/run/caddy", check=False)
         if runtime_dir.returncode or runtime_dir.stdout.strip() != "750:caddy:caddy":
@@ -464,6 +541,8 @@ class AI(BaseAdapter[AIManifest | Unmanaged]):
                     "existing Tailscale Serve configuration requires explicit adoption"
                 )
             f.mark("ai-serve")
+            # Record first: a crash after the change still leaves its record.
+            self.record("serve", {"port": port, "target": target})
             self.run("tailscale", "serve", "--bg", f"--https={port}", target)
             self.actions += 1
             status = self.run("tailscale", "serve", "status", "--json").stdout

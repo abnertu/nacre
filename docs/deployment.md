@@ -66,7 +66,7 @@ A module can skip as `not ready` only before its preparation has ever completed.
 - Failed native commands.
 - A readiness change after preflight.
 
-`nacre purge` uninstalls Nacre. It checks every record for drift before any change. Then it withdraws everything that a deployment would withdraw when all declarations go away:
+`nacre purge` uninstalls Nacre. The core and system adapters check every record for drift before any extension hook or retirement runs. Then it withdraws everything that a deployment would withdraw when all declarations go away:
 
 - Policy retired by explicitly opted-in extension adapters.
 - The AI Tailscale route, Caddy site and llama-swap configuration.
@@ -135,7 +135,7 @@ Adapter failures report the command, exit code, stdout, stderr and partial timeo
 
 Managed mutations first write a pending marker under `/var/lib/nix-config/arch/`. They clear it after success. Keep markers during recovery. Healthy reruns keep identical files and healthy services. Purge is not a recovery shortcut.
 
-The receipt at `/var/lib/nix-config/arch/receipts/core.json` records each file that Nacre writes. Saved originals stay under `/var/lib/nix-config/arch/adopted/`, readable only by root. Never edit or copy them by hand. An interrupted run completes its record on the next run. A corrupt receipt stops the deployment.
+The receipt at `/var/lib/nix-config/arch/receipts/core.json` records each file that Nacre writes. Saved originals stay under `/var/lib/nix-config/arch/adopted/`, readable only by root. Never edit or copy them by hand. An interrupted run completes its record on the next run. A corrupt receipt stops the deployment. Without a receipt, an existing file identical to its declaration counts as Nacre's own, and withdrawal removes it.
 
 | Stop | Next step |
 | --- | --- |

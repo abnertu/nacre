@@ -11,11 +11,11 @@ from collections.abc import Mapping
 
 import runtime
 from nix_adapter import AdapterContext, run_adapter_cli, validate
-from schema import AIManifest, Unmanaged
+from schema import AIRequest, UnmanagedRequest
 
 
 def load(desired: Mapping[str, object], context: AdapterContext) -> runtime.AI:
-    schema = AIManifest if desired.get("llama") else Unmanaged
+    schema = AIRequest if desired.get("llama") else UnmanagedRequest
     return runtime.AI(validate(schema, desired, "AI manifest"), context=context)
 
 

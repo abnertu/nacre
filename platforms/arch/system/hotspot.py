@@ -279,6 +279,9 @@ class Hotspot:
             self.run("nmcli", "connection", "modify", "uuid", self.uuid, *changes)
             self.system.actions += 1
         if activate and (changes or pending or not self.active()):
+            # Record the activation first, so a withdrawal takes the AP down.
+            record["activated"] = record["activated"] or not record["wasActive"]
+            self.system.record(key, record)
             self.files.mark("hotspot", "activate\n")
             self.run(
                 "nmcli",
@@ -294,7 +297,6 @@ class Hotspot:
                 raise Conflict(
                     "hotspot activation did not converge; pending action retained"
                 )
-            record["activated"] = record["activated"] or not record["wasActive"]
         record["applied"] = hotspot_properties(self.desired)
         self.system.record(key, record)
         self.files.clear("hotspot")
