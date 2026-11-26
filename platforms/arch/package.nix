@@ -40,7 +40,14 @@ let
       kernelModules
       nixSettings
       ;
-    ownedUnits = lib.concatMap (extension: extension.ownedUnits) (builtins.attrValues arch.extensions);
+    # What each extension ran with, so core can retire it after it goes away.
+    extensions = lib.mapAttrsToList (name: extension: {
+      inherit name;
+      inherit (extension) purge;
+      adapter = "${extension.adapter}";
+      manifest = "${manifests.${name}}";
+      python = "${adapterPython}/bin/python3";
+    }) arch.extensions;
   };
   # Without llama.cpp the AI adapter manages nothing; it gets the unmanaged manifest.
   ai =

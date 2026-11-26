@@ -167,18 +167,23 @@ Features and machine modules contribute native resources through `arch`. A machi
       manifest.executable = "${my-service.packages.x86_64-linux.default}/bin/my-service";
       requires = [ "ai" ];
       notReady = "run my-service-setup first";
-      ownedUnits = [ {
-        unit = "my-service.service";
-        path = "/etc/systemd/system/my-service.service";
-      } ];
+      reservedPaths = [ "my-service/" ];
+    };
+    systemd.services.my-service = {
+      serviceConfig.ExecStart = "${my-service.packages.x86_64-linux.default}/bin/my-service";
+      wantedBy = [ "multi-user.target" ];
     };
   };
 }
 ```
 
-Nacre invokes `adapter MANIFEST PHASE` as root for `preflight`, `plan` and `converge`. Exit 20 means preparation has never completed. [nix-adapter](https://github.com/abnertu/nix-adapter) provides the base adapter classes. Extensions converge after built-in optional modules. Purge retires their declared `ownedUnits`.
+Nacre invokes `adapter MANIFEST PHASE` as root for `preflight`, `plan` and `converge`. Exit 20 means preparation has never completed. [nix-adapter](https://github.com/abnertu/nix-adapter) provides the base adapter classes. Extensions converge after built-in optional modules. Declare their units with `systemd.services` and their files with `environment.etc`, so the core adapter withdraws them. List the paths that the adapter writes itself in `reservedPaths`.
 
-Set `arch.extensions.<name>.purge = true` when the adapter owns additional retirement work. The default is false. Explicit purge invokes opted-in adapters before built-in retirement, in extension-name order. It does not check preparation readiness or dependencies. Every failure, including exit 20, stops purge. Keep system-unit retirement in `ownedUnits`. Disabling or removing an extension withdraws management without invoking its purge hook.
+Set `arch.extensions.<name>.purge = true` when the adapter owns additional retirement work. The default is false. Each deployment records the adapter, manifest and Python of each extension under GC roots in `/nix/var/nix/gcroots/nacre/`. These rules apply:
+
+- When an extension leaves the declaration, the next deployment runs its recorded purge phase, if it opted in. Then the record and roots go away.
+- Purge invokes opted-in adapters before built-in retirement, in extension-name order. It does not check preparation readiness or dependencies.
+- Every hook failure, including exit 20, stops the run. To drop a broken extension without retirement, run `nacre forget extension:<name>`.
 
 Pass external inputs into the module from the `flake.nix` of the machine. `extraOutputs` exposes additional packages, apps and checks:
 

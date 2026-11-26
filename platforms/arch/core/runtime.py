@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from nix_adapter import AdapterContext, BaseAdapter, Change, Conflict, Files, Native
 from receipts import (
+    GCROOTS,
     INTENT,
     KINDS,
     RECEIPT,
@@ -295,7 +296,9 @@ class Core(BaseAdapter[CoreRequest]):
         kind, _, name = record.partition(":")
         if kind not in KINDS or not name:
             raise Conflict(f"unknown record {record}; see `nacre forget` in the guide")
-        if kind != "file" and record in self.receipt["state"]:
+        if kind == "extension" and record in self.receipt["state"]:
+            self.drop_extension(record)
+        elif kind != "file" and record in self.receipt["state"]:
             self.drop_state(record)
         elif kind == "file" and record in self.records:
             self.drop(record)
@@ -412,6 +415,54 @@ class Core(BaseAdapter[CoreRequest]):
             print(
                 f"kernel module {module} is in use; {module} stays loaded until reboot"
             )
+
+    # Extensions: each deployment records the adapter, manifest and Python
+    # that ran, under GC roots, so a removed extension can still retire.
+
+    def gc_root(self, name: str, part: str) -> Path:
+        return self.files.path(f"{GCROOTS}/{name}-{part}", symlink_leaf=True)
+
+    def record_extensions(self) -> None:
+        for extension in self.desired["extensions"]:
+            name = extension["name"]
+            self.record_state(f"extension:{name}", {"kind": "extension", **extension})
+            for part in ("adapter", "manifest", "python"):
+                link, target = self.gc_root(name, part), extension[part]
+                if link.is_symlink() and os.readlink(link) == target:
+                    continue
+                link.parent.mkdir(parents=True, exist_ok=True)
+                link.unlink(missing_ok=True)
+                link.symlink_to(target)
+
+    def drop_extension(self, key: str) -> None:
+        name = self.state_records[key]["name"]
+        for part in ("adapter", "manifest", "python"):
+            self.gc_root(name, part).unlink(missing_ok=True)
+        self.drop_state(key)
+
+    def withdraw_extensions(self, purge: bool = False) -> None:
+        """Retire each recorded extension that the manifest no longer declares.
+
+        On purge, arch-switch has already run the hooks of declared extensions.
+        """
+        declared = {extension["name"] for extension in self.desired["extensions"]}
+        for key in self.state_withdrawn("extension", declared, purge):
+            record = self.state_records[key]
+            name = record["name"]
+            if record["purge"] and name not in declared:
+                hook = (
+                    record["python"],
+                    record["adapter"],
+                    record["manifest"],
+                    "purge",
+                )
+                if self.run("env", *hook, check=False).returncode != 0:
+                    raise Conflict(
+                        f"the purge phase of extension {name} failed; fix its cause, "
+                        f"or run `nacre forget {key}` to drop it without retirement"
+                    )
+                self.actions += 1
+            self.drop_extension(key)
 
     def withdraw_repository(self) -> None:
         """Drop a repository that the manifest no longer declares."""
@@ -670,6 +721,7 @@ class Core(BaseAdapter[CoreRequest]):
             # Before any other change: an interrupted first run is then a
             # lost-receipt host, never a fresh one.
             self.save_receipt()
+        self.withdraw_extensions()
         for record in self.withdrawn():
             self.withdraw(record)
         for entry in d["etc"]:
@@ -679,6 +731,7 @@ class Core(BaseAdapter[CoreRequest]):
         self.initramfs()
         groups_changed = self.groups()
         self.withdraw_groups()
+        self.record_extensions()
         if self.pending("units"):
             self.systemd.daemon_reload()
             self.clear("units")
@@ -980,6 +1033,7 @@ class Core(BaseAdapter[CoreRequest]):
         self.recover_intent()
         self.check_etc(converging=False, purge=True)
         self.check_runtime(purge=True)
+        self.withdraw_extensions(purge=True)
         self.purge_units(network=False)
         self.withdraw_repository()
         for record in self.withdrawn(purge=True):
@@ -1011,16 +1065,6 @@ class Core(BaseAdapter[CoreRequest]):
                 and self.systemctl_ok("is-enabled", "--quiet", name)
             ):
                 self.systemd.disable(name, now=True)
-        if network:
-            return
-        reload = False
-        for owned in d["purge"]["ownedUnits"]:
-            if self.files.path(owned["path"]).exists():
-                if self.systemctl_ok("is-enabled", "--quiet", owned["unit"]):
-                    self.systemd.disable(owned["unit"], now=True)
-                reload |= self.remove(owned["path"])
-        if reload:
-            self.systemd.daemon_reload()
 
     def purge_repository(self, repository: Repository) -> None:
         """Drop the repository's Include, then its file."""

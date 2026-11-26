@@ -22,7 +22,8 @@ VERSION = 1
 # this line was deployed by a Nacre version without receipts.
 RECEIPT_LINE = "# nix-config receipts 1"
 # Record kinds of the core adapter, which `nacre forget` routes here.
-KINDS = ("file", "repository", "group", "capability", "sysctl", "module")
+KINDS = ("file", "repository", "group", "capability", "sysctl", "module", "extension")
+GCROOTS = "/nix/var/nix/gcroots/nacre"
 SYSCTL_DIRS = (
     "/etc/sysctl.d",
     "/run/sysctl.d",

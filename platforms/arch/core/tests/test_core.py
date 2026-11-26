@@ -89,13 +89,8 @@ MANIFEST = {
     ],
     "purge": {
         "blocks": [INITRAMFS_BLOCK, NIX_BLOCK],
-        "ownedUnits": [
-            {
-                "unit": "fixture-extension.service",
-                "path": "/etc/systemd/system/fixture-extension.service",
-            }
-        ],
     },
+    "extensions": [],
 }
 
 
@@ -113,6 +108,7 @@ class Fake(FakeNative):
         self.unmanaged_repository = False
         # Units that systemd does not know yet, such as one whose file is unwritten.
         self.unknown: set[str] = set()
+        self.fail_extension = False
         # Package that owns each path, with its version: pacman -Qqo and -Q.
         self.owners: dict[str, tuple[str, str]] = {}
 
@@ -135,6 +131,7 @@ class Fake(FakeNative):
             "setcap": self.setcap,
             "pacman-conf": self.pacman_conf,
             "pacman": self.pacman,
+            "env": lambda _: (1 if self.fail_extension else 0, ""),
         }.get(cmd)
         if handler is None:
             raise AssertionError(args)
@@ -484,10 +481,6 @@ class CoreTests(Harness):
         self.deploy()
         pacman = self.root / "etc/pacman.conf"
         pacman.write_text(pacman.read_text() + "[custom]\n")
-        unit = self.root / "etc/systemd/system/fixture-extension.service"
-        unit.parent.mkdir(parents=True)
-        unit.write_text("[Unit]\n")
-        self.native.unit("fixture-extension.service")["enabled"] = True
         self.native.unit("nix-daemon.service")["active"] = True
         self.native.calls.clear()
         self.core().purge()
@@ -504,10 +497,8 @@ class CoreTests(Harness):
             (self.root / "etc/mkinitcpio.conf").read_text(), "MODULES=(existing)\n"
         )
         self.assertIn(("mkinitcpio", "-P"), self.native.calls)
-        self.assertFalse(unit.exists())
         self.assertFalse(any(self.native.unit(u)["enabled"] for u in UNIT_NAMES))
         self.assertIn(("systemctl", "restart", "nix-daemon.service"), self.native.calls)
-        self.assertIn(("systemctl", "daemon-reload"), self.native.calls)
         self.assertFalse((self.root / "var/lib/nix-config/arch").exists())
 
     def test_purge_uninstalls_in_order_and_keeps_ufw(self):
@@ -1005,6 +996,67 @@ class EtcTests(Harness):
             "~ remove repository lizardbyte",
         ):
             self.assertIn(expected, lines)
+
+    def extension(self, manifest="/nix/store/b-arch-babu.json", purge=True):
+        return {
+            "name": "babu",
+            "adapter": "/nix/store/a-babu/adapter.py",
+            "manifest": manifest,
+            "python": "/nix/store/c-python/bin/python3",
+            "purge": purge,
+        }
+
+    def root_link(self, kind):
+        link = self.root / f"nix/var/nix/gcroots/nacre/babu-{kind}"
+        return os.readlink(link) if link.is_symlink() else None
+
+    def test_extension_is_recorded_with_roots_that_follow_the_generation(self):
+        self.manifest["extensions"] = [self.extension()]
+        self.deploy()
+        self.assertEqual(self.root_link("manifest"), "/nix/store/b-arch-babu.json")
+        self.assertEqual(self.root_link("adapter"), "/nix/store/a-babu/adapter.py")
+        self.assertEqual(self.root_link("python"), "/nix/store/c-python/bin/python3")
+        self.manifest["extensions"] = [self.extension("/nix/store/d-arch-babu.json")]
+        self.deploy()
+        self.assertEqual(self.root_link("manifest"), "/nix/store/d-arch-babu.json")
+
+    def test_withdrawn_extension_runs_its_recorded_purge_then_goes(self):
+        for purge in (True, False):
+            with self.subTest(purge=purge):
+                self.manifest["extensions"] = [self.extension(purge=purge)]
+                self.deploy()
+                self.manifest["extensions"] = []
+                self.native.calls.clear()
+                self.deploy()
+                hook = (
+                    "env",
+                    "/nix/store/c-python/bin/python3",
+                    "/nix/store/a-babu/adapter.py",
+                    "/nix/store/b-arch-babu.json",
+                    "purge",
+                )
+                self.assertEqual(hook in self.native.calls, purge)
+                self.assertIsNone(self.root_link("manifest"))
+                self.assertNotIn("extension:babu", self.runtime_state())
+
+    def test_failed_extension_purge_keeps_its_record_and_names_forget(self):
+        self.manifest["extensions"] = [self.extension()]
+        self.deploy()
+        self.manifest["extensions"] = []
+        self.native.fail_extension = True
+        with self.assertRaisesRegex(Conflict, "nacre forget extension:babu"):
+            self.deploy()
+        self.assertIn("extension:babu", self.runtime_state())
+        self.manifest["forget"] = "extension:babu"
+        self.core().forget()
+        self.assertIsNone(self.root_link("adapter"))
+        self.assertNotIn("extension:babu", self.runtime_state())
+
+    def test_purge_removes_extension_roots(self):
+        self.manifest["extensions"] = [self.extension(purge=False)]
+        self.deploy()
+        self.core().purge()
+        self.assertIsNone(self.root_link("python"))
 
     def test_forget_drops_only_the_record_and_its_original(self):
         self.existing("hosts", "operator\n")

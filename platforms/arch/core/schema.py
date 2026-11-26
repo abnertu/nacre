@@ -57,14 +57,19 @@ class FileCapability(TypedDict):
     capability: str
 
 
-class OwnedUnit(TypedDict):
-    unit: str
-    path: str
-
-
 class Purge(TypedDict):
     blocks: list[Block]
-    ownedUnits: list[OwnedUnit]
+
+
+class Extension(TypedDict):
+    """A feature or machine adapter, as its last deployment ran it."""
+
+    name: str
+    adapter: str
+    manifest: str
+    python: str
+    # Whether the adapter has a purge phase that retires its state.
+    purge: bool
 
 
 class CoreManifest(TypedDict):
@@ -80,6 +85,7 @@ class CoreManifest(TypedDict):
     sysctl: dict[str, str]
     fileCapabilities: list[FileCapability]
     purge: Purge
+    extensions: list[Extension]
 
 
 class CoreRequest(CoreManifest, total=False):

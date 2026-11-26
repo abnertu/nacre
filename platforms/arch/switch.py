@@ -28,7 +28,15 @@ USAGE = (
     " [--verbose]"
 )
 # Record kinds of the core adapter (core/receipts.py); the others are system's.
-CORE_KINDS = ("file", "repository", "group", "capability", "sysctl", "module")
+CORE_KINDS = (
+    "file",
+    "repository",
+    "group",
+    "capability",
+    "sysctl",
+    "module",
+    "extension",
+)
 # An optional adapter exits 20 only while its preparation has never completed.
 NOT_READY = 20
 

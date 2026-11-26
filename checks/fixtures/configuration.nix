@@ -21,12 +21,6 @@
     label = "fixture-extension";
     adapter = ./extension/adapter.py;
     manifest.greeting = "fixture";
-    ownedUnits = [
-      {
-        unit = "fixture-extension.service";
-        path = "/etc/systemd/system/fixture-extension.service";
-      }
-    ];
   };
   # Synthetic skill sets; a machine flake declares its own from flake inputs.
   programs.ai.skills.sets = {

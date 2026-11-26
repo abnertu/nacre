@@ -127,6 +127,7 @@ Assign one owner to each resource. Feature modules contribute native resources t
 - A withdrawn `environment.etc` entry removes the file that Nacre created, or restores the adopted original.
 - A withdrawn authored unit stops, is disabled and goes away. A withdrawn packaged unit keeps running.
 - A withdrawn system setting returns to its value before Nacre. UFW withdrawals that loosen protection stop, and purge keeps UFW.
+- A removed extension runs its recorded purge phase when it opted in with `purge = true`.
 - Other disabled declarations only withdraw management.
 - A withdrawn file that changed since Nacre wrote it stops the deployment.
 - `--purge` uninstalls Nacre through the withdrawal path and skips Home Manager. It keeps packages, accounts, registrations, mutable data and UFW.

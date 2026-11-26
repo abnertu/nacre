@@ -332,6 +332,8 @@ class ArchSwitchTests(unittest.TestCase):
         self.assertEqual(self.state["forget_adapter"], "/fixture/core-adapter")
         self.invoke("--forget", "sysctl:net.ipv4.ip_forward")
         self.assertEqual(self.state["forget_adapter"], "/fixture/core-adapter")
+        self.invoke("--forget", "extension:babu")
+        self.assertEqual(self.state["forget_adapter"], "/fixture/core-adapter")
         system = self.root / "system-manifest.json"
         system.write_text(json.dumps({"files": {}}))
         self.config["adapters"]["system"]["manifest"] = str(system)

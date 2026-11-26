@@ -11,7 +11,7 @@
   sysctl ? { },
   kernelModules ? [ ],
   nixSettings ? { },
-  ownedUnits ? [ ],
+  extensions ? [ ],
 }:
 let
   files = ../files;
@@ -97,11 +97,10 @@ let
           path = "/usr/bin/sunshine";
           capability = "cap_sys_admin=p";
         };
+    inherit extensions;
     purge = {
       # Uninstall removes the initramfs block too, then rebuilds the images.
       blocks = lib.optional capabilities.initramfs initramfsBlock ++ [ nixBlock ];
-      # Units of machine-provided extensions, retired after their adapters purge.
-      inherit ownedUnits;
     };
   };
 in

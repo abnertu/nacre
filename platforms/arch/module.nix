@@ -39,7 +39,6 @@ let
     "llama-swap/"
     "systemd/system/llama-swap.service"
   ];
-  relative = path: lib.removePrefix "/etc/" path;
   units = lib.filterAttrs (_: unit: unit.enable) config.systemd.units;
   dropin = unit: unit.overrideStrategy == "asDropin";
   unitPath =
@@ -189,24 +188,6 @@ in
                 A trailing slash reserves a directory. environment.etc cannot name them.
               '';
             };
-            ownedUnits = mkOption {
-              type = types.listOf (
-                types.submodule {
-                  options = {
-                    unit = mkOption {
-                      type = types.str;
-                      description = "Unit name, such as babu.service.";
-                    };
-                    path = mkOption {
-                      type = types.str;
-                      description = "Unit file that purge removes, under /etc/systemd/system.";
-                    };
-                  };
-                }
-              );
-              default = [ ];
-              description = "System units in /etc/systemd/system that purge retires.";
-            };
           };
         }
       );
@@ -275,9 +256,7 @@ in
     systemUnits = map (unit: unit.name) (lib.filter (unit: unit.start) managedUnits);
     etcReserved =
       reservedPaths
-      ++ lib.concatMap (
-        extension: extension.reservedPaths ++ map (owned: relative owned.path) extension.ownedUnits
-      ) (builtins.attrValues config.arch.extensions);
+      ++ lib.concatMap (extension: extension.reservedPaths) (builtins.attrValues config.arch.extensions);
     inherit (config.packages) hold;
     pacman =
       config.packages.extra.pacman
