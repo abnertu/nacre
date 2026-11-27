@@ -24,7 +24,8 @@ pkgs.runCommand "source-lint"
     cd ${source}
     find . -name '*.nix' -not -path './files/*' -print0 | xargs -0 deadnix --fail
     statix check .
-    shellcheck -x scripts/*.sh lib/cli/nix.sh modules/home/check-projection.sh
+    shellcheck -x scripts/*.sh lib/cli/nix.sh lib/cli/nacre/completions/nacre.bash \
+      modules/home/check-projection.sh
     find . -name '*.md' -not -path './files/*' -print0 |
       xargs -0 lychee --offline --no-progress --include-fragments
     touch "$out"

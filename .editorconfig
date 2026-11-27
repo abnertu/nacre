@@ -8,8 +8,11 @@ indent_style = space
 indent_size = 2
 trim_trailing_whitespace = true
 
-[*.sh]
+# shfmt reads these keys; source-format checks them.
+[*.{sh,bash}]
 indent_size = 2
+shell_variant = bash
+switch_case_indent = true
 
 [Makefile]
 indent_style = tab

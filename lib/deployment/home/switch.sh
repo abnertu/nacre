@@ -5,8 +5,14 @@ for argument in "$@"; do
     --verbose) export VERBOSE=1 ;;
     --dry-run) export DRY_RUN=1 ;;
     --plan) plan=1 ;;
-    --help) printf 'usage: home-switch [--verbose] [--dry-run] [--plan]\n'; exit 0 ;;
-    *) printf 'usage: home-switch [--verbose] [--dry-run] [--plan]\n' >&2; exit 2 ;;
+    --help)
+      printf 'usage: home-switch [--verbose] [--dry-run] [--plan]\n'
+      exit 0
+      ;;
+    *)
+      printf 'usage: home-switch [--verbose] [--dry-run] [--plan]\n' >&2
+      exit 2
+      ;;
   esac
 done
 if ((plan)); then

@@ -11,32 +11,47 @@ while (($#)); do
   shift
   case "$argument" in
     --forget)
-      (( update_seen == 0 && $# > 0 )) && [[ $1 != --* ]] || { usage >&2; exit 2; }
+      ((update_seen == 0 && $# > 0)) && [[ $1 != --* ]] || {
+        usage >&2
+        exit 2
+      }
       update_seen=1
       forget_seen=1
       arch_switch_args+=(--forget "$1")
       shift
       ;;
     --update)
-      (( update_seen == 0 )) || { usage >&2; exit 2; }
+      ((update_seen == 0)) || {
+        usage >&2
+        exit 2
+      }
       update_seen=1
       arch_switch_args+=(--update)
       ;;
     --purge)
-      (( update_seen == 0 )) || { usage >&2; exit 2; }
+      ((update_seen == 0)) || {
+        usage >&2
+        exit 2
+      }
       update_seen=1
       purge_seen=1
       arch_switch_args+=(--purge)
       ;;
     --plan)
-      (( update_seen == 0 )) || { usage >&2; exit 2; }
+      ((update_seen == 0)) || {
+        usage >&2
+        exit 2
+      }
       update_seen=1
       plan_seen=1
       arch_switch_args+=(--plan)
       home_switch_args+=(--plan)
       ;;
     --verbose)
-      (( verbose_seen == 0 )) || { usage >&2; exit 2; }
+      ((verbose_seen == 0)) || {
+        usage >&2
+        exit 2
+      }
       verbose_seen=1
       arch_switch_args+=(--verbose)
       home_switch_args+=(--verbose)

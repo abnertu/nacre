@@ -143,6 +143,8 @@
           pkgs.just
           pkgs.nix-output-monitor
           pkgs.nixfmt
+          pkgs.shellcheck
+          pkgs.shfmt
         ];
       };
 

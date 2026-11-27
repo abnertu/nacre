@@ -9,8 +9,14 @@ keep=0
 for argument in "$@"; do
   case "$argument" in
     --keep) keep=1 ;;
-    --help) usage; exit 0 ;;
-    *) usage >&2; exit 2 ;;
+    --help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
   esac
 done
 
@@ -132,7 +138,10 @@ show() {
 
 step 'Prepare prerequisites with the checked-in install.sh'
 podman cp "$source_root/scripts/install.sh" "$name:/tmp/install.sh"
-as_user bash /tmp/install.sh >"$work/install-script.log" 2>&1 || { show install-script.log; fail 'install.sh failed'; }
+as_user bash /tmp/install.sh >"$work/install-script.log" 2>&1 || {
+  show install-script.log
+  fail 'install.sh failed'
+}
 
 step 'Import the deployment closure'
 mapfile -t closure < <(nix-store --query --requisites "$deployment" "$withdrawn")
@@ -144,10 +153,16 @@ forward_before=$(podman exec "$name" sysctl -n net.ipv4.ip_forward)
 step 'Routine deployment refuses missing packages'
 status=0
 deploy missing.log || status=$?
-((status == 3)) || { show missing.log; fail "expected exit 3, got $status"; }
+((status == 3)) || {
+  show missing.log
+  fail "expected exit 3, got $status"
+}
 
 step 'Update installs packages and converges'
-deploy update.log --update || { show update.log; fail 'update failed'; }
+deploy update.log --update || {
+  show update.log
+  fail 'update failed'
+}
 podman exec "$name" systemctl is-active --quiet nacre-demo.service ||
   fail 'the declared nacre-demo.service is not active'
 blob=$(sha256sum "$source_root/checks/container/blob.bin" | cut -d' ' -f1)
@@ -165,14 +180,20 @@ svc=$(podman exec "$name" getent passwd nacre-svc) || fail 'systemd-sysusers did
   fail 'the /etc file of the system group has another group'
 
 step 'Repeat deployment changes nothing'
-deploy repeat.log || { show repeat.log; fail 'repeat deployment failed'; }
+deploy repeat.log || {
+  show repeat.log
+  fail 'repeat deployment failed'
+}
 if grep -E 'converged: ' "$work/repeat.log" | grep -Ev 'converged: 0 files updated, 0 runtime actions' ||
   grep -E '^updated /' "$work/repeat.log"; then
   fail 'repeat deployment was not quiet'
 fi
 
 step 'Plan agrees that nothing is left to change'
-deploy plan.log --plan || { show plan.log; fail 'plan failed'; }
+deploy plan.log --plan || {
+  show plan.log
+  fail 'plan failed'
+}
 # Upstream may publish packages between update and plan: available upgrades
 # are information, not deployment drift.
 if ! grep -Fxq 'Core plan: 0 changes.' "$work/plan.log" ||
@@ -184,7 +205,10 @@ fi
 
 step 'A withdrawal generation returns its declarations to the host'
 podman exec "$name" test -e /etc/nacre-container-test.conf || fail 'the declared /etc file is missing'
-deploy_from "$withdrawn" withdrawn.log || { show withdrawn.log; fail 'withdrawal deployment failed'; }
+deploy_from "$withdrawn" withdrawn.log || {
+  show withdrawn.log
+  fail 'withdrawal deployment failed'
+}
 last_log=withdrawn.log
 if podman exec "$name" test -e /etc/nacre-container-test.conf ||
   podman exec "$name" test -e /etc/systemd/system/nacre-demo.service ||
@@ -208,13 +232,19 @@ fi
   fail 'net.ipv4.ip_forward did not return to its value before Nacre'
 
 step 'Purge uninstalls Nacre and keeps pacman usable'
-deploy_from "$withdrawn" purge.log --purge || { show purge.log; fail 'purge failed'; }
+deploy_from "$withdrawn" purge.log --purge || {
+  show purge.log
+  fail 'purge failed'
+}
 podman exec "$name" pacman -Q >/dev/null || fail 'pacman is unusable after purge'
 if podman exec "$name" test -e /var/lib/nix-config/arch; then fail 'purge kept pending state'; fi
 if podman exec "$name" grep -q 'BEGIN nix-config' /etc/nix/nix.conf /etc/pacman.conf; then
   fail 'purge kept a managed block'
 fi
-deploy_from "$withdrawn" purge-again.log --purge || { show purge-again.log; fail 'second purge failed'; }
+deploy_from "$withdrawn" purge-again.log --purge || {
+  show purge-again.log
+  fail 'second purge failed'
+}
 if grep -E '^(updated|removed|restored|withdrew|overwrote) ' "$work/purge-again.log"; then
   last_log=purge-again.log
   fail 'a second purge changed the host'
@@ -245,19 +275,31 @@ nacre() {
     run path:/tmp/nacre-src#nacre -- "$@"
 }
 nacre install --yes --role minimal --timezone UTC --locale en_US.UTF-8 \
-  >"$work/install.log" 2>&1 || { show install.log; fail 'nacre install failed'; }
+  >"$work/install.log" 2>&1 || {
+  show install.log
+  fail 'nacre install failed'
+}
 as_user grep -Fq 'role = "minimal";' "$machine/configuration.nix" ||
   fail 'install did not write the minimal role'
-nacre status >"$work/status.log" 2>&1 || { show status.log; fail 'nacre status failed'; }
+nacre status >"$work/status.log" 2>&1 || {
+  show status.log
+  fail 'nacre status failed'
+}
 if grep -q 'not recorded' "$work/status.log"; then
   show status.log
   fail 'install did not record its switch'
 fi
 # Exits 2 unless install recorded the start of its update.
-nacre changes >"$work/changes.log" 2>&1 || { show changes.log; fail 'nacre changes failed'; }
+nacre changes >"$work/changes.log" 2>&1 || {
+  show changes.log
+  fail 'nacre changes failed'
+}
 
 step 'Store paths are unmodified'
 podman exec "$name" nix-store --verify --check-contents >"$work/verify.log" 2>&1 ||
-  { show verify.log; fail 'store verification failed'; }
+  {
+    show verify.log
+    fail 'store verification failed'
+  }
 
 printf '\ncontainer-test: passed\n'

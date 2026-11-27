@@ -132,7 +132,10 @@ else
   [[ -z ${NACRE_REPO:-} ]] || command+=(--repo "$NACRE_REPO")
 fi
 yes=0
-[[ ${NACRE_YES:-} != 1 ]] || { yes=1; command+=(--yes); }
+[[ ${NACRE_YES:-} != 1 ]] || {
+  yes=1
+  command+=(--yes)
+}
 
 printf '\n==> Prerequisites are ready. Nacre %s\n' "$tag"
 if ((joined_wheel)); then

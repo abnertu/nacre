@@ -163,7 +163,9 @@ Version releases with [Semantic Versioning 2.0.0](https://semver.org/). `VERSION
 
 ## Validation
 
-Format changed Nix files with `nixfmt <files>`, never with `nix fmt`. For composition, adapter or test changes, run these from the repo root:
+Format changed Nix files with `nixfmt <files>`, never with `nix fmt`.
+Format changed shell files with `shfmt -w <files>`.
+The shfmt options are in `.editorconfig`. For composition, adapter or test changes, run these from the repo root:
 
 ```bash
 just check-fast
