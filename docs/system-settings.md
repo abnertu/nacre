@@ -1,6 +1,6 @@
 # System settings
 
-The system adapter owns locale, timezone, console, hostname, firewall, hotspot and selected native service settings. Core adapters own the remaining native files, units, groups and kernel parameters. Their Nix-generated manifests define both convergence and purge. Home Manager does not own these `/etc` files.
+The system adapter owns locale, timezone, console, hostname, firewall, hotspot and selected native service settings. Core adapters own the remaining native files, units, group memberships, system accounts and kernel parameters. Their Nix-generated manifests define both convergence and purge. Home Manager does not own these `/etc` files.
 
 | Options | Native resources |
 | --- | --- |

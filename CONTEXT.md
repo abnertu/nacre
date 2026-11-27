@@ -13,7 +13,7 @@ Nacre evaluates machine policy into a fixed deployment with the selected Home Ma
 
 `lib/mk-flake.nix` gives each machine fixed output names, including `#deployment`, `#nacre` and `lib.configuration`. Nacre applies it to `checks/fixtures`. The fixture enables features without the data of a real machine.
 
-`lib/eval-configuration.nix` combines the explicit feature registry, the platform module and the machine modules. It validates cross-field assertions and normalizes the result. Feature modules contribute packages, groups and units through `arch`. `lib/mk-deployment.nix` passes the merged policy to the platform. Each resource has one owner.
+`lib/eval-configuration.nix` combines the explicit feature registry, the platform module and the machine modules. It validates cross-field assertions and normalizes the result. Feature modules contribute packages, group memberships and units through `arch`. `lib/mk-deployment.nix` passes the merged policy to the platform. Each resource has one owner.
 
 Role definitions at priority 1100 yield to machine `lib.mkDefault` baselines at 1000. Ordinary definitions override both baselines. Import order does not set precedence.
 

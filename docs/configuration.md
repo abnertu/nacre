@@ -192,7 +192,7 @@ Nacre writes `/etc/sysusers.d/60-nix-config.conf` and runs `systemd-sysusers` on
 
 ## Machine extensions
 
-Features and machine modules contribute native resources through `arch`. A machine can add packages, groups and user units through `arch.pacman`, `arch.aur`, `arch.groups` and `arch.userServices`. Declare system units with [`systemd.units` and `systemd.services`](#system-units). Register privileged adapters under `arch.extensions`:
+Features and machine modules contribute native resources through `arch`. A machine can add packages, group memberships and user units through `arch.pacman`, `arch.aur`, `arch.groups` and `arch.userServices`. Declare system units with [`systemd.units` and `systemd.services`](#system-units). Register privileged adapters under `arch.extensions`:
 
 ```nix
 { my-service }:

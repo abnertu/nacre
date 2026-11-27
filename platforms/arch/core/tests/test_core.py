@@ -118,6 +118,8 @@ class Fake(FakeNative):
         # systemd-sysusers: the arguments of each run, and names it skips.
         self.sysusers: list[list[str]] = []
         self.sysusers_skip: set[str] = set()
+        # A primary group that the fake gives every account it creates.
+        self.sysusers_group: str | None = None
         self.unmanaged_repository = False
         # Units that systemd does not know yet, such as one whose file is unwritten.
         self.unknown: set[str] = set()
@@ -174,7 +176,7 @@ class Fake(FakeNative):
                     group.write_text(group.read_text() + f"{fields[1]}:x:{gid}:\n")
                 if fields[0] == "u" and fields[1] not in [u[0] for u in users]:
                     uid = max(set(range(1, 1000)) - {int(u[2]) for u in users})
-                    primary = fields[2].split(":")[1]
+                    primary = self.sysusers_group or fields[2].split(":")[1]
                     gid = next(g[2] for g in groups if g[0] == primary)
                     passwd.write_text(
                         passwd.read_text()
@@ -1487,7 +1489,7 @@ class ServiceAccountTests(EtcHarness):
         names = names or ("svc",)
         self.manifest["systemGroups"] = list(names)
         self.manifest["systemUsers"] = [
-            {"name": name, "group": name, "description": "Demo", "home": "/"}
+            {"name": name, "group": name, "description": "Demo", "home": f"/srv/{name}"}
             for name in names
         ]
 
@@ -1513,6 +1515,7 @@ class ServiceAccountTests(EtcHarness):
         user, group = self.entry_of("passwd", "svc"), self.entry_of("group", "svc")
         self.assertLess(int(user[2]), 1000)
         self.assertEqual(user[3], group[2])
+        self.assertEqual(user[4:7], ["Demo", "/srv/svc", "/usr/bin/nologin"])
         self.assertEqual(self.native.sysusers, [["/etc/sysusers.d/60-nix-config.conf"]])
         self.assertEqual(
             self.records(),
@@ -1591,55 +1594,115 @@ class ServiceAccountTests(EtcHarness):
         # A recorded account keeps its record when login.defs lowers the limit.
         (self.root / "etc/login.defs").write_text("SYS_UID_MAX 400\nSYS_GID_MAX 400\n")
         self.deploy()
+        (self.root / "etc/login.defs").unlink()
+        base_passwd = self.path("passwd").read_text()
+        base_group = self.path("group").read_text()
+        # Each case trips one check: the UID limit, the GID limit, the group.
         cases = {
-            "human": (
-                "human:x:1000:1000::/home/human:/bin/bash\n",
-                "human:x:1000:\n",
+            "UID 1000, which is not a system ID": (
+                "human:x:1000:500::/home/human:/bin/bash\n",
+                "",
                 "human",
-                "human",
+                "svc",
             ),
-            "wrong group": (
-                "other:x:600:500::/:/usr/bin/nologin\n",
+            "GID 1000, which is not a system ID": (
+                "",
+                "people:x:1000:\n",
+                "",
+                "people",
+            ),
+            "other has another primary group": (
+                "other:x:600:65534::/:/usr/bin/nologin\n",
                 "",
                 "other",
-                "nogroup",
+                "svc",
             ),
         }
-        for label, (passwd, groups, name, primary) in cases.items():
-            with self.subTest(label):
-                (self.root / "etc/passwd").write_text(
-                    self.path("passwd").read_text() + passwd
-                )
-                (self.root / "etc/group").write_text(
-                    self.path("group").read_text() + groups
-                )
+        for message, (passwd, groups, name, primary) in cases.items():
+            with self.subTest(message):
+                (self.root / "etc/passwd").write_text(base_passwd + passwd)
+                (self.root / "etc/group").write_text(base_group + groups)
                 self.manifest["systemGroups"] = sorted({primary, "nogroup"})
-                self.manifest["systemUsers"] = [
-                    {"name": name, "group": primary, "description": "", "home": "/"}
-                ]
-                with self.assertRaisesRegex(Conflict, f"system (account|group) {name}"):
+                self.manifest["systemUsers"] = (
+                    [{"name": name, "group": primary, "description": "", "home": "/"}]
+                    if name
+                    else []
+                )
+                with self.assertRaisesRegex(Conflict, message):
                     self.core().preflight()
 
     def test_account_that_appears_after_preflight_stops_convergence(self):
+        (self.root / "etc/group").write_text(
+            self.path("group").read_text() + "svc:x:500:\n"
+        )
         core = self.core()
         core.preflight()
         (self.root / "etc/passwd").write_text(
-            self.path("passwd").read_text() + "svc:x:1500:1500::/:/bin/sh\n"
+            self.path("passwd").read_text() + "svc:x:1500:500::/:/bin/sh\n"
         )
-        with self.assertRaisesRegex(Conflict, "system account svc"):
+        with self.assertRaisesRegex(
+            Conflict, "system account svc exists with UID 1500"
+        ):
             core.converge()
         self.assertEqual(self.native.sysusers, [])
 
     def test_crash_before_the_ids_completes_the_records(self):
-        self.deploy()
-        receipt = self.receipt()
-        receipt["state"]["account:svc"]["id"] = None
-        (self.root / STATE / "receipts/core.json").write_text(json.dumps(receipt))
+        # A crash after the records and the file, before systemd-sysusers ran.
+        self.native.sysusers_skip.update({"svc"})
+        with self.assertRaises(Conflict):
+            self.deploy()
+        self.native.sysusers_skip.clear()
+        self.assertFalse(self.has("passwd", "svc"))
+        self.assertIsNone(self.records()["account:svc"]["id"])
         self.deploy()
         self.assertEqual(
             self.records()["account:svc"]["id"], int(self.entry_of("passwd", "svc")[2])
         )
         self.assertTrue(self.records()["account:svc"]["created"])
+
+    def test_account_that_sysusers_gives_another_group_stops(self):
+        self.native.sysusers_group = "root"
+        with self.assertRaisesRegex(Conflict, "svc has another primary group"):
+            self.deploy()
+
+    def test_missing_sysusers_command_stops_preflight(self):
+        self.native.available_commands = {
+            "systemctl",
+            "sysctl",
+            "gpasswd",
+            "id",
+            "modprobe",
+            "pacman",
+            "mkinitcpio",
+            "getcap",
+            "setcap",
+            "pacman-conf",
+        }
+        with self.assertRaisesRegex(Conflict, "missing: systemd-sysusers"):
+            self.core().preflight()
+
+    def test_plan_names_a_recorded_account_that_went_missing(self):
+        self.deploy()
+        (self.root / "etc/passwd").write_text("root:x:0:0::/root:/bin/bash\n")
+        self.assertIn("+ system account svc (recreate)", self.plan())
+
+    def test_repeat_is_quiet_and_the_run_is_one_action(self):
+        self.deploy()
+        first = self.output.getvalue()
+        self.assertIn(f"updated {runtime.SYSUSERS}", first)
+        before = self.native.calls.copy()
+        self.output.truncate(0)
+        self.output.seek(0)
+        self.deploy()
+        self.assertNotIn("sysusers", self.output.getvalue())
+        self.assertEqual(len(self.native.sysusers), 1)
+        core = self.core()
+        core.preflight()
+        self.manifest["systemUsers"][0]["description"] = "Changed"
+        core = self.core()
+        core.converge()
+        self.assertEqual(core.actions, 1)
+        self.assertGreater(len(self.native.calls), len(before))
 
     def test_name_that_sysusers_skips_stops_the_deployment(self):
         self.native.sysusers_skip.add("svc")

@@ -1094,10 +1094,6 @@ class Core(BaseAdapter[CoreRequest]):
         for key in self.state_withdrawn("system-group", groups, purge=False):
             self.drop_state(key)
 
-    def save_account_ids(self, wanted: list[tuple[str, str]]) -> None:
-        """Stop if a declared name is missing; then record each ID."""
-        self.save_account_ids(wanted)
-
     def converge_accounts(self) -> None:
         """Record, then create the declared accounts and groups, then save their IDs."""
         d = self.desired
@@ -1291,14 +1287,17 @@ class Core(BaseAdapter[CoreRequest]):
             ("account", "system account", [u["name"] for u in d["systemUsers"]], users),
         ):
             for name in names:
-                if f"{kind}:{name}" not in self.state_records:
-                    adopt = name in existing
-                    changes.append(
-                        Change(
-                            "~" if adopt else "+",
-                            f"{'adopt ' if adopt else ''}{label} {name}",
-                        )
+                if f"{kind}:{name}" in self.state_records:
+                    if name not in existing:
+                        changes.append(Change("+", f"{label} {name} (recreate)"))
+                    continue
+                adopt = name in existing
+                changes.append(
+                    Change(
+                        "~" if adopt else "+",
+                        f"{'adopt ' if adopt else ''}{label} {name}",
                     )
+                )
             for key in self.state_withdrawn(kind, set(names), purge=False):
                 name = self.state_records[key]["name"]
                 changes.append(Change("~", f"stop managing {label} {name} (kept)"))
