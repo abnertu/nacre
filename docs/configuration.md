@@ -186,7 +186,8 @@ Nacre writes `/etc/sysusers.d/60-nix-config.conf` and runs `systemd-sysusers` on
 
 - An existing account or group with a system ID is adopted. A system ID is at most `SYS_UID_MAX` or `SYS_GID_MAX` in `/etc/login.defs`, or 65534.
 - An existing name with another ID, or an account with another primary group, stops preflight.
-- Nacre never changes an existing account.
+- An existing account with another description, home or shell also stops preflight. The error names each field.
+- Nacre never changes an existing account. To change a field of an existing account, change the account with `usermod`, or change the declaration back.
 - When a declaration goes away, Nacre stops managing the account or group, and the account or group stays.
 - `nacre forget account:<name>` or `system-group:<name>` drops one record. A name that is still declared is adopted again on the next deployment.
 

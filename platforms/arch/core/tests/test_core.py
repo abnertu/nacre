@@ -178,6 +178,8 @@ class Fake(FakeNative):
                     uid = max(set(range(1, 1000)) - {int(u[2]) for u in users})
                     primary = self.sysusers_group or fields[2].split(":")[1]
                     gid = next(g[2] for g in groups if g[0] == primary)
+                    # "-" leaves the GECOS field empty, as in systemd-sysusers.
+                    fields[3] = "" if fields[3] == "-" else fields[3]
                     passwd.write_text(
                         passwd.read_text()
                         + f"{fields[1]}:x:{uid}:{gid}:{fields[3]}:{fields[4]}:{fields[5]}\n"
@@ -1548,7 +1550,8 @@ class ServiceAccountTests(EtcHarness):
             self.path("group").read_text() + "old:x:500:\n"
         )
         (self.root / "etc/passwd").write_text(
-            self.path("passwd").read_text() + "old:x:500:500::/:/usr/bin/nologin\n"
+            self.path("passwd").read_text()
+            + "old:x:500:500:Demo:/srv/old:/usr/bin/nologin\n"
         )
         lines = self.plan()
         self.assertIn("~ adopt system account old", lines)
@@ -1631,6 +1634,31 @@ class ServiceAccountTests(EtcHarness):
                 with self.assertRaisesRegex(Conflict, message):
                     self.core().preflight()
 
+    def test_existing_account_with_other_fields_stops_preflight(self):
+        (self.root / "etc/group").write_text(
+            self.path("group").read_text() + "svc:x:500:\n"
+        )
+        matching = "svc:x:500:500:Demo:/srv/svc:/usr/bin/nologin\n"
+        cases = {
+            "description Other, declared Demo": "svc:x:500:500:Other:/srv/svc:/usr/bin/nologin\n",
+            "home /, declared /srv/svc": "svc:x:500:500:Demo:/:/usr/bin/nologin\n",
+            "shell /bin/bash, declared /usr/bin/nologin": "svc:x:500:500:Demo:/srv/svc:/bin/bash\n",
+        }
+        for message, line in cases.items():
+            with self.subTest(message):
+                (self.root / "etc/passwd").write_text(
+                    "root:x:0:0::/root:/bin/bash\n" + line
+                )
+                with self.assertRaisesRegex(
+                    Conflict, f"system account svc has {message}"
+                ):
+                    self.core().preflight()
+        (self.root / "etc/passwd").write_text(
+            "root:x:0:0::/root:/bin/bash\n" + matching
+        )
+        self.deploy()
+        self.assertFalse(self.records()["account:svc"]["created"])
+
     def test_account_that_appears_after_preflight_stops_convergence(self):
         (self.root / "etc/group").write_text(
             self.path("group").read_text() + "svc:x:500:\n"
@@ -1698,7 +1726,7 @@ class ServiceAccountTests(EtcHarness):
         self.assertEqual(len(self.native.sysusers), 1)
         core = self.core()
         core.preflight()
-        self.manifest["systemUsers"][0]["description"] = "Changed"
+        self.manifest["systemGroups"].append("extra")
         core = self.core()
         core.converge()
         self.assertEqual(core.actions, 1)

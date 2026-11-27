@@ -55,6 +55,8 @@ LINK_MODE = stat.S_IFLNK | 0o777
 STORE = "/nix/store"
 # Nacre's systemd-sysusers file: its nix-config name makes it Nacre's.
 SYSUSERS = "/etc/sysusers.d/60-nix-config.conf"
+# The shell of every system account that Nacre declares.
+NOLOGIN = "/usr/bin/nologin"
 # nobody and nogroup: system IDs above SYS_UID_MAX on every distribution.
 NOBODY = 65534
 
@@ -1068,6 +1070,21 @@ class Core(BaseAdapter[CoreRequest]):
                     f"system account {name} has another primary group than "
                     f"{user['group']}; fix the account or the declaration"
                 )
+            # systemd-sysusers never changes an existing account.
+            declared = (user["description"], user["home"], NOLOGIN)
+            fields = [*found, "", "", ""][4:7]
+            differ = [
+                f"{label} {actual or '(empty)'}, declared {wanted or '(empty)'}"
+                for label, actual, wanted in zip(
+                    ("description", "home", "shell"), fields, declared, strict=True
+                )
+                if actual != wanted
+            ]
+            if differ:
+                raise Conflict(
+                    f"system account {name} has {'; '.join(differ)}; "
+                    "fix the account or the declaration"
+                )
 
     def sysusers_text(self) -> str:
         """Nacre's sysusers.d file, or an empty string when nothing is declared."""
@@ -1077,7 +1094,7 @@ class Core(BaseAdapter[CoreRequest]):
             description = f'"{user["description"]}"' if user["description"] else "-"
             lines.append(
                 f"u {user['name']} -:{user['group']} {description} {user['home']} "
-                "/usr/bin/nologin"
+                f"{NOLOGIN}"
             )
         if not lines:
             return ""
