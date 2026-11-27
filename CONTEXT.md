@@ -24,7 +24,7 @@ Nix generates home files, units, drop-ins, routing and Caddy configuration. Nati
 The [Runner feature](docs/gitlab-runner.md) also contributes through `arch.extensions`.
 Its configured controller owns native instance state. Operator outputs remain available independently of deployment enablement.
 
-Home Manager projects static files into the home. Arch adapters copy or merge native files with native ownership. `environment.etc` declares files under `/etc`. The core adapter records each one in its receipt and withdraws it when the declaration goes away. Prepared llama.cpp binaries and GGUF models stay outside the store.
+Home Manager projects static files into the home. Arch adapters copy or merge native files with native ownership. `environment.etc` declares files and symlinks under `/etc`. Its symlinks point to native paths, never into the store. The core adapter records each one in its receipt and withdraws it when the declaration goes away. Prepared llama.cpp binaries and GGUF models stay outside the store.
 
 Hyprland and Neovim use one of these sources:
 

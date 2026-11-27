@@ -10,7 +10,10 @@ class EtcEntry(TypedDict):
 
     name: str
     path: str
-    text: str
+    # Exactly one of text, source (a store file) and target (a symlink).
+    text: str | None
+    source: str | None
+    target: str | None
     mode: str
     group: str
     adopt: bool

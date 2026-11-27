@@ -18,6 +18,14 @@
   };
   # A file under /etc that the withdrawal generation removes again.
   environment.etc."nacre-container-test.conf".text = "declared by the container test\n";
+  # A binary file, a link, and a link over an operator link that the
+  # script creates with group wheel; withdrawal restores that one.
+  environment.etc."nacre-container-blob.bin".source = ./blob.bin;
+  environment.etc."nacre-container-link".target = "/usr/share/zoneinfo/UTC";
+  environment.etc."nacre-container-adopted" = {
+    target = "/usr/share/zoneinfo/Asia/Taipei";
+    adopt = true;
+  };
   # An authored service: real systemd must load, enable and start it.
   systemd.services.nacre-demo = {
     description = "Nacre container demo";

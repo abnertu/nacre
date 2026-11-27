@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import base64
 import datetime
+import hashlib
 import json
 import os
 import shutil
 import stat
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from nix_adapter import AdapterContext, BaseAdapter, Change, Conflict, Files, Native
 from receipts import (
@@ -25,7 +27,6 @@ from receipts import (
     Intent,
     Original,
     Receipt,
-    digest,
     file_key,
     load_json,
     load_receipt,
@@ -45,8 +46,29 @@ def restart_action(unit: str) -> str:
     return f"restart-{unit}"
 
 
-# A file state: text, mode, UID and GID.
-type FileState = tuple[str, int, int, int]
+# The content of a path: the bytes of a regular file, or a symlink target.
+type Content = tuple[Literal["file"], bytes] | tuple[Literal["link"], str]
+# A path state: content, mode, UID and GID. A link has LINK_MODE.
+type FileState = tuple[Content, int, int, int]
+# S_IFLNK and the permissions: no regular file has this mode.
+LINK_MODE = stat.S_IFLNK | 0o777
+STORE = "/nix/store"
+
+
+def content_digest(content: Content) -> str:
+    """The record digest: of the bytes of a file, or of the target of a link."""
+    if content[0] == "file":
+        return hashlib.sha256(content[1]).hexdigest()
+    return hashlib.sha256(content[1].encode()).hexdigest()
+
+
+def original_content(original: Original) -> Content:
+    """The content that an adoption saved."""
+    if "target" in original:
+        return ("link", original["target"])
+    if "base64" in original:
+        return ("file", base64.b64decode(original["base64"]))
+    return ("file", original.get("text", "").encode())
 
 
 class Core(BaseAdapter[CoreRequest]):
@@ -68,6 +90,8 @@ class Core(BaseAdapter[CoreRequest]):
         self._receipt: Receipt | None = None
         # A host whose nix.conf block marks receipts but whose receipt is gone.
         self.lost_receipt = False
+        # The bytes of each source store file, read once.
+        self.sources: dict[str, bytes] = {}
 
     # Pending markers keep their historic names so interrupted runs resume.
     @property
@@ -106,10 +130,10 @@ class Core(BaseAdapter[CoreRequest]):
         self.remove(self.marker(action))
 
     def remove(self, name: str) -> bool:
-        path = self.files.path(name)
-        if not path.exists():
+        path = self.files.path(name, symlink_leaf=True)
+        if not os.path.lexists(path):
             return False
-        if not path.is_file():
+        if not path.is_symlink() and not path.is_file():
             raise Conflict(f"managed path is not a regular file: {name}")
         path.unlink()
         self.files.sync_dir(path.parent)
@@ -180,19 +204,82 @@ class Core(BaseAdapter[CoreRequest]):
             )
 
     def state(self, name: str) -> FileState | None:
-        """The text, mode, UID and GID of `name`, or None if it does not exist."""
-        text = self.files.read(name)
-        path = self.files.path(name)
-        if not path.exists():
+        """The content, mode, UID and GID of `name`, or None if nothing is there.
+
+        A symlink is never followed. Raise `Conflict` for any other kind.
+        """
+        path = self.files.path(name, symlink_leaf=True)
+        if not os.path.lexists(path):
             return None
-        info = path.stat()
-        return text, stat.S_IMODE(info.st_mode), info.st_uid, info.st_gid
+        info = path.lstat()
+        content: Content
+        if stat.S_ISLNK(info.st_mode):
+            content = ("link", os.readlink(path))
+            mode = LINK_MODE
+        elif stat.S_ISREG(info.st_mode):
+            content = ("file", path.read_bytes())
+            mode = stat.S_IMODE(info.st_mode)
+        else:
+            raise Conflict(f"{name} is not a regular file or symlink")
+        return content, mode, info.st_uid, info.st_gid
+
+    def desired_content(self, entry: EtcEntry) -> Content:
+        """What `entry` declares: its text, the bytes of its source, or its target."""
+        if entry["target"] is not None:
+            return ("link", entry["target"])
+        if entry["source"] is not None:
+            source = entry["source"]
+            if source not in self.sources:
+                try:
+                    info = os.stat(source)
+                    if not stat.S_ISREG(info.st_mode):
+                        raise OSError
+                    self.sources[source] = Path(source).read_bytes()
+                except OSError:
+                    raise Conflict(
+                        f"the source of {entry['path']} is not a readable file: {source}"
+                    ) from None
+            return ("file", self.sources[source])
+        return ("file", (entry["text"] or "").encode())
+
+    @staticmethod
+    def entry_mode(entry: EtcEntry) -> int:
+        return LINK_MODE if entry["target"] is not None else int(entry["mode"], 8)
+
+    def matches(self, entry: EtcEntry, files: Files) -> bool:
+        """Whether the path holds `entry` with its mode and identity."""
+        current = self.state(entry["path"])
+        return current == (
+            self.desired_content(entry),
+            self.entry_mode(entry),
+            *files.identity,
+        )
+
+    def write_content(self, entry: EtcEntry, files: Files) -> bool:
+        kind, value = self.desired_content(entry)
+        if kind == "link":
+            return files.write_link(entry["path"], cast(str, value))
+        return files.write_bytes(
+            entry["path"], cast(bytes, value), self.entry_mode(entry)
+        )
+
+    def check_target(self, entry: EtcEntry) -> None:
+        """Raise `Conflict` if a target resolves into the Nix store."""
+        if entry["target"] is None:
+            return
+        resolved = Path(os.path.realpath(self.files.root / entry["target"].lstrip("/")))
+        stores = (Path(STORE), self.files.root / STORE.lstrip("/"))
+        if any(resolved == store or resolved.is_relative_to(store) for store in stores):
+            raise Conflict(
+                f"{entry['path']} links to {entry['target']}, which resolves into "
+                "the Nix store; link to a native path"
+            )
 
     @staticmethod
     def recorded(record: FileRecord, current: FileState) -> bool:
         """Whether `current` is the state that `record` left."""
-        text, mode, uid, gid = current
-        return (digest(text), mode, uid, gid) == (
+        content, mode, uid, gid = current
+        return (content_digest(content), mode, uid, gid) == (
             record["sha256"],
             int(record["mode"], 8),
             record["uid"],
@@ -230,8 +317,13 @@ class Core(BaseAdapter[CoreRequest]):
         """Raise `Conflict` if an unrecorded existing file may not be replaced."""
         if file_key(entry["name"]) in self.records:
             return
+        self.check_target(entry)
         current = self.state(entry["path"])
-        if current is None or current[0] == entry["text"] or entry["adopt"]:
+        if (
+            current is None
+            or current[0] == self.desired_content(entry)
+            or entry["adopt"]
+        ):
             return
         if not converging:
             raise Conflict(
@@ -268,13 +360,15 @@ class Core(BaseAdapter[CoreRequest]):
         if intent["op"] == "write" and "record" in intent:
             record = intent["record"]
             current = self.state(record["path"])
-            if current is not None and digest(current[0]) == record["sha256"]:
+            if current is not None and content_digest(current[0]) == record["sha256"]:
                 self.records[key] = record
                 self.save_receipt()
         elif (record := self.records.get(key)) is not None:
             current = self.state(record["path"])
             original = self.saved_original(record)
-            if current is None or (original and current[0] == original["text"]):
+            if current is None or (
+                original and current[0] == original_content(original)
+            ):
                 self.drop(key)
         self.clear_intent()
 
@@ -287,11 +381,10 @@ class Core(BaseAdapter[CoreRequest]):
 
     def save_original(self, name: str, current: FileState) -> str:
         """Save the file that an adoption replaces; return where it went."""
-        text, mode, uid, gid = current
+        content, mode, uid, gid = current
         owner = self.package_owner(name)
         original: Original = {
             "path": name,
-            "text": text,
             "mode": f"{mode:04o}",
             "uid": uid,
             "gid": gid,
@@ -299,6 +392,14 @@ class Core(BaseAdapter[CoreRequest]):
             "version": owner[1] if owner else None,
             "date": datetime.date.today().isoformat(),
         }
+        kind, value = content
+        if kind == "link":
+            original["target"] = cast(str, value)
+        else:
+            try:
+                original["text"] = cast(bytes, value).decode()
+            except UnicodeDecodeError:
+                original["base64"] = base64.b64encode(cast(bytes, value)).decode()
         saved = original_name(name)
         save_json(self.files, saved, original)
         return saved
@@ -382,7 +483,11 @@ class Core(BaseAdapter[CoreRequest]):
         A file that the manifest declares counts with its declared text, so a
         plan sees the file that convergence writes.
         """
-        declared = {entry["path"]: entry["text"] for entry in self.desired["etc"]}
+        declared = {
+            entry["path"]: entry["text"]
+            for entry in self.desired["etc"]
+            if entry["text"] is not None
+        }
         chosen: dict[str, str] = {}
         for directory in reversed(SYSCTL_DIRS):  # Higher precedence overrides.
             path = self.files.path(directory)
@@ -509,8 +614,7 @@ class Core(BaseAdapter[CoreRequest]):
         key = file_key(entry["name"])
         record = self.records.get(key)
         files = self.entry_files(entry)
-        mode = int(entry["mode"], 8)
-        if record is not None and files.matches(entry["path"], entry["text"], mode):
+        if record is not None and self.matches(entry, files):
             return
         current = self.state(entry["path"])
         drifted = (
@@ -525,7 +629,7 @@ class Core(BaseAdapter[CoreRequest]):
             or "nix-config" in Path(entry["path"]).name
             # On a lost-receipt host, a file identical to its declaration is
             # Nacre's own: withdrawal removes it instead of restoring it.
-            or (self.lost_receipt and current[0] == entry["text"])
+            or (self.lost_receipt and current[0] == self.desired_content(entry))
         ):
             original = None
         else:
@@ -534,8 +638,8 @@ class Core(BaseAdapter[CoreRequest]):
             "kind": "file",
             "name": entry["name"],
             "path": entry["path"],
-            "sha256": digest(entry["text"]),
-            "mode": entry["mode"],
+            "sha256": content_digest(self.desired_content(entry)),
+            "mode": f"{self.entry_mode(entry):04o}",
             "uid": files.identity[0],
             "gid": files.identity[1],
             "unit": entry["unit"],
@@ -543,7 +647,7 @@ class Core(BaseAdapter[CoreRequest]):
             "original": original,
         }
         save_json(self.files, INTENT, {"op": "write", "key": key, "record": new})
-        if files.write(entry["path"], entry["text"], mode):
+        if self.write_content(entry, files):
             if entry["unit"] is not None:
                 self.mark("units")
                 # A new unit starts with its file; a changed one restarts.
@@ -592,7 +696,13 @@ class Core(BaseAdapter[CoreRequest]):
         if original is None:
             raise Conflict(f"the saved original of {record['path']} is missing")
         files = Files(self.files.root, (self.files.identity[0], original["gid"]))
-        files.write(original["path"], original["text"], int(original["mode"], 8))
+        kind, value = original_content(original)
+        if kind == "link":
+            files.write_link(original["path"], cast(str, value))
+        else:
+            files.write_bytes(
+                original["path"], cast(bytes, value), int(original["mode"], 8)
+            )
         if original["uid"] != self.files.identity[0]:
             os.chown(
                 files.path(original["path"]),
@@ -639,10 +749,10 @@ class Core(BaseAdapter[CoreRequest]):
         if record is None:
             # The same rule as write_entry, which records these as Nacre's.
             created = "nix-config" in Path(path).name or (
-                self.lost_receipt and current[0] == entry["text"]
+                self.lost_receipt and current[0] == self.desired_content(entry)
             )
             note = "adopt as Nacre's" if created else "adopt, save original"
-        elif files.matches(path, entry["text"], int(entry["mode"], 8)):
+        elif self.matches(entry, files):
             return Change("=", path)
         elif not self.recorded(record, current):
             note = "drifted, overwrite"

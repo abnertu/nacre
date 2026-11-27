@@ -97,6 +97,9 @@ chown "$user:" /var/cache/nacre-yay
 install -d -o "$user" -g "$user" "$home/.cache"
 ln -s /var/cache/nacre-yay "$home/.cache/yay"
 loginctl enable-linger "$user"
+# An operator link that the deployment adopts and withdrawal restores.
+ln -s /usr/share/zoneinfo/UTC /etc/nacre-container-adopted
+chown -h root:wheel /etc/nacre-container-adopted
 EOF
 for _ in $(seq 30); do
   podman exec "$name" test -d /run/user/1000 && break
@@ -147,6 +150,15 @@ step 'Update installs packages and converges'
 deploy update.log --update || { show update.log; fail 'update failed'; }
 podman exec "$name" systemctl is-active --quiet nacre-demo.service ||
   fail 'the declared nacre-demo.service is not active'
+blob=$(sha256sum "$source_root/checks/container/blob.bin" | cut -d' ' -f1)
+[[ $(podman exec "$name" sha256sum /etc/nacre-container-blob.bin | cut -d' ' -f1) == "$blob" ]] ||
+  fail 'the declared binary /etc file differs from its source'
+[[ $(podman exec "$name" readlink /etc/nacre-container-link) == /usr/share/zoneinfo/UTC ]] ||
+  fail 'the declared /etc link is missing or wrong'
+[[ $(podman exec "$name" readlink /etc/nacre-container-adopted) == /usr/share/zoneinfo/Asia/Taipei ]] ||
+  fail 'the adopted /etc link was not replaced'
+[[ $(podman exec "$name" stat -c %U:%G /etc/nacre-container-link /etc/nacre-container-blob.bin) == $'root:root\nroot:root' ]] ||
+  fail 'a declared /etc file or link is not owned by root'
 
 step 'Repeat deployment changes nothing'
 deploy repeat.log || { show repeat.log; fail 'repeat deployment failed'; }
@@ -172,8 +184,14 @@ deploy_from "$withdrawn" withdrawn.log || { show withdrawn.log; fail 'withdrawal
 last_log=withdrawn.log
 if podman exec "$name" test -e /etc/nacre-container-test.conf ||
   podman exec "$name" test -e /etc/systemd/system/nacre-demo.service ||
-  podman exec "$name" test -e /etc/systemd/journald.conf.d/60-nix-config.conf; then
+  podman exec "$name" test -e /etc/systemd/journald.conf.d/60-nix-config.conf ||
+  podman exec "$name" test -e /etc/nacre-container-blob.bin ||
+  podman exec "$name" test -L /etc/nacre-container-link; then
   fail 'a withdrawn file stayed'
+fi
+if [[ $(podman exec "$name" readlink /etc/nacre-container-adopted) != /usr/share/zoneinfo/UTC ]] ||
+  [[ $(podman exec "$name" stat -c %U:%G /etc/nacre-container-adopted) != root:wheel ]]; then
+  fail 'the adopted /etc link did not come back with its owner'
 fi
 if podman exec "$name" systemctl is-active --quiet nacre-demo.service; then
   fail 'the withdrawn nacre-demo.service still runs'
@@ -212,6 +230,7 @@ sed 's#@url@#path:/tmp/nacre-src#' "$source_root/templates/machine/flake.nix" |
   sed 's#\./configuration\.nix#./configuration.nix ./container.nix#' |
   as_user_in tee "$machine/flake.nix" >/dev/null
 as_user_in tee "$machine/container.nix" <"$source_root/checks/container/configuration.nix" >/dev/null
+as_user_in tee "$machine/blob.bin" <"$source_root/checks/container/blob.bin" >/dev/null
 podman exec "$name" bash -c 'mkdir -p /boot && touch /boot/initramfs-linux.img'
 nacre() {
   as_user nix --extra-experimental-features 'nix-command flakes' \

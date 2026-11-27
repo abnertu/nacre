@@ -50,10 +50,16 @@ class FileRecord(TypedDict):
 
 
 class Original(TypedDict):
-    """The file that an adoption replaced. It can hold secrets: never print it."""
+    """The file that an adoption replaced. It can hold secrets: never print it.
+
+    It holds `text` when its bytes are UTF-8, `base64` otherwise, or the
+    `target` of a symlink.
+    """
 
     path: str
-    text: str
+    text: NotRequired[str]
+    base64: NotRequired[str]
+    target: NotRequired[str]
     mode: str
     uid: int
     gid: int

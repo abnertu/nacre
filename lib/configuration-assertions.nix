@@ -37,28 +37,75 @@ let
     else
       "systemd/system/${name}"
   ) (lib.filterAttrs (_: unit: unit.enable && unit.text != null) config.systemd.units);
-  etcAssertions = lib.concatMap (name: [
-    {
-      assertion = !builtins.elem name unitPaths;
-      message = "environment.etc.\"${name}\" is the file of a systemd.units declaration";
-    }
-    {
-      assertion = !badName name;
-      message = "environment.etc.\"${name}\" must be a relative path without empty, . or .. components";
-    }
-    {
-      assertion = badName name || !isReserved name;
-      message = "environment.etc.\"${name}\" names a path that another Nacre owner writes";
-    }
-    {
-      assertion = !lib.any (other: lib.hasPrefix "${name}/" other) etcNames;
-      message = "environment.etc.\"${name}\" is a directory of another entry";
-    }
-    {
-      assertion = config.environment.etc.${name}.contentError == null;
-      message = toString config.environment.etc.${name}.contentError;
-    }
-  ]) etcNames;
+  inherit (builtins) storeDir;
+  underTextPath =
+    name: lib.any (path: name == path || lib.hasPrefix "${path}/" name) config.arch.textPaths;
+  # A source is a Nix path to a regular file, or a string with store context;
+  # a target is an absolute native path. Neither may hide text that adapters read.
+  kindAssertions =
+    name: entry:
+    let
+      inherit (entry) source target;
+      label = "environment.etc.\"${name}\"";
+    in
+    lib.optionals (entry.kind == "source") [
+      {
+        assertion =
+          if builtins.isPath source then
+            builtins.readFileType source == "regular"
+          else
+            builtins.hasContext source && lib.hasPrefix "${storeDir}/" source;
+        message = "${label}.source must be a Nix path to a regular file or a store path with its context";
+      }
+    ]
+    ++ lib.optionals (entry.kind == "target") [
+      {
+        assertion = lib.hasPrefix "/" target && !lib.hasPrefix "${storeDir}/" target && target != storeDir;
+        message = "${label}.target must be an absolute path outside ${storeDir}";
+      }
+      {
+        assertion = entry.mode == "0644" && entry.group == "root";
+        message = "${label} is a symlink; it keeps the default mode and group";
+      }
+    ]
+    ++
+      lib.optionals
+        (builtins.elem entry.kind [
+          "source"
+          "target"
+        ])
+        [
+          {
+            assertion = !underTextPath name;
+            message = "${label} is at or under a path that an adapter reads as text; declare it with text";
+          }
+        ];
+  etcAssertions = lib.concatMap (
+    name:
+    [
+      {
+        assertion = !builtins.elem name unitPaths;
+        message = "environment.etc.\"${name}\" is the file of a systemd.units declaration";
+      }
+      {
+        assertion = !badName name;
+        message = "environment.etc.\"${name}\" must be a relative path without empty, . or .. components";
+      }
+      {
+        assertion = badName name || !isReserved name;
+        message = "environment.etc.\"${name}\" names a path that another Nacre owner writes";
+      }
+      {
+        assertion = !lib.any (other: lib.hasPrefix "${name}/" other) etcNames;
+        message = "environment.etc.\"${name}\" is a directory of another entry";
+      }
+      {
+        assertion = config.environment.etc.${name}.contentError == null;
+        message = toString config.environment.etc.${name}.contentError;
+      }
+    ]
+    ++ kindAssertions name config.environment.etc.${name}
+  ) etcNames;
   inventories = builtins.attrValues config.arch.inventory;
   requiredBy =
     name:

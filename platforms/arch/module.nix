@@ -72,6 +72,8 @@ let
     name = unitPath name unit;
     path = "/etc/${unitPath name unit}";
     inherit (unit) text adopt restartIfChanged;
+    source = null;
+    target = null;
     mode = "0644";
     group = "root";
     unit = name;
@@ -81,11 +83,13 @@ let
     inherit name;
     path = "/etc/${name}";
     text = entry.content;
+    source = entry.sourcePath;
+    target = if entry.kind == "target" then entry.target else null;
     inherit (entry) mode group adopt;
     unit = null;
     dropin = false;
     restartIfChanged = false;
-  }) (lib.filterAttrs (_: entry: entry.enable && entry.content != null) config.environment.etc);
+  }) (lib.filterAttrs (_: entry: entry.enable && entry.kind != null) config.environment.etc);
   managedUnits = lib.mapAttrsToList (name: unit: {
     inherit name;
     # A packaged unit always runs; an authored one only when a target wants it.
@@ -96,7 +100,7 @@ let
       else
         builtins.hashString "sha256" (builtins.toJSON unit.restartTriggers);
   }) (lib.filterAttrs (_: unit: !dropin unit) units);
-  etcText = name: config.environment.etc.${name}.content;
+  etcTrigger = name: config.environment.etc.${name}.trigger;
 in
 {
   options.arch = {
@@ -177,6 +181,12 @@ in
       internal = true;
       readOnly = true;
       description = "Enabled environment.etc entries with their resolved content, for the core manifest.";
+    };
+    textPaths = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      internal = true;
+      description = "Paths relative to /etc that an adapter reads as text; source and target entries stay out of them.";
     };
     etcReserved = mkOption {
       type = types.listOf types.str;
@@ -271,8 +281,8 @@ in
     services = {
       NetworkManager = lib.mkIf config.networking.networkmanager.enable {
         restartTriggers = lib.filter (text: text != null) [
-          (etcText "NetworkManager/conf.d/main.conf")
-          (config.environment.etc."NetworkManager/conf.d/99-tailscale.conf".content or null)
+          (etcTrigger "NetworkManager/conf.d/main.conf")
+          (config.environment.etc."NetworkManager/conf.d/99-tailscale.conf".trigger or null)
         ];
       };
       bluetooth = lib.mkIf config.hardware.bluetooth.enable { };
@@ -492,6 +502,18 @@ in
     etc = etcFiles ++ unitFiles;
     units = managedUnits;
     systemUnits = map (unit: unit.name) (lib.filter (unit: unit.start) managedUnits);
+    textPaths = [
+      # Core: boot_value reads the sysctl files.
+      "sysctl.d"
+      # System settings: the agreement checks read the main files and drop-ins.
+      "systemd/timesyncd.conf"
+      "systemd/timesyncd.conf.d"
+      "systemd/journald.conf"
+      "systemd/journald.conf.d"
+      "systemd/logind.conf"
+      "systemd/logind.conf.d"
+      "systemd/system/fstrim.timer.d"
+    ];
     etcReserved =
       reservedPaths
       ++ lib.concatMap (extension: extension.reservedPaths) (builtins.attrValues config.arch.extensions);

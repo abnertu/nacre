@@ -187,6 +187,14 @@ let
   etcText =
     modules: name:
     (lib.findFirst (entry: entry.name == name) null (evaluate modules).config.arch.etc).text;
+  etcEntry =
+    modules: name:
+    let
+      entry = lib.findFirst (entry: entry.name == name) null (evaluate modules).config.arch.etc;
+    in
+    {
+      inherit (entry) text source target;
+    };
   mainConf = "NetworkManager/conf.d/main.conf";
   # Forwarding keys and container modules belong to the features that need them.
   forwarding = [
@@ -285,14 +293,48 @@ assert
   } == [ "environment.etc.\"both\" defines both text and source at the same priority" ];
 assert
   etcFailed { environment.etc."empty".mode = "0600"; } == [
-    "environment.etc.\"empty\" defines neither text nor source"
+    "environment.etc.\"empty\" defines neither text, source nor target"
   ];
 assert etcText [ { environment.etc.${mainConf}.text = "plain\n"; } ] mainConf == "plain\n";
 assert
   etcText [ { environment.etc.${mainConf}.text = lib.mkDefault "default\n"; } ] mainConf
   == "default\n";
 assert
-  etcText [ { environment.etc.${mainConf}.source = etcFile "source\n"; } ] mainConf == "source\n";
+  etcEntry [ { environment.etc."blob".source = etcFile "source\n"; } ] "blob" == {
+    text = null;
+    source = "${etcFile "source\n"}";
+    target = null;
+  };
+assert
+  etcEntry [ { environment.etc."zone".target = "/usr/share/zoneinfo/UTC"; } ] "zone" == {
+    text = null;
+    source = null;
+    target = "/usr/share/zoneinfo/UTC";
+  };
+assert
+  etcFailed {
+    environment.etc = {
+      "relative".target = "usr/share/x";
+      "store".target = "${builtins.storeDir}/x";
+      "moded" = {
+        target = "/x";
+        mode = "0600";
+      };
+      "plain".source = "/home/user/key";
+      "folder".source = ../lib;
+      "sysctl.d/90-x.conf".source = etcFile "x";
+      "sysctl.d".target = "/x";
+    };
+  } == [
+    "environment.etc.\"folder\".source must be a Nix path to a regular file or a store path with its context"
+    "environment.etc.\"moded\" is a symlink; it keeps the default mode and group"
+    "environment.etc.\"plain\".source must be a Nix path to a regular file or a store path with its context"
+    "environment.etc.\"relative\".target must be an absolute path outside ${builtins.storeDir}"
+    "environment.etc.\"store\".target must be an absolute path outside ${builtins.storeDir}"
+    "environment.etc.\"sysctl.d\" is a directory of another entry"
+    "environment.etc.\"sysctl.d\" is at or under a path that an adapter reads as text; declare it with text"
+    "environment.etc.\"sysctl.d/90-x.conf\" is at or under a path that an adapter reads as text; declare it with text"
+  ];
 assert
   !(builtins.tryEval (
     builtins.deepSeq (etcText [

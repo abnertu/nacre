@@ -14,7 +14,7 @@ in
   };
   # pwrstatd reads its configuration only when it starts.
   config.systemd.services.pwrstatd = lib.mkIf enable {
-    restartTriggers = [ config.environment.etc."pwrstatd.conf".content ];
+    restartTriggers = [ config.environment.etc."pwrstatd.conf".trigger ];
   };
   config.arch = {
     inventory.powerpanel = {

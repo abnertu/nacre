@@ -55,7 +55,7 @@ Features declare the kernel settings that they need. Virtualization loads `bridg
 
 ## Files under /etc
 
-`environment.etc.<name>` declares a text file under `/etc`. The name is relative to `/etc`:
+`environment.etc.<name>` declares a file or a symlink under `/etc`. The name is relative to `/etc`:
 
 ```nix
 environment.etc."sudoers.d/50-alice" = {
@@ -63,17 +63,23 @@ environment.etc."sudoers.d/50-alice" = {
   mode = "0440";
 };
 environment.etc."ssh/sshd_config.d/50-local.conf".source = ./files/sshd-local.conf;
+environment.etc."resolv.conf" = {
+  target = "/run/systemd/resolve/stub-resolv.conf";
+  adopt = true;
+};
 ```
 
 | Option | Behavior |
 | --- | --- |
-| `text`, `source` | The content. A definition with a higher priority wins. Equal priorities fail evaluation. |
-| `mode` | Octal mode, `0644` by default. |
-| `group` | Owning group, `root` by default. The owner is always root. |
-| `adopt` | Replace an existing file that differs. Nacre saves the original. |
+| `text`, `source`, `target` | The content: text, the bytes of a store file, or a symlink to an absolute native path. A definition with a higher priority wins. Equal priorities fail evaluation. |
+| `mode` | Octal mode, `0644` by default. A symlink keeps the default. |
+| `group` | Owning group, `root` by default. The owner is always root. A symlink keeps the default. |
+| `adopt` | Replace an existing file or symlink that differs. Nacre saves the original. |
 | `enable` | Set it to `false` to withdraw the file. |
 
-Never put secrets in an entry. Its text lands in the Nix store and the deployment manifest.
+Never put secrets in an entry. Its content lands in the Nix store and the deployment manifest.
+
+A `source` is a Nix path or a store path with its context, and it may be binary. A `target` never points into `/nix/store`, so a garbage collection cannot break it. Nacre never follows a symlink. It compares the literal target, so a relative native link differs from an absolute declaration and needs `adopt = true`. A `source` or `target` cannot replace a path that an adapter reads as text, such as `sysctl.d` or the journald, logind and timesyncd configuration. Declare those with `text`.
 
 Prefer a drop-in directory, such as `sshd_config.d`, to a whole file. A drop-in needs no adoption.
 
@@ -81,7 +87,8 @@ Nacre records each file that it writes. These rules apply:
 
 - A file that Nacre created goes away when its declaration goes away.
 - An adopted file gets its original back when its declaration goes away.
-- An existing file that differs stops preflight until you set `adopt = true`. An identical file is adopted without it.
+- An existing file or symlink that differs stops preflight until you set `adopt = true`. An identical one is adopted without it.
+- A directory, FIFO or socket at a declared path stops preflight.
 - A declared file that someone edited is written again.
 - A withdrawn file that someone edited stops the deployment. Restore or delete it, or run `nacre forget file:<name>` to leave it unmanaged.
 

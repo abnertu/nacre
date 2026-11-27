@@ -1,5 +1,5 @@
-# environment.etc: text files under /etc that the core adapter writes, records
-# and withdraws. Names are relative to /etc, as in NixOS.
+# environment.etc: files and symlinks under /etc that the core adapter writes,
+# records and withdraws. Names are relative to /etc, as in NixOS.
 { lib, ... }:
 let
   inherit (lib) mkOption types;
@@ -23,9 +23,15 @@ let
           description = "File content. Never put secrets here: the text lands in the Nix store and the manifest.";
         };
         source = mkOption {
-          type = types.nullOr types.path;
+          type = types.nullOr (types.either types.path types.str);
           default = null;
-          description = "Text file whose content Nacre writes, in place of `text`.";
+          description = "Store file whose bytes Nacre copies, in place of `text`. It may be binary.";
+        };
+        target = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          example = "/usr/share/zoneinfo/UTC";
+          description = "Absolute path outside the store that this entry links to, in place of `text`.";
         };
         mode = mkOption {
           type = types.strMatching "0[0-7]{3}";
@@ -45,11 +51,35 @@ let
             Nacre saves the original and restores it when the entry goes away.
           '';
         };
+        kind = mkOption {
+          type = types.nullOr (
+            types.enum [
+              "text"
+              "source"
+              "target"
+            ]
+          );
+          internal = true;
+          readOnly = true;
+          description = "Which of `text`, `source` and `target` wins by priority; null on a conflict.";
+        };
         content = mkOption {
           type = types.nullOr types.str;
           internal = true;
           readOnly = true;
-          description = "The text that wins between `text` and `source` by priority; null on a conflict.";
+          description = "The text of a `text` entry; null for other kinds.";
+        };
+        sourcePath = mkOption {
+          type = types.nullOr types.str;
+          internal = true;
+          readOnly = true;
+          description = "The store path of a `source` entry; null for other kinds.";
+        };
+        trigger = mkOption {
+          type = types.nullOr types.str;
+          internal = true;
+          readOnly = true;
+          description = "The value whose change restarts a unit that reads this entry: its text, store path or target.";
         };
         contentError = mkOption {
           type = types.nullOr types.str;
@@ -60,31 +90,34 @@ let
       };
       config =
         let
-          hasText = config.text != null;
-          hasSource = config.source != null;
-          textPrio = options.text.highestPrio;
-          sourcePrio = options.source.highestPrio;
+          defined = lib.filter (kind: config.${kind} != null) [
+            "text"
+            "source"
+            "target"
+          ];
+          priority = kind: options.${kind}.highestPrio;
+          best = lib.foldl' lib.min 1000000 (map priority defined);
+          winners = lib.filter (kind: priority kind == best) defined;
+          kind = if builtins.length winners == 1 then builtins.head winners else null;
+          sourcePath = if kind == "source" then "${config.source}" else null;
         in
         {
-          content =
-            if hasText && hasSource then
-              if textPrio < sourcePrio then
-                config.text
-              else if sourcePrio < textPrio then
-                builtins.readFile config.source
-              else
-                null
-            else if hasText then
+          inherit kind sourcePath;
+          content = if kind == "text" then config.text else null;
+          trigger =
+            if kind == "text" then
               config.text
-            else if hasSource then
-              builtins.readFile config.source
+            else if kind == "source" then
+              sourcePath
             else
-              null;
+              config.target;
           contentError =
-            if hasText && hasSource && textPrio == sourcePrio then
-              "environment.etc.\"${name}\" defines both text and source at the same priority"
-            else if !hasText && !hasSource then
-              "environment.etc.\"${name}\" defines neither text nor source"
+            if defined == [ ] then
+              "environment.etc.\"${name}\" defines neither text, source nor target"
+            else if kind == null then
+              "environment.etc.\"${name}\" defines ${
+                lib.optionalString (builtins.length winners == 2) "both "
+              }${lib.concatStringsSep " and " winners} at the same priority"
             else
               null;
         };
@@ -95,6 +128,6 @@ in
   options.environment.etc = mkOption {
     type = types.attrsOf entry;
     default = { };
-    description = "Text files under /etc. Each name is a path relative to /etc.";
+    description = "Files and symlinks under /etc. Each name is a path relative to /etc.";
   };
 }

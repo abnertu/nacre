@@ -32,6 +32,8 @@ def entry(name, text, mode="0644", group="root", adopt=True, unit=None, **option
         "name": name,
         "path": f"/etc/{name}",
         "text": text,
+        "source": options.get("source"),
+        "target": options.get("target"),
         "mode": mode,
         "group": group,
         "adopt": adopt,
@@ -494,12 +496,6 @@ class CoreTests(Harness):
             self.core().preflight()
         self.assertFalse((self.root / "etc/pacman.d").exists())
 
-    def test_symlinked_target_is_rejected(self):
-        target = self.root / "etc/pwrstatd.conf"
-        target.symlink_to(self.root / "etc/pacman.conf")
-        with self.assertRaises(Conflict):
-            self.core().preflight()
-
     def test_purge_withdraws_managed_state_and_preserves_the_rest(self):
         self.deploy()
         pacman = self.root / "etc/pacman.conf"
@@ -597,8 +593,8 @@ OLD_BLOCK = (
 )
 
 
-class EtcTests(Harness):
-    """environment.etc entries: receipts, adoption, withdrawal and recovery."""
+class EtcHarness(Harness):
+    """Helpers for environment.etc cases."""
 
     def setUp(self):
         super().setUp()
@@ -617,6 +613,10 @@ class EtcTests(Harness):
     def existing(self, name, text):
         self.path(name).parent.mkdir(parents=True, exist_ok=True)
         self.path(name).write_text(text)
+
+
+class EtcTests(EtcHarness):
+    """environment.etc entries: receipts, adoption, withdrawal and recovery."""
 
     def test_entry_gets_its_mode_group_and_record(self):
         gid = os.getgid()
@@ -1250,6 +1250,170 @@ class EtcTests(Harness):
             self.core().purge()
         self.assertEqual((self.root / "etc/nix/nix.conf").read_text(), nix)
         self.assertTrue((self.root / STATE / "receipts/core.json").exists())
+
+
+BLOB = b"\x00binary\xff\xfe\n"
+
+
+class BinaryAndLinkTests(EtcHarness):
+    """source entries copy bytes; target entries are symlinks that Nacre never follows."""
+
+    def setUp(self):
+        super().setUp()
+        self.store = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        (self.store / "blob").write_bytes(BLOB)
+
+    def blob(self, name="blob.bin", **options):
+        return entry(name, None, source=str(self.store / "blob"), **options)
+
+    def link(self, name, target, **options):
+        return entry(name, None, target=target, **options)
+
+    def test_binary_source_is_copied_byte_identical_and_repeat_is_quiet(self):
+        self.manifest["etc"] = [self.blob(mode="0600")]
+        self.deploy()
+        self.assertEqual(self.path("blob.bin").read_bytes(), BLOB)
+        self.assertEqual(self.path("blob.bin").stat().st_mode & 0o777, 0o600)
+        before = self.snapshot()
+        self.assertIn("= /etc/blob.bin", self.plan())
+        self.deploy()
+        self.assertEqual(self.snapshot(), before)
+
+    def test_adopted_binary_original_is_restored_byte_identical(self):
+        self.path("blob.bin").write_bytes(b"\x00old\xff")
+        self.path("blob.bin").chmod(0o600)
+        self.manifest["etc"] = [self.blob()]
+        self.deploy()
+        self.assertEqual(self.path("blob.bin").read_bytes(), BLOB)
+        self.manifest["etc"] = []
+        self.deploy()
+        self.assertEqual(self.path("blob.bin").read_bytes(), b"\x00old\xff")
+        self.assertEqual(self.path("blob.bin").stat().st_mode & 0o777, 0o600)
+
+    def test_target_entry_links_without_following_and_withdraws(self):
+        (self.root / "srv").mkdir()
+        self.manifest["etc"] = [
+            self.link("dangling", "/missing/file"),
+            self.link("directory", "/srv"),
+        ]
+        self.deploy()
+        self.assertEqual(os.readlink(self.path("dangling")), "/missing/file")
+        self.assertEqual(os.readlink(self.path("directory")), "/srv")
+        self.assertIn("= /etc/dangling", self.plan())
+        calls = len(self.native.calls)
+        self.deploy()
+        self.assertIn("Core converged: 0 files updated", self.output.getvalue())
+        self.assertGreater(len(self.native.calls), calls)
+        self.manifest["etc"] = []
+        self.deploy()
+        self.assertFalse(os.path.lexists(self.path("dangling")))
+        self.assertFalse(os.path.lexists(self.path("directory")))
+        self.assertTrue((self.root / "srv").is_dir())
+
+    def test_changed_link_is_restored_and_a_changed_withdrawn_link_stops(self):
+        self.manifest["etc"] = [self.link("zone", "/usr/share/zoneinfo/UTC")]
+        self.deploy()
+        self.path("zone").unlink()
+        self.path("zone").symlink_to("/elsewhere")
+        self.assertIn("~ /etc/zone (drifted, overwrite)", self.plan())
+        self.deploy()
+        self.assertEqual(os.readlink(self.path("zone")), "/usr/share/zoneinfo/UTC")
+        # A file with the link's mode and bytes is still not that link.
+        self.path("zone").unlink()
+        self.path("zone").write_text("/usr/share/zoneinfo/UTC")
+        self.path("zone").chmod(0o777)
+        self.assertIn("~ /etc/zone (drifted, overwrite)", self.plan())
+        self.deploy()
+        self.path("zone").unlink()
+        self.path("zone").symlink_to("/elsewhere")
+        self.manifest["etc"] = []
+        with self.assertRaisesRegex(Conflict, "nacre forget file:zone"):
+            self.core().preflight()
+
+    def test_existing_links_need_adopt_and_come_back(self):
+        self.path("resolv.conf").symlink_to("../run/systemd/resolve/stub-resolv.conf")
+        self.manifest["etc"] = [
+            entry("resolv.conf", "nameserver 1.1.1.1\n", adopt=False)
+        ]
+        with self.assertRaisesRegex(Conflict, "set adopt = true"):
+            self.core().preflight()
+        self.manifest["etc"] = [
+            self.link(
+                "resolv.conf", "/run/systemd/resolve/stub-resolv.conf", adopt=False
+            )
+        ]
+        with self.assertRaisesRegex(Conflict, "set adopt = true"):
+            self.core().preflight()
+        self.manifest["etc"] = [entry("resolv.conf", "nameserver 1.1.1.1\n")]
+        self.existing("hosts", "operator\n")
+        self.manifest["etc"].append(self.link("hosts", "/srv/hosts"))
+        self.deploy()
+        self.assertEqual(self.path("resolv.conf").read_text(), "nameserver 1.1.1.1\n")
+        self.assertEqual(os.readlink(self.path("hosts")), "/srv/hosts")
+        self.manifest["etc"] = []
+        self.deploy()
+        self.assertEqual(
+            os.readlink(self.path("resolv.conf")),
+            "../run/systemd/resolve/stub-resolv.conf",
+        )
+        self.assertFalse(self.path("hosts").is_symlink())
+        self.assertEqual(self.path("hosts").read_text(), "operator\n")
+
+    def test_lost_receipt_identical_source_and_link_are_nacre_s(self):
+        self.manifest["etc"] = [
+            self.blob(),
+            self.link("zone", "/usr/share/zoneinfo/UTC"),
+        ]
+        self.deploy()
+        (self.root / STATE / "receipts/core.json").unlink()
+        lines = self.plan()
+        self.assertIn("~ /etc/blob.bin (adopt as Nacre's)", lines)
+        self.assertIn("~ /etc/zone (adopt as Nacre's)", lines)
+        self.deploy()
+        self.manifest["etc"] = []
+        self.deploy()
+        self.assertFalse(os.path.lexists(self.path("blob.bin")))
+        self.assertFalse(os.path.lexists(self.path("zone")))
+
+    def test_interrupted_link_write_is_recorded_on_the_next_run(self):
+        self.manifest["etc"] = [self.link("zone", "/usr/share/zoneinfo/UTC")]
+        self.deploy()
+        receipt = self.receipt()
+        record = receipt["records"].pop("file:zone")
+        (self.root / STATE / "receipts/core.json").write_text(json.dumps(receipt))
+        (self.root / runtime.INTENT.lstrip("/")).write_text(
+            json.dumps({"op": "write", "key": "file:zone", "record": record})
+        )
+        self.core().preflight()
+        self.deploy()
+        self.assertEqual(self.receipt()["records"]["file:zone"], record)
+
+    def test_paths_that_are_neither_file_nor_link_stop_preflight(self):
+        self.path("dir.conf").mkdir()
+        self.manifest["etc"] = [entry("dir.conf", "x\n")]
+        with self.assertRaisesRegex(
+            Conflict, "/etc/dir.conf is not a regular file or symlink"
+        ):
+            self.core().preflight()
+        self.manifest["etc"] = [entry("fifo.conf", "x\n")]
+        self.deploy()
+        self.path("fifo.conf").unlink()
+        os.mkfifo(self.path("fifo.conf"))
+        self.manifest["etc"] = []
+        with self.assertRaisesRegex(
+            Conflict, "/etc/fifo.conf is not a regular file or symlink"
+        ):
+            self.core().preflight()
+
+    def test_target_that_resolves_into_the_store_stops_preflight(self):
+        (self.root / "nix/store/abc-x").mkdir(parents=True)
+        (self.root / "usr/share").mkdir(parents=True)
+        (self.root / "usr/share/profile").symlink_to(self.root / "nix/store/abc-x")
+        self.manifest["etc"] = [self.link("profile", "/usr/share/profile")]
+        with self.assertRaisesRegex(
+            Conflict, "/etc/profile.*resolves into the Nix store"
+        ):
+            self.core().preflight()
 
 
 if __name__ == "__main__":
