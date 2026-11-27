@@ -117,7 +117,7 @@ systemd.timers.backup = {
 systemd.units."libvirtd.socket" = { };
 ```
 
-A unit without content is a packaged unit. Nacre enables it and keeps it running. A unit with `text`, or a typed unit with any rendered option, is an authored unit. A typed unit with only `wantedBy` enables the packaged unit. Nacre writes it under `/etc/systemd/system`.
+A unit without content is a packaged unit. Nacre enables it and keeps it running. A unit with `text`, or a typed unit with any rendered option, is an authored unit. Nacre writes it under `/etc/systemd/system`. A typed unit with only common options enables the packaged unit. `wantedBy` needs an authored unit, because a packaged unit or a drop-in keeps its own `[Install]`.
 
 | Option | Behavior |
 | --- | --- |

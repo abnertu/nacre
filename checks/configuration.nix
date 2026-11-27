@@ -337,6 +337,18 @@ assert lib.all
       home = "/a:b";
     }
   ];
+assert
+  etcFailed {
+    systemd.timers.fstrim.wantedBy = [ "multi-user.target" ];
+    systemd.services.getty-extra = {
+      overrideStrategy = "asDropin";
+      serviceConfig.Nice = 5;
+      wantedBy = [ "multi-user.target" ];
+    };
+  } == [
+    "systemd.units.\"fstrim.timer\".wantedBy needs an authored unit; a packaged unit or drop-in keeps its own [Install]"
+    "systemd.units.\"getty-extra.service\".wantedBy needs an authored unit; a packaged unit or drop-in keeps its own [Install]"
+  ];
 assert etcText [ { environment.etc.${mainConf}.text = "plain\n"; } ] mainConf == "plain\n";
 assert
   etcText [ { environment.etc.${mainConf}.text = lib.mkDefault "default\n"; } ] mainConf
