@@ -172,7 +172,12 @@
       })
       // (import ./platforms/arch/checks.nix {
         inherit pkgs;
-        inherit (d) arch-switch llama-prepare adapterPython;
+        inherit (d)
+          arch-switch
+          llama-prepare
+          hotspot-prepare
+          adapterPython
+          ;
         extensionPurgeSwitch = extensionPurge.arch-switch;
         runnerManifest = runnerFixture.enabled.packages.${system}.arch-switch.manifests.gitlab-runner;
       })

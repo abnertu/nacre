@@ -4,6 +4,8 @@
 import importlib
 import json
 import os
+import select
+import signal
 import subprocess
 import sys
 import tempfile
@@ -44,6 +46,8 @@ with open(here / "calls.jsonl", "a") as calls:
 def save():
     (here / "state.json").write_text(json.dumps(state))
 if args[-2:] == ["connection", "show"]:
+    if state.get("listing") == "fail" and state["connections"]:
+        sys.exit(1)
     for uid, name in state["connections"]:
         print(f"{uid}:{name}")
 elif args[:2] == ["connection", "load"]:
@@ -56,9 +60,14 @@ elif args[:2] == ["connection", "load"]:
     if state["load"] == "duplicate":
         state["connections"].append(["11111111-1111-1111-1111-111111111111", name])
     save()
+    if state["load"] == "slow":
+        import time
+        time.sleep(30)
 elif args[:3] == ["connection", "show", "uuid"]:
     sys.exit(0 if any(uid == args[3] for uid, _ in state["connections"]) else 10)
 elif args[:3] == ["connection", "delete", "uuid"]:
+    if state.get("delete") == "fail":
+        sys.exit(1)
     state["connections"] = [c for c in state["connections"] if c[0] != args[3]]
     save()
 else:
@@ -101,7 +110,7 @@ class PrepareHotspotTests(unittest.TestCase):
         self.addCleanup(os.close, master)
         self.addCleanup(os.close, slave)
         for line in lines:
-            os.write(master, line.encode())
+            os.write(master, line if isinstance(line, bytes) else line.encode())
         config = {
             "hotspot": self.hotspot if hotspot else None,
             "root": str(self.root),
@@ -123,6 +132,45 @@ class PrepareHotspotTests(unittest.TestCase):
         )
         self.state = json.loads((self.bin / "state.json").read_text())
         return result
+
+    def start(self):
+        """Start prepare on a pty and return the process and the pty master."""
+        (self.bin / "state.json").write_text(json.dumps(self.state))
+        master, slave = os.openpty()
+        self.addCleanup(os.close, master)
+        self.addCleanup(os.close, slave)
+        config = {
+            "hotspot": self.hotspot,
+            "root": str(self.root),
+            "tty": os.ttyname(slave),
+            "requireRoot": False,
+            "rootOwnership": False,
+        }
+        config_path = self.base / "config.json"
+        config_path.write_text(json.dumps(config))
+        process = subprocess.Popen(
+            [PYTHON, "-I", str(SOURCE), "--config", str(config_path)],
+            env=dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}"),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        self.addCleanup(lambda: process.poll() is None and process.kill())
+        self.screen = b""
+        return process, master
+
+    def read_until(self, master, text):
+        """Read the terminal until it shows `text`."""
+        while text.encode() not in self.screen:
+            ready, _, _ = select.select([master], [], [], 20)
+            self.assertTrue(ready, f"no {text!r} on the terminal: {self.screen!r}")
+            self.screen += os.read(master, 1024)
+
+    def finish(self, process):
+        stdout, stderr = process.communicate(timeout=30)
+        self.state = json.loads((self.bin / "state.json").read_text())
+        return process.returncode, stdout + stderr
 
     def calls(self):
         path = self.bin / "calls.jsonl"
@@ -189,6 +237,7 @@ class PrepareHotspotTests(unittest.TestCase):
             ("1234567\n", "1234567\n"),
             ("g" * 64 + "\n", "g" * 64 + "\n"),
             ("pässwörd1\n", "pässwörd1\n"),
+            (b"\xff\xfe12345678\n", b"\xff\xfe12345678\n"),
             ("12345678\n", "12345679\n"),
         ]
         for lines in refused:
@@ -259,6 +308,71 @@ class PrepareHotspotTests(unittest.TestCase):
                     self.assertEqual(left, [])
                 else:
                     self.assertEqual(left, expected)
+                deletes = [c for c in self.calls() if c[:2] == ["connection", "delete"]]
+                self.assertEqual(bool(deletes), mode != "fail")
+                (self.bin / "calls.jsonl").unlink()
+        self.state.update(connections=[], load="ok", listing="fail")
+        result = self.prepare("12345678\n", "12345678\n")
+        self.assertIn("cannot list NetworkManager connections", result.stderr)
+        self.assertEqual((self.entries(), self.state["connections"]), ([], []))
+        self.state.update(connections=[], load="rename", listing="ok", delete="fail")
+        result = self.prepare("12345678\n", "12345678\n")
+        self.assertIn("also failed: nmcli connection delete uuid", result.stderr)
+        self.assertEqual(self.entries(), [])
+
+    def test_password_is_never_echoed_or_printed(self):
+        password = "correct horse"
+        process, master = self.start()
+        self.read_until(master, "Hotspot password: ")
+        os.write(master, f"{password}\n".encode())
+        self.read_until(master, "Repeat the password: ")
+        os.write(master, f"{password}\n".encode())
+        code, output = self.finish(process)
+        self.assertEqual(code, 0, output)
+        self.assertNotIn(password.encode(), self.screen)
+        self.assertNotIn(password, output)
+
+    def test_interrupt_at_the_prompt_writes_nothing(self):
+        for number in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=number):
+                process, master = self.start()
+                self.read_until(master, "Hotspot password: ")
+                process.send_signal(number)
+                code, output = self.finish(process)
+                self.assertEqual(code, 130, output)
+                self.assertIn("interrupted; nothing was written", output)
+                self.assertNotIn("Traceback", output)
+                self.assertEqual(self.entries(), [])
+
+    def test_interrupt_during_load_removes_the_keyfile_and_profile(self):
+        self.state["load"] = "slow"
+        process, master = self.start()
+        self.read_until(master, "Hotspot password: ")
+        os.write(master, b"12345678\n")
+        self.read_until(master, "Repeat the password: ")
+        os.write(master, b"12345678\n")
+        while not any(c[:2] == ["connection", "load"] for c in self.calls()):
+            self.assertIsNone(process.poll())
+            select.select([], [], [], 0.05)
+        select.select([], [], [], 0.5)
+        process.send_signal(signal.SIGTERM)
+        code, output = self.finish(process)
+        self.assertEqual(code, 1, output)
+        self.assertIn("interrupted; the keyfile was removed", output)
+        self.assertEqual((self.entries(), self.state["connections"]), ([], []))
+
+    def test_keyfile_that_appears_during_the_prompt_stays(self):
+        process, master = self.start()
+        self.read_until(master, "Hotspot password: ")
+        (self.root / KEYFILE).write_text("other\n")
+        os.write(master, b"12345678\n")
+        self.read_until(master, "Repeat the password: ")
+        os.write(master, b"12345678\n")
+        code, output = self.finish(process)
+        self.assertEqual(code, 1, output)
+        self.assertIn("appeared; nothing was loaded", output)
+        self.assertEqual((self.root / KEYFILE).read_text(), "other\n")
+        self.assertEqual(self.entries(), ["Demo AP.nmconnection"])
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@
   extensionPurgeSwitch,
   runnerManifest,
   llama-prepare,
+  hotspot-prepare,
   adapterPython ? pkgs.python3,
   ...
 }:
@@ -60,6 +61,16 @@
         python ${./system}/tests/test_system.py
         touch "$out"
       '';
+  # The packaged wrapper: root only, the real terminal and root, and the
+  # fixture's hotspot.
+  hotspot-prepare-interface = pkgs.runCommand "hotspot-prepare-interface" { } ''
+    if ${hotspot-prepare}/bin/hotspot-prepare >out 2>err; then exit 1; fi
+    grep -Fq 'run hotspot-prepare as root' err
+    config=${hotspot-prepare}/share/hotspot-prepare/config.json
+    ${pkgs.jq}/bin/jq -e '.requireRoot and .rootOwnership and .root == "/"
+      and .tty == "/dev/tty" and .hotspot.connection != null' "$config" >/dev/null
+    touch "$out"
+  '';
   hotspot-prepare-tests =
     pkgs.runCommand "hotspot-prepare-tests"
       {

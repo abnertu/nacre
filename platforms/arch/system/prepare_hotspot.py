@@ -110,6 +110,8 @@ class Prepare:
         self.files = Files(config["root"], identity)
         self.directory = self.files.path(CONNECTIONS)
         self.path = self.directory / f"{hotspot['connection']}.nmconnection"
+        # Whether the keyfile is in place, so an interrupt must remove it.
+        self.linked = False
 
     @staticmethod
     def run(*args: str) -> subprocess.CompletedProcess[str]:
@@ -148,7 +150,10 @@ class Prepare:
         except OSError:
             raise Failure("hotspot-prepare needs a terminal for the password") from None
         # As getpass does: a terminal is not seekable, so text mode r+ fails.
-        with io.TextIOWrapper(io.FileIO(descriptor, "w+")) as terminal:
+        # Bytes that are not UTF-8 become U+FFFD, which the PSK rule refuses.
+        with io.TextIOWrapper(
+            io.FileIO(descriptor, "w+"), encoding="utf-8", errors="replace"
+        ) as terminal:
             if not terminal.isatty():
                 raise Failure("hotspot-prepare needs a terminal for the password")
             first = self.ask(terminal, "Hotspot password: ")
@@ -196,6 +201,7 @@ class Prepare:
                 os.fsync(stream.fileno())
             try:
                 os.link(temporary, self.path)
+                self.linked = True
             except FileExistsError:
                 raise Failure(
                     f"{self.files.system_name(self.path)} appeared; nothing was loaded"
@@ -211,7 +217,10 @@ class Prepare:
         )
         if loaded.returncode != 0:
             self.undo(identifier, "NetworkManager did not load the connection")
-        found = [uid for uid, other in self.connections() if other == name]
+        try:
+            found = [uid for uid, other in self.connections() if other == name]
+        except Failure as failure:
+            self.undo(identifier, str(failure))
         if found != [identifier]:
             self.undo(
                 identifier,
@@ -219,7 +228,11 @@ class Prepare:
             )
 
     def undo(self, identifier: str, reason: str) -> NoReturn:
-        """Remove the keyfile and the profile that it created, then fail."""
+        """Remove the keyfile and the profile that it created, then fail.
+
+        Ctrl-C and SIGTERM wait until the cleanup is done.
+        """
+        signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM})
         failed: list[str] = []
         try:
             self.path.unlink(missing_ok=True)
@@ -239,11 +252,13 @@ class Prepare:
         self.check()
         password = self.password()
         identifier = str(uuid.uuid4())
-        self.write(keyfile(self.hotspot, identifier, password))
         try:
+            self.write(keyfile(self.hotspot, identifier, password))
             self.load(identifier)
         except KeyboardInterrupt:
-            self.undo(identifier, "interrupted")
+            if self.linked:
+                self.undo(identifier, "interrupted")
+            raise
         print(
             f"created hotspot connection {self.hotspot['connection']}; "
             "run `nacre switch` to adopt and start it"
