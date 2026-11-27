@@ -1,7 +1,6 @@
-# Powerlevel10k prompt: two lines, lean, transient, with terminal theme colors.
+# Powerlevel10k prompt: two lines, lean, transient.
 #
-# Colors are ANSI 0-15, so the prompt follows the terminal theme:
-#   1 red, 2 green, 3 yellow, 4 blue, 5 magenta, 6 cyan, 8 grey, 12 bright blue.
+# Colors are fixed xterm-256 values from the lean wizard style.
 # Icons need a Nerd Font v3.
 # Unset options take Powerlevel10k defaults.
 # Reference: https://github.com/romkatv/powerlevel10k/blob/master/config/p10k-lean.zsh
@@ -65,8 +64,8 @@
 
   # ----------------------------------------------------------- prompt_char --
   # Green after success, red after failure; the shape shows the vi mode.
-  typeset -g POWERLEVEL9K_PROMPT_CHAR_OK_{VIINS,VICMD,VIVIS,VIOWR}_FOREGROUND=2
-  typeset -g POWERLEVEL9K_PROMPT_CHAR_ERROR_{VIINS,VICMD,VIVIS,VIOWR}_FOREGROUND=1
+  typeset -g POWERLEVEL9K_PROMPT_CHAR_OK_{VIINS,VICMD,VIVIS,VIOWR}_FOREGROUND=76
+  typeset -g POWERLEVEL9K_PROMPT_CHAR_ERROR_{VIINS,VICMD,VIVIS,VIOWR}_FOREGROUND=196
   typeset -g POWERLEVEL9K_PROMPT_CHAR_{OK,ERROR}_VIINS_CONTENT_EXPANSION='❯'
   typeset -g POWERLEVEL9K_PROMPT_CHAR_{OK,ERROR}_VICMD_CONTENT_EXPANSION='❮'
   typeset -g POWERLEVEL9K_PROMPT_CHAR_{OK,ERROR}_VIVIS_CONTENT_EXPANSION='V'
@@ -76,11 +75,11 @@
   typeset -g POWERLEVEL9K_PROMPT_CHAR_LEFT_PROMPT_FIRST_SEGMENT_START_SYMBOL=
 
   # ------------------------------------------------------------------- dir --
-  # Shorten each parent to its shortest unique prefix (grey).
-  # Keep project roots whole and bold (bright blue).
-  typeset -g POWERLEVEL9K_DIR_FOREGROUND=4
-  typeset -g POWERLEVEL9K_DIR_SHORTENED_FOREGROUND=8
-  typeset -g POWERLEVEL9K_DIR_ANCHOR_FOREGROUND=12
+  # Shorten each parent to its shortest unique prefix.
+  # Keep project roots whole and bold.
+  typeset -g POWERLEVEL9K_DIR_FOREGROUND=31
+  typeset -g POWERLEVEL9K_DIR_SHORTENED_FOREGROUND=103
+  typeset -g POWERLEVEL9K_DIR_ANCHOR_FOREGROUND=39
   typeset -g POWERLEVEL9K_DIR_ANCHOR_BOLD=true
   typeset -g POWERLEVEL9K_SHORTEN_STRATEGY=truncate_to_unique
   typeset -g POWERLEVEL9K_SHORTEN_DELIMITER=
@@ -102,7 +101,6 @@
   typeset -g POWERLEVEL9K_DIR_HYPERLINK=false
   # No folder icon; a lock icon in a directory that you cannot write.
   typeset -g POWERLEVEL9K_DIR_SHOW_WRITABLE=v3
-  typeset -g POWERLEVEL9K_DIR_NOT_WRITABLE_FOREGROUND=1
   typeset -g POWERLEVEL9K_DIR_VISUAL_IDENTIFIER_EXPANSION=
   typeset -g POWERLEVEL9K_DIR_NOT_WRITABLE_VISUAL_IDENTIFIER_EXPANSION=$''
 
@@ -121,14 +119,14 @@
     fi
 
     if (( $1 )); then
-      local       meta='%8F'
-      local      clean='%2F'
-      local   modified='%3F'
-      local  untracked='%6F'
-      local conflicted='%1F'
+      local       meta='%f'
+      local      clean='%76F'
+      local   modified='%178F'
+      local  untracked='%39F'
+      local conflicted='%196F'
     else
       # Status is still loading: draw the last known state in grey.
-      local meta='%8F' clean='%8F' modified='%8F' untracked='%8F' conflicted='%8F'
+      local meta='%244F' clean='%244F' modified='%244F' untracked='%244F' conflicted='%244F'
     fi
 
     local res
@@ -193,52 +191,52 @@
   typeset -g POWERLEVEL9K_STATUS_EXTENDED_STATES=true
   typeset -g POWERLEVEL9K_STATUS_OK=false
   typeset -g POWERLEVEL9K_STATUS_OK_PIPE=true
-  typeset -g POWERLEVEL9K_STATUS_OK_PIPE_FOREGROUND=2
+  typeset -g POWERLEVEL9K_STATUS_OK_PIPE_FOREGROUND=70
   typeset -g POWERLEVEL9K_STATUS_OK_PIPE_VISUAL_IDENTIFIER_EXPANSION='✔'
   typeset -g POWERLEVEL9K_STATUS_ERROR=true
   typeset -g POWERLEVEL9K_STATUS_ERROR_SIGNAL=true
   typeset -g POWERLEVEL9K_STATUS_ERROR_PIPE=true
   typeset -g POWERLEVEL9K_STATUS_VERBOSE_SIGNAME=false
-  typeset -g POWERLEVEL9K_STATUS_{ERROR,ERROR_SIGNAL,ERROR_PIPE}_FOREGROUND=1
+  typeset -g POWERLEVEL9K_STATUS_{ERROR,ERROR_SIGNAL,ERROR_PIPE}_FOREGROUND=160
   typeset -g POWERLEVEL9K_STATUS_{ERROR,ERROR_SIGNAL,ERROR_PIPE}_VISUAL_IDENTIFIER_EXPANSION='✘'
 
   # ------------------------------------------------ command_execution_time --
   typeset -g POWERLEVEL9K_COMMAND_EXECUTION_TIME_THRESHOLD=3
   typeset -g POWERLEVEL9K_COMMAND_EXECUTION_TIME_PRECISION=0
   typeset -g POWERLEVEL9K_COMMAND_EXECUTION_TIME_FORMAT='d h m s'
-  typeset -g POWERLEVEL9K_COMMAND_EXECUTION_TIME_FOREGROUND=3
+  typeset -g POWERLEVEL9K_COMMAND_EXECUTION_TIME_FOREGROUND=101
   typeset -g POWERLEVEL9K_COMMAND_EXECUTION_TIME_VISUAL_IDENTIFIER_EXPANSION=
 
   # ------------------------------------------------------- background_jobs --
   typeset -g POWERLEVEL9K_BACKGROUND_JOBS_VERBOSE=false
-  typeset -g POWERLEVEL9K_BACKGROUND_JOBS_FOREGROUND=6
+  typeset -g POWERLEVEL9K_BACKGROUND_JOBS_FOREGROUND=70
 
   # ------------------------------------------------------------ virtualenv --
-  typeset -g POWERLEVEL9K_VIRTUALENV_FOREGROUND=5
+  typeset -g POWERLEVEL9K_VIRTUALENV_FOREGROUND=37
   typeset -g POWERLEVEL9K_VIRTUALENV_SHOW_PYTHON_VERSION=false
   typeset -g POWERLEVEL9K_VIRTUALENV_SHOW_WITH_PYENV=false
   typeset -g POWERLEVEL9K_VIRTUALENV_{LEFT,RIGHT}_DELIMITER=
 
   # ------------------------------------------------------------- nix_shell --
   # Show the icon inside `nix-shell`, `nix shell` and `nix develop`.
-  typeset -g POWERLEVEL9K_NIX_SHELL_FOREGROUND=12
+  typeset -g POWERLEVEL9K_NIX_SHELL_FOREGROUND=74
   typeset -g POWERLEVEL9K_NIX_SHELL_INFER_FROM_PATH=true
   typeset -g POWERLEVEL9K_NIX_SHELL_CONTENT_EXPANSION=
 
   # ------------------------------------------------------------- vim_shell --
-  typeset -g POWERLEVEL9K_VIM_SHELL_FOREGROUND=2
+  typeset -g POWERLEVEL9K_VIM_SHELL_FOREGROUND=34
 
   # --------------------------------------------------------------- context --
   # Show user@host only over SSH or as root.
-  typeset -g POWERLEVEL9K_CONTEXT_ROOT_FOREGROUND=1
-  typeset -g POWERLEVEL9K_CONTEXT_{REMOTE,REMOTE_SUDO}_FOREGROUND=3
+  typeset -g POWERLEVEL9K_CONTEXT_ROOT_FOREGROUND=178
+  typeset -g POWERLEVEL9K_CONTEXT_{REMOTE,REMOTE_SUDO}_FOREGROUND=180
   typeset -g POWERLEVEL9K_CONTEXT_ROOT_TEMPLATE='%B%n@%m'
   typeset -g POWERLEVEL9K_CONTEXT_{REMOTE,REMOTE_SUDO}_TEMPLATE='%n@%m'
   typeset -g POWERLEVEL9K_CONTEXT_{DEFAULT,SUDO}_{CONTENT,VISUAL_IDENTIFIER}_EXPANSION=
 
   # ------------------------------------------------------------------ time --
   # The time the prompt appeared; it stays fixed while you type.
-  typeset -g POWERLEVEL9K_TIME_FOREGROUND=8
+  typeset -g POWERLEVEL9K_TIME_FOREGROUND=66
   typeset -g POWERLEVEL9K_TIME_FORMAT='%D{%H:%M:%S}'
   typeset -g POWERLEVEL9K_TIME_UPDATE_ON_COMMAND=false
   typeset -g POWERLEVEL9K_TIME_VISUAL_IDENTIFIER_EXPANSION=
