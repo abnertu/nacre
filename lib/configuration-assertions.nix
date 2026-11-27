@@ -106,6 +106,30 @@ let
     ]
     ++ kindAssertions name config.environment.etc.${name}
   ) etcNames;
+  systemUsers = config.users.systemUsers;
+  # A sysusers.d name: lower case, at most 31 characters.
+  accountName = name: builtins.match "[a-z_][a-z0-9_-]{0,30}" name != null;
+  accountAssertions =
+    map (name: {
+      assertion = accountName name;
+      message = "users.groups.\"${name}\" must match [a-z_][a-z0-9_-]{0,30}";
+    }) (builtins.attrNames config.users.groups)
+    ++ lib.concatLists (
+      lib.mapAttrsToList (name: account: [
+        {
+          assertion = accountName name;
+          message = "users.systemUsers.\"${name}\" must match [a-z_][a-z0-9_-]{0,30}";
+        }
+        {
+          assertion = !users ? ${name};
+          message = "users.systemUsers.\"${name}\" is also a login account in users.users";
+        }
+        {
+          assertion = config.users.groups ? ${account.group};
+          message = "users.systemUsers.\"${name}\".group ${account.group} is not declared in users.groups";
+        }
+      ]) systemUsers
+    );
   inventories = builtins.attrValues config.arch.inventory;
   requiredBy =
     name:
@@ -178,5 +202,6 @@ in
         ) config.hardware.initramfs.images;
         message = "initramfs images must stay under /boot";
       }
-    ];
+    ]
+    ++ accountAssertions;
 }

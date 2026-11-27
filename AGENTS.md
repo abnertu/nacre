@@ -102,7 +102,7 @@ Assign one owner to each resource. Feature modules contribute native resources t
 - Host state keeps the `nix-config` namespace, so existing machines need no migration. The namespace covers `/var/lib/nix-config`, `60-nix-config.conf` drop-ins, `# BEGIN nix-config` blocks and receipts.
 - New persistent identifiers use the `nix-config` namespace too. `nacre` names only the project, its command and state without history.
 - Human accounts exist before deployment.
-- Modules own service accounts. Service accounts get no home composition.
+- Modules and machines own service accounts through `users.systemUsers` and `users.groups`. Service accounts get no home composition.
 - Keep the Home Manager `stateVersion` fixed through routine updates.
 
 ## Deployment contracts
@@ -128,7 +128,8 @@ Assign one owner to each resource. Feature modules contribute native resources t
 - A withdrawn authored unit stops, is disabled and goes away. A withdrawn packaged unit keeps running.
 - A withdrawn system setting returns to its value before Nacre. UFW withdrawals that loosen protection stop, and purge keeps UFW.
 - A removed extension runs its recorded purge phase when it opted in with `purge = true`.
-- Withdrawn groups, file capabilities, sysctl keys, kernel modules, the repository and the AI services return to their state before Nacre. `wheel` stays.
+- Withdrawn group memberships, file capabilities, sysctl keys, kernel modules, the repository and the AI services return to their state before Nacre. `wheel` stays.
+- Withdrawn service accounts and system groups stay. Nacre drops their records and their sysusers lines.
 - Withdrawn packages and packaged units only leave management.
 - Save each receipt record before its native change, so a crash in between leaves a record that withdrawal can revert.
 - A withdrawn file that changed since Nacre wrote it stops the deployment.

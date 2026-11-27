@@ -142,7 +142,7 @@ Read [GitLab Runner](gitlab-runner.md) before you declare instances under `servi
 
 ## Users and homes
 
-`deployment.username` selects an existing login account declared in `users.users`. To select another user, change both declarations. Modules create their service accounts without home composition. Keep Home Manager's `stateVersion` fixed during routine updates.
+`deployment.username` selects an existing login account declared in `users.users`. To select another user, change both declarations. Service accounts are [system accounts](#system-accounts) without home composition. Keep Home Manager's `stateVersion` fixed during routine updates.
 
 Shared profiles provide shell, development tools, themes and default application configuration. Personal settings belong in machine-owned home modules:
 
@@ -164,6 +164,31 @@ users.users.alice.homeModules = [ ./homes/alice/home.nix ];
 Nacre sets these defaults at priority 1100, as roles do, so a plain home definition or `lib.mkDefault` replaces each one. Lists, such as `home.packages`, and the `.zprofile` text keep merging, so your definitions add to them. Keep the reviewed Noctalia snapshot at `homes/<user>/noctalia/config.toml`. The CLI and `checkhealth` look for it there.
 
 After you edit, run `nacre build`. Then review `nacre plan`.
+
+## System accounts
+
+`users.systemUsers` and `users.groups` declare system accounts and groups. Modules and machines can declare them. They get no home composition:
+
+```nix
+users.groups.backup = { };
+users.systemUsers.backup = {
+  group = "backup";
+  description = "Nightly backup";
+};
+environment.etc."backup/key.conf" = {
+  text = "repository = /srv/backup\n";
+  group = "backup";
+  mode = "0640";
+};
+```
+
+Nacre writes `/etc/sysusers.d/60-nix-config.conf` and runs `systemd-sysusers` on that file only, before it writes `/etc` entries. An entry can then name the group. The shell is always `/usr/bin/nologin`. These rules apply:
+
+- An existing account or group with a system ID is adopted. A system ID is at most `SYS_UID_MAX` or `SYS_GID_MAX` in `/etc/login.defs`, or 65534.
+- An existing name with another ID, or an account with another primary group, stops preflight.
+- Nacre never changes an existing account.
+- When a declaration goes away, Nacre stops managing the account or group, and the account or group stays.
+- `nacre forget account:<name>` or `system-group:<name>` drops one record. A name that is still declared is adopted again on the next deployment.
 
 ## Machine extensions
 

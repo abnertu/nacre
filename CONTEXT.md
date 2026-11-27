@@ -7,7 +7,7 @@ Nacre evaluates machine policy into a fixed deployment with the selected Home Ma
 | Public policy | `lib/configuration-options.nix`, `modules/*/module.nix` | Typed options, defaults, assertions and native contributions |
 | Role | `roles/` | `minimal`, `runner` and `workstation` baselines at priority 1100 |
 | Machine | A separate flake based on `templates/machine/` | Identity, existing login accounts, hardware, features and personal home modules |
-| Platform | `platforms/arch/` | Native packages, files, accounts and privileged adapters |
+| Platform | `platforms/arch/` | Native packages, files, system accounts and privileged adapters |
 | Home | `profiles/`, `modules/home/` | Shared user packages, static configuration and user services |
 | Runtime preparation | Operator and feature preparation commands | Credentials, mutable data, native builds and model downloads |
 

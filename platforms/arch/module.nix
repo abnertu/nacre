@@ -44,6 +44,7 @@ let
     "gshadow"
     "subuid"
     "subgid"
+    "sysusers.d/60-nix-config.conf"
     # System settings.
     "locale.conf"
     "locale.gen"
@@ -181,6 +182,18 @@ in
       internal = true;
       readOnly = true;
       description = "Enabled environment.etc entries with their resolved content, for the core manifest.";
+    };
+    systemUsers = mkOption {
+      type = types.listOf types.attrs;
+      internal = true;
+      readOnly = true;
+      description = "System accounts for the core manifest, derived from users.systemUsers.";
+    };
+    systemGroups = mkOption {
+      type = types.listOf types.str;
+      internal = true;
+      readOnly = true;
+      description = "System groups for the core manifest, derived from users.groups.";
     };
     textPaths = mkOption {
       type = types.listOf types.str;
@@ -502,6 +515,11 @@ in
     etc = etcFiles ++ unitFiles;
     units = managedUnits;
     systemUnits = map (unit: unit.name) (lib.filter (unit: unit.start) managedUnits);
+    systemUsers = lib.mapAttrsToList (name: user: {
+      inherit name;
+      inherit (user) group description home;
+    }) config.users.systemUsers;
+    systemGroups = builtins.attrNames config.users.groups;
     textPaths = [
       # Core: boot_value reads the sysctl files.
       "sysctl.d"

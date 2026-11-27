@@ -53,6 +53,10 @@ type FileState = tuple[Content, int, int, int]
 # S_IFLNK and the permissions: no regular file has this mode.
 LINK_MODE = stat.S_IFLNK | 0o777
 STORE = "/nix/store"
+# Nacre's systemd-sysusers file: its nix-config name makes it Nacre's.
+SYSUSERS = "/etc/sysusers.d/60-nix-config.conf"
+# nobody and nogroup: system IDs above SYS_UID_MAX on every distribution.
+NOBODY = 65534
 
 
 def content_digest(content: Content) -> str:
@@ -811,6 +815,8 @@ class Core(BaseAdapter[CoreRequest]):
             commands |= {"getcap", "setcap"}
         if d["repository"]:
             commands.add("pacman-conf")
+        if d["systemUsers"] or d["systemGroups"]:
+            commands.add("systemd-sysusers")
         return commands
 
     def preflight(self, installed: bool = False) -> bool:
@@ -824,6 +830,7 @@ class Core(BaseAdapter[CoreRequest]):
             )
         self.check_etc(converging=False)
         self.check_runtime()
+        self.check_accounts()
         for block in d["blocks"]:
             self.without_block(block)
         repository = d["repository"]
@@ -877,6 +884,8 @@ class Core(BaseAdapter[CoreRequest]):
         self.withdraw_extensions()
         for record in self.withdrawn():
             self.withdraw(record)
+        # Before the etc entries, which may name a system group.
+        self.converge_accounts()
         for entry in d["etc"]:
             self.write_entry(entry)
         for block in d["blocks"]:
@@ -994,6 +1003,150 @@ class Core(BaseAdapter[CoreRequest]):
         for unit in triggered:
             self.systemd.start(unit)
 
+    # System accounts and groups: systemd-sysusers creates them from Nacre's
+    # own file; withdrawal keeps them.
+
+    def database(self, name: str) -> dict[str, list[str]]:
+        """The entries of /etc/passwd or /etc/group in the target root, by name."""
+        entries: dict[str, list[str]] = {}
+        for line in self.files.read(f"/etc/{name}").splitlines():
+            fields = line.split(":")
+            if len(fields) >= 3 and fields[2].isdigit():
+                entries[fields[0]] = fields
+        return entries
+
+    def system_limits(self) -> tuple[int, int]:
+        """SYS_UID_MAX and SYS_GID_MAX from /etc/login.defs, 999 by default."""
+        limits = {"SYS_UID_MAX": 999, "SYS_GID_MAX": 999}
+        for line in self.files.read("/etc/login.defs").splitlines():
+            fields = line.split()
+            if len(fields) == 2 and fields[0] in limits and fields[1].isdigit():
+                limits[fields[0]] = int(fields[1])
+        return limits["SYS_UID_MAX"], limits["SYS_GID_MAX"]
+
+    def check_accounts(self) -> None:
+        """Raise `Conflict` for a declared name that Nacre may not adopt.
+
+        A name without a record must have a system ID if it exists. Every
+        existing declared account must have its declared primary group.
+        """
+        d = self.desired
+        users, groups = self.database("passwd"), self.database("group")
+        uid_max, gid_max = self.system_limits()
+        for name in d["systemGroups"]:
+            found = groups.get(name)
+            if found and f"system-group:{name}" not in self.state_records:
+                gid = int(found[2])
+                if gid > gid_max and gid != NOBODY:
+                    raise Conflict(
+                        f"system group {name} exists with GID {gid}, which is not a "
+                        f"system ID (SYS_GID_MAX {gid_max}); rename the declaration"
+                    )
+        for user in d["systemUsers"]:
+            name = user["name"]
+            found = users.get(name)
+            if not found:
+                continue
+            uid = int(found[2])
+            if (
+                f"account:{name}" not in self.state_records
+                and uid > uid_max
+                and uid != NOBODY
+            ):
+                raise Conflict(
+                    f"system account {name} exists with UID {uid}, which is not a "
+                    f"system ID (SYS_UID_MAX {uid_max}); rename the declaration"
+                )
+            primary = groups.get(user["group"])
+            if primary is None or primary[2] != found[3]:
+                raise Conflict(
+                    f"system account {name} has another primary group than "
+                    f"{user['group']}; fix the account or the declaration"
+                )
+
+    def sysusers_text(self) -> str:
+        """Nacre's sysusers.d file, or an empty string when nothing is declared."""
+        d = self.desired
+        lines = [f"g {name} -" for name in d["systemGroups"]]
+        for user in d["systemUsers"]:
+            description = f'"{user["description"]}"' if user["description"] else "-"
+            lines.append(
+                f"u {user['name']} -:{user['group']} {description} {user['home']} "
+                "/usr/bin/nologin"
+            )
+        if not lines:
+            return ""
+        return (
+            "# Managed by Nacre: system accounts and groups.\n"
+            + "\n".join(lines)
+            + "\n"
+        )
+
+    def withdraw_accounts(self, users: set[str], groups: set[str]) -> None:
+        """Stop managing withdrawn accounts and groups; they stay."""
+        for key in self.state_withdrawn("account", users, purge=False):
+            self.drop_state(key)
+        for key in self.state_withdrawn("system-group", groups, purge=False):
+            self.drop_state(key)
+
+    def save_account_ids(self, wanted: list[tuple[str, str]]) -> None:
+        """Stop if a declared name is missing; then record each ID."""
+        self.save_account_ids(wanted)
+
+    def converge_accounts(self) -> None:
+        """Record, then create the declared accounts and groups, then save their IDs."""
+        d = self.desired
+        users = {user["name"] for user in d["systemUsers"]}
+        groups = set(d["systemGroups"])
+        self.withdraw_accounts(users, groups)
+        text = self.sysusers_text()
+        if not text:
+            if self.remove(SYSUSERS):
+                self.updates += 1
+                print(f"removed {SYSUSERS}")
+            return
+        # Again at convergence: package hooks can run after preflight.
+        self.check_accounts()
+        existing = {
+            "account": self.database("passwd"),
+            "system-group": self.database("group"),
+        }
+        wanted = [("system-group", name) for name in sorted(groups)] + [
+            ("account", name) for name in sorted(users)
+        ]
+        # Record before the native change, as for every receipt record.
+        for kind, name in wanted:
+            key = f"{kind}:{name}"
+            if key not in self.state_records:
+                created = name not in existing[kind]
+                self.record_state(
+                    key, {"kind": kind, "name": name, "created": created, "id": None}
+                )
+        changed = self.files.write(SYSUSERS, text)
+        if changed:
+            self.updates += 1
+            print(f"updated {SYSUSERS}")
+        missing = [name for kind, name in wanted if name not in existing[kind]]
+        if changed or missing:
+            self.run("systemd-sysusers", SYSUSERS)
+            self.actions += 1
+        found = {
+            "account": self.database("passwd"),
+            "system-group": self.database("group"),
+        }
+        for kind, name in wanted:
+            if name not in found[kind]:
+                raise Conflict(
+                    f"systemd-sysusers did not create {name}; another user database "
+                    "may already define it"
+                )
+        self.check_accounts()
+        for kind, name in wanted:
+            key = f"{kind}:{name}"
+            record = dict(self.state_records[key])
+            record["id"] = int(found[kind][name][2])
+            self.record_state(key, record)
+
     def initramfs(self) -> None:
         images = self.desired["initramfsImages"]
         if not images:
@@ -1104,7 +1257,7 @@ class Core(BaseAdapter[CoreRequest]):
     def plan(self) -> list[Change]:
         """What converge and finish would change; nothing is changed."""
         self.preflight()
-        return self.plan_files() + self.plan_runtime()
+        return self.plan_files() + self.plan_accounts() + self.plan_runtime()
 
     def plan_files(self) -> list[Change]:
         """The managed file, managed block and repository changes."""
@@ -1121,6 +1274,34 @@ class Core(BaseAdapter[CoreRequest]):
                 not in self.files.read("/etc/pacman.conf").splitlines()
             ):
                 changes.append(Change("~", "/etc/pacman.conf (add repository Include)"))
+        return changes
+
+    def plan_accounts(self) -> list[Change]:
+        """System accounts and groups to create, adopt or stop managing."""
+        d = self.desired
+        users, groups = self.database("passwd"), self.database("group")
+        changes: list[Change] = []
+        for kind, label, names, existing in (
+            ("system-group", "system group", d["systemGroups"], groups),
+            ("account", "system account", [u["name"] for u in d["systemUsers"]], users),
+        ):
+            for name in names:
+                if f"{kind}:{name}" not in self.state_records:
+                    adopt = name in existing
+                    changes.append(
+                        Change(
+                            "~" if adopt else "+",
+                            f"{'adopt ' if adopt else ''}{label} {name}",
+                        )
+                    )
+            for key in self.state_withdrawn(kind, set(names), purge=False):
+                name = self.state_records[key]["name"]
+                changes.append(Change("~", f"stop managing {label} {name} (kept)"))
+        text = self.sysusers_text()
+        if text:
+            changes.append(self.plan_file(SYSUSERS, text))
+        elif self.files.path(SYSUSERS).exists():
+            changes.append(Change("~", f"{SYSUSERS} (withdrawn, remove)"))
         return changes
 
     def plan_runtime(self) -> list[Change]:
@@ -1271,6 +1452,8 @@ class Core(BaseAdapter[CoreRequest]):
         if self.pending("units"):
             self.systemd.daemon_reload()
         self.purge_units(network=True)
+        if self.remove(SYSUSERS):
+            print(f"removed {SYSUSERS}; system accounts and groups stay")
         state = self.files.path(STATE)
         if state.exists():
             shutil.rmtree(state)

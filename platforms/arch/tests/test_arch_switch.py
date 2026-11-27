@@ -334,6 +334,9 @@ class ArchSwitchTests(unittest.TestCase):
         self.assertEqual(self.state["forget_adapter"], "/fixture/core-adapter")
         self.invoke("--forget", "extension:babu")
         self.assertEqual(self.state["forget_adapter"], "/fixture/core-adapter")
+        for record in ("account:svc", "system-group:svc"):
+            self.invoke("--forget", record)
+            self.assertEqual(self.state["forget_adapter"], "/fixture/core-adapter")
         ai = self.root / "ai-manifest.json"
         ai.write_text(json.dumps({"llama": False}))
         self.config["adapters"]["ai"]["manifest"] = str(ai)

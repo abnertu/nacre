@@ -36,6 +36,8 @@ CORE_KINDS = (
     "sysctl",
     "module",
     "extension",
+    "account",
+    "system-group",
 )
 # An optional adapter exits 20 only while its preparation has never completed.
 NOT_READY = 20

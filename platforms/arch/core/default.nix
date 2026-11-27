@@ -98,6 +98,7 @@ let
           capability = "cap_sys_admin=p";
         };
     inherit extensions;
+    inherit (arch) systemUsers systemGroups;
     purge = {
       # Uninstall removes the initramfs block too, then rebuilds the images.
       blocks = lib.optional capabilities.initramfs initramfsBlock ++ [ nixBlock ];

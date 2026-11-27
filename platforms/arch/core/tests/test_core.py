@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import os
+import shlex
 import sys
 import tempfile
 import unittest
@@ -94,6 +95,8 @@ MANIFEST = {
         "blocks": [INITRAMFS_BLOCK, NIX_BLOCK],
     },
     "extensions": [],
+    "systemUsers": [],
+    "systemGroups": [],
 }
 
 
@@ -112,6 +115,9 @@ class Fake(FakeNative):
         # The capability that each binary carries.
         self.capabilities: dict[str, str] = {}
         self.stay_inactive: set[str] = set()
+        # systemd-sysusers: the arguments of each run, and names it skips.
+        self.sysusers: list[list[str]] = []
+        self.sysusers_skip: set[str] = set()
         self.unmanaged_repository = False
         # Units that systemd does not know yet, such as one whose file is unwritten.
         self.unknown: set[str] = set()
@@ -139,6 +145,7 @@ class Fake(FakeNative):
             "pacman-conf": self.pacman_conf,
             "pacman": self.pacman,
             "env": lambda _: (1 if self.fail_extension else 0, ""),
+            "systemd-sysusers": self.systemd_sysusers,
         }.get(cmd)
         if handler is None:
             raise AssertionError(args)
@@ -146,6 +153,34 @@ class Fake(FakeNative):
         if code and check:
             raise Conflict(f"fake native failed: {args}")
         return FakeProcess(stdout=out, returncode=code)
+
+    def systemd_sysusers(self, rest):
+        """Apply only the given files, allocating IDs down from 999."""
+        self.sysusers.append(list(rest))
+        passwd, group = self.root / "etc/passwd", self.root / "etc/group"
+        for name in rest:
+            for line in (self.root / name.lstrip("/")).read_text().splitlines():
+                fields = shlex.split(line)
+                if (
+                    not fields
+                    or fields[0].startswith("#")
+                    or fields[1] in self.sysusers_skip
+                ):
+                    continue
+                groups = [g.split(":") for g in group.read_text().splitlines()]
+                users = [u.split(":") for u in passwd.read_text().splitlines()]
+                if fields[0] == "g" and fields[1] not in [g[0] for g in groups]:
+                    gid = max(set(range(1, 1000)) - {int(g[2]) for g in groups})
+                    group.write_text(group.read_text() + f"{fields[1]}:x:{gid}:\n")
+                if fields[0] == "u" and fields[1] not in [u[0] for u in users]:
+                    uid = max(set(range(1, 1000)) - {int(u[2]) for u in users})
+                    primary = fields[2].split(":")[1]
+                    gid = next(g[2] for g in groups if g[0] == primary)
+                    passwd.write_text(
+                        passwd.read_text()
+                        + f"{fields[1]}:x:{uid}:{gid}:{fields[3]}:{fields[4]}:{fields[5]}\n"
+                    )
+        return 0, ""
 
     def refuses_restart(self, name):
         """systemd refuses to restart an Accept=no socket while its service runs."""
@@ -1414,6 +1449,205 @@ class BinaryAndLinkTests(EtcHarness):
             Conflict, "/etc/profile.*resolves into the Nix store"
         ):
             self.core().preflight()
+
+
+class ServiceAccountTests(EtcHarness):
+    """System accounts and groups through systemd-sysusers; withdrawal keeps them."""
+
+    def setUp(self):
+        super().setUp()
+        gid = os.getgid()
+        (self.root / "etc/passwd").write_text("root:x:0:0::/root:/bin/bash\n")
+        (self.root / "etc/group").write_text(f"root:x:{gid}:\n")
+        self.declare()
+
+    def declare(self, *names):
+        names = names or ("svc",)
+        self.manifest["systemGroups"] = list(names)
+        self.manifest["systemUsers"] = [
+            {"name": name, "group": name, "description": "Demo", "home": "/"}
+            for name in names
+        ]
+
+    def has(self, database, name):
+        lines = (self.root / "etc" / database).read_text().splitlines()
+        return any(line.split(":")[0] == name for line in lines)
+
+    def entry_of(self, database, name):
+        for line in (self.root / "etc" / database).read_text().splitlines():
+            if line.split(":")[0] == name:
+                return line.split(":")
+        self.fail(f"{name} is not in /etc/{database}")
+
+    def records(self):
+        return {
+            key: value
+            for key, value in self.receipt()["state"].items()
+            if value["kind"] in ("account", "system-group")
+        }
+
+    def test_declared_accounts_are_created_with_sysusers_only_from_nacre_s_file(self):
+        self.deploy()
+        user, group = self.entry_of("passwd", "svc"), self.entry_of("group", "svc")
+        self.assertLess(int(user[2]), 1000)
+        self.assertEqual(user[3], group[2])
+        self.assertEqual(self.native.sysusers, [["/etc/sysusers.d/60-nix-config.conf"]])
+        self.assertEqual(
+            self.records(),
+            {
+                "account:svc": {
+                    "kind": "account",
+                    "name": "svc",
+                    "created": True,
+                    "id": int(user[2]),
+                },
+                "system-group:svc": {
+                    "kind": "system-group",
+                    "name": "svc",
+                    "created": True,
+                    "id": int(group[2]),
+                },
+            },
+        )
+        self.deploy()
+        self.assertEqual(len(self.native.sysusers), 1)
+
+    def test_plan_lists_creations_adoptions_and_kept_withdrawals(self):
+        lines = self.plan()
+        self.assertIn("+ system group svc", lines)
+        self.assertIn("+ system account svc", lines)
+        self.deploy()
+        self.assertFalse([line for line in self.plan() if "system " in line])
+        self.declare("svc", "old")
+        (self.root / "etc/group").write_text(
+            self.path("group").read_text() + "old:x:500:\n"
+        )
+        (self.root / "etc/passwd").write_text(
+            self.path("passwd").read_text() + "old:x:500:500::/:/usr/bin/nologin\n"
+        )
+        lines = self.plan()
+        self.assertIn("~ adopt system account old", lines)
+        self.assertIn("~ adopt system group old", lines)
+        self.manifest["systemUsers"] = []
+        self.manifest["systemGroups"] = []
+        self.deploy()
+        self.manifest["systemUsers"] = []
+        lines = self.plan()
+        self.assertFalse([line for line in lines if "system " in line])
+        self.declare()
+        self.deploy()
+        self.manifest["systemUsers"] = []
+        self.manifest["systemGroups"] = []
+        lines = self.plan()
+        self.assertIn("~ stop managing system account svc (kept)", lines)
+        self.assertIn("~ stop managing system group svc (kept)", lines)
+
+    def test_machine_without_declarations_has_no_sysusers_file(self):
+        self.manifest["systemUsers"] = []
+        self.manifest["systemGroups"] = []
+        self.deploy()
+        self.assertFalse(self.path("sysusers.d/60-nix-config.conf").exists())
+        self.assertEqual(self.native.sysusers, [])
+        self.assertFalse([line for line in self.plan() if "sysusers" in line])
+
+    def test_existing_accounts_are_adopted_or_refused(self):
+        group = self.path("group").read_text()
+        (self.root / "etc/group").write_text(group + "svc:x:500:\nnogroup:x:65534:\n")
+        (self.root / "etc/passwd").write_text(
+            "root:x:0:0::/root:/bin/bash\nsvc:x:500:500::/:/usr/bin/nologin\n"
+            "nobody:x:65534:65534::/:/usr/bin/nologin\n"
+        )
+        self.manifest["systemGroups"] = ["svc", "nogroup"]
+        self.manifest["systemUsers"] = [
+            {"name": "svc", "group": "svc", "description": "", "home": "/"},
+            {"name": "nobody", "group": "nogroup", "description": "", "home": "/"},
+        ]
+        self.deploy()
+        self.assertFalse(self.records()["account:svc"]["created"])
+        self.assertFalse(self.records()["account:nobody"]["created"])
+        self.assertEqual(self.native.sysusers, [["/etc/sysusers.d/60-nix-config.conf"]])
+        # A recorded account keeps its record when login.defs lowers the limit.
+        (self.root / "etc/login.defs").write_text("SYS_UID_MAX 400\nSYS_GID_MAX 400\n")
+        self.deploy()
+        cases = {
+            "human": (
+                "human:x:1000:1000::/home/human:/bin/bash\n",
+                "human:x:1000:\n",
+                "human",
+                "human",
+            ),
+            "wrong group": (
+                "other:x:600:500::/:/usr/bin/nologin\n",
+                "",
+                "other",
+                "nogroup",
+            ),
+        }
+        for label, (passwd, groups, name, primary) in cases.items():
+            with self.subTest(label):
+                (self.root / "etc/passwd").write_text(
+                    self.path("passwd").read_text() + passwd
+                )
+                (self.root / "etc/group").write_text(
+                    self.path("group").read_text() + groups
+                )
+                self.manifest["systemGroups"] = sorted({primary, "nogroup"})
+                self.manifest["systemUsers"] = [
+                    {"name": name, "group": primary, "description": "", "home": "/"}
+                ]
+                with self.assertRaisesRegex(Conflict, f"system (account|group) {name}"):
+                    self.core().preflight()
+
+    def test_account_that_appears_after_preflight_stops_convergence(self):
+        core = self.core()
+        core.preflight()
+        (self.root / "etc/passwd").write_text(
+            self.path("passwd").read_text() + "svc:x:1500:1500::/:/bin/sh\n"
+        )
+        with self.assertRaisesRegex(Conflict, "system account svc"):
+            core.converge()
+        self.assertEqual(self.native.sysusers, [])
+
+    def test_crash_before_the_ids_completes_the_records(self):
+        self.deploy()
+        receipt = self.receipt()
+        receipt["state"]["account:svc"]["id"] = None
+        (self.root / STATE / "receipts/core.json").write_text(json.dumps(receipt))
+        self.deploy()
+        self.assertEqual(
+            self.records()["account:svc"]["id"], int(self.entry_of("passwd", "svc")[2])
+        )
+        self.assertTrue(self.records()["account:svc"]["created"])
+
+    def test_name_that_sysusers_skips_stops_the_deployment(self):
+        self.native.sysusers_skip.add("svc")
+        with self.assertRaisesRegex(Conflict, "systemd-sysusers did not create svc"):
+            self.deploy()
+
+    def test_withdrawn_accounts_stay_and_purge_keeps_them(self):
+        self.deploy()
+        uid = self.entry_of("passwd", "svc")
+        self.manifest["systemUsers"] = []
+        self.manifest["systemGroups"] = []
+        self.deploy()
+        self.assertEqual(self.entry_of("passwd", "svc"), uid)
+        self.assertTrue(self.has("group", "svc"))
+        self.assertEqual(self.records(), {})
+        self.assertFalse(self.path("sysusers.d/60-nix-config.conf").exists())
+        self.declare()
+        self.deploy()
+        self.assertTrue(self.path("sysusers.d/60-nix-config.conf").exists())
+        self.core().purge()
+        self.assertFalse(self.path("sysusers.d/60-nix-config.conf").exists())
+        self.assertEqual(self.entry_of("passwd", "svc"), uid)
+
+    def test_forget_drops_only_the_account_record(self):
+        self.deploy()
+        self.manifest["forget"] = "account:svc"
+        self.core().forget()
+        self.assertNotIn("account:svc", self.records())
+        self.assertIn("system-group:svc", self.records())
+        self.assertTrue(self.has("passwd", "svc"))
 
 
 if __name__ == "__main__":

@@ -73,13 +73,14 @@ A module can skip as `not ready` only before its preparation has ever completed.
 - Units. Network units such as NetworkManager and tailscaled stop last.
 - Recorded `/etc` files. Adopted files get their originals back.
 - System-setting drop-ins. The locale, console, time zone, hostname and hotspot get their values before Nacre back.
-- Groups, file capabilities, sysctl values and kernel modules that Nacre set. `wheel` stays.
+- Group memberships, file capabilities, sysctl values and kernel modules that Nacre set. `wheel` stays.
+- The sysusers file of the system accounts. The accounts and groups stay.
 - The repository, the `nix.conf` block and the initramfs block. The boot images are rebuilt.
 - The deployment state under `/var/lib/nix-config/arch`.
 
 Purge keeps these items:
 
-- Packages, accounts, registrations, mutable data and prepared AI artifacts.
+- Packages, login and system accounts, system groups, registrations, mutable data and prepared AI artifacts.
 - UFW, `ufw.service` and the UFW rules.
 
 A second purge changes nothing. Home Manager does not activate.

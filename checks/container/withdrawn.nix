@@ -7,6 +7,9 @@
   environment.etc."nacre-container-blob.bin".enable = false;
   environment.etc."nacre-container-link".enable = false;
   environment.etc."nacre-container-adopted".enable = false;
+  environment.etc."nacre-container-svc.conf".enable = false;
+  users.systemUsers = lib.mkForce { };
+  users.groups = lib.mkForce { };
   services.journald.enable = false;
   boot.kernel.sysctl."net.ipv4.ip_forward" = lib.mkForce null;
 }

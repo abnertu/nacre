@@ -354,6 +354,38 @@ in
     description = "Existing human login accounts, keyed by user name.";
   };
 
+  users.groups = mkOption {
+    type = types.attrsOf (types.submodule { });
+    default = { };
+    description = "System groups that systemd-sysusers creates, keyed by name. Withdrawal keeps the group.";
+  };
+
+  users.systemUsers = mkOption {
+    type = types.attrsOf (
+      types.submodule {
+        options = {
+          group = mkOption {
+            type = types.str;
+            description = "Primary group of the system account; a `users.groups` entry.";
+          };
+          description = mkOption {
+            # No character that ends or extends a sysusers.d field.
+            type = types.strMatching "[^:%\"\\\\[:cntrl:]]*";
+            default = "";
+            description = "The GECOS field of the system account.";
+          };
+          home = mkOption {
+            type = types.strMatching "/|(/[A-Za-z0-9_+-][A-Za-z0-9._+-]*)+";
+            default = "/";
+            description = "Home directory of the system account: `/` or a normalized absolute path.";
+          };
+        };
+      }
+    );
+    default = { };
+    description = "System accounts that systemd-sysusers creates, keyed by name. They get no home composition, and withdrawal keeps them.";
+  };
+
   assertions = mkOption {
     type = types.listOf (
       types.submodule {

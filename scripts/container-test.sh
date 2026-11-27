@@ -159,6 +159,10 @@ blob=$(sha256sum "$source_root/checks/container/blob.bin" | cut -d' ' -f1)
   fail 'the adopted /etc link was not replaced'
 [[ $(podman exec "$name" stat -c %U:%G /etc/nacre-container-link /etc/nacre-container-blob.bin) == $'root:root\nroot:root' ]] ||
   fail 'a declared /etc file or link is not owned by root'
+svc=$(podman exec "$name" getent passwd nacre-svc) || fail 'systemd-sysusers did not create nacre-svc'
+(($(cut -d: -f3 <<<"$svc") < 1000)) || fail 'nacre-svc has no system UID'
+[[ $(podman exec "$name" stat -c %G /etc/nacre-container-svc.conf) == nacre-svc ]] ||
+  fail 'the /etc file of the system group has another group'
 
 step 'Repeat deployment changes nothing'
 deploy repeat.log || { show repeat.log; fail 'repeat deployment failed'; }
@@ -192,6 +196,10 @@ fi
 if [[ $(podman exec "$name" readlink /etc/nacre-container-adopted) != /usr/share/zoneinfo/UTC ]] ||
   [[ $(podman exec "$name" stat -c %U:%G /etc/nacre-container-adopted) != root:wheel ]]; then
   fail 'the adopted /etc link did not come back with its owner'
+fi
+if ! podman exec "$name" getent passwd nacre-svc >/dev/null ||
+  podman exec "$name" test -e /etc/sysusers.d/60-nix-config.conf; then
+  fail 'a withdrawn system account went away, or its sysusers file stayed'
 fi
 if podman exec "$name" systemctl is-active --quiet nacre-demo.service; then
   fail 'the withdrawn nacre-demo.service still runs'

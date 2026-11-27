@@ -75,6 +75,15 @@ class Extension(TypedDict):
     purge: bool
 
 
+class SystemUser(TypedDict):
+    """A system account that systemd-sysusers creates."""
+
+    name: str
+    group: str
+    description: str
+    home: str
+
+
 class CoreManifest(TypedDict):
     user: str
     etc: list[EtcEntry]
@@ -89,6 +98,8 @@ class CoreManifest(TypedDict):
     fileCapabilities: list[FileCapability]
     purge: Purge
     extensions: list[Extension]
+    systemUsers: list[SystemUser]
+    systemGroups: list[str]
 
 
 class CoreRequest(CoreManifest, total=False):

@@ -295,6 +295,56 @@ assert
   etcFailed { environment.etc."empty".mode = "0600"; } == [
     "environment.etc.\"empty\" defines neither text, source nor target"
   ];
+assert
+  etcFailed {
+    users.groups = {
+      svc = { };
+      Upper = { };
+    };
+    users.systemUsers = {
+      svc.group = "svc";
+      fixture.group = "svc";
+      orphan.group = "missing";
+      "this-name-is-far-too-long-for-sysusers".group = "svc";
+    };
+  } == [
+    "users.groups.\"Upper\" must match [a-z_][a-z0-9_-]{0,30}"
+    "users.systemUsers.\"fixture\" is also a login account in users.users"
+    "users.systemUsers.\"orphan\".group missing is not declared in users.groups"
+    "users.systemUsers.\"this-name-is-far-too-long-for-sysusers\" must match [a-z_][a-z0-9_-]{0,30}"
+  ];
+assert lib.all
+  (
+    account:
+    !(builtins.tryEval (
+      builtins.deepSeq
+        (evaluate [
+          {
+            users.groups.svc = { };
+            users.systemUsers.svc = account;
+          }
+        ]).config.arch.systemUsers
+        true
+    )).success
+  )
+  [
+    {
+      group = "svc";
+      description = "50% load";
+    }
+    {
+      group = "svc";
+      home = "/a//b";
+    }
+    {
+      group = "svc";
+      home = "/a/..";
+    }
+    {
+      group = "svc";
+      home = "/a:b";
+    }
+  ];
 assert etcText [ { environment.etc.${mainConf}.text = "plain\n"; } ] mainConf == "plain\n";
 assert
   etcText [ { environment.etc.${mainConf}.text = lib.mkDefault "default\n"; } ] mainConf
