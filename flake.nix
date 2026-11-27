@@ -40,7 +40,7 @@
     };
 
     nix-adapter = {
-      url = "github:abnertu/nix-adapter?ref=v0.9.0";
+      url = "github:abnertu/nix-adapter?ref=v0.10.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
