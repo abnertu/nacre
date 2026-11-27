@@ -79,7 +79,7 @@ let
           type = types.nullOr types.str;
           internal = true;
           readOnly = true;
-          description = "The value whose change restarts a unit that reads this entry: its text, store path or target.";
+          description = "The value whose change restarts a unit that reads this entry: its text, the text of its source, or its target. Nix reads a source only when a restart trigger uses it.";
         };
         contentError = mkOption {
           type = types.nullOr types.str;
@@ -108,7 +108,7 @@ let
             if kind == "text" then
               config.text
             else if kind == "source" then
-              sourcePath
+              builtins.readFile config.source
             else
               config.target;
           contentError =
