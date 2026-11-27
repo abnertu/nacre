@@ -1449,6 +1449,28 @@ class BinaryAndLinkTests(EtcHarness):
             Conflict, "/etc/profile.*resolves into the Nix store"
         ):
             self.core().preflight()
+        # A recorded entry is checked too.
+        self.manifest["etc"] = [self.link("profile", "/srv")]
+        self.deploy()
+        self.manifest["etc"] = [self.link("profile", "/usr/share/profile")]
+        with self.assertRaisesRegex(
+            Conflict, "/etc/profile.*resolves into the Nix store"
+        ):
+            self.core().preflight()
+
+    def test_saved_original_without_content_stops_withdrawal(self):
+        self.existing("hosts", "operator\n")
+        self.manifest["etc"] = [entry("hosts", "nacre\n")]
+        self.deploy()
+        saved = json.loads(self.original("hosts").read_text())
+        del saved["text"]
+        self.original("hosts").write_text(json.dumps(saved))
+        self.manifest["etc"] = []
+        with self.assertRaisesRegex(
+            Conflict, "saved original of /etc/hosts is invalid"
+        ):
+            self.deploy()
+        self.assertEqual(self.path("hosts").read_text(), "nacre\n")
 
 
 class ServiceAccountTests(EtcHarness):

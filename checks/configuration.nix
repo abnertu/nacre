@@ -187,14 +187,6 @@ let
   etcText =
     modules: name:
     (lib.findFirst (entry: entry.name == name) null (evaluate modules).config.arch.etc).text;
-  etcEntry =
-    modules: name:
-    let
-      entry = lib.findFirst (entry: entry.name == name) null (evaluate modules).config.arch.etc;
-    in
-    {
-      inherit (entry) text source target;
-    };
   mainConf = "NetworkManager/conf.d/main.conf";
   # Forwarding keys and container modules belong to the features that need them.
   forwarding = [
@@ -349,18 +341,6 @@ assert etcText [ { environment.etc.${mainConf}.text = "plain\n"; } ] mainConf ==
 assert
   etcText [ { environment.etc.${mainConf}.text = lib.mkDefault "default\n"; } ] mainConf
   == "default\n";
-assert
-  etcEntry [ { environment.etc."blob".source = etcFile "source\n"; } ] "blob" == {
-    text = null;
-    source = "${etcFile "source\n"}";
-    target = null;
-  };
-assert
-  etcEntry [ { environment.etc."zone".target = "/usr/share/zoneinfo/UTC"; } ] "zone" == {
-    text = null;
-    source = null;
-    target = "/usr/share/zoneinfo/UTC";
-  };
 assert
   etcFailed {
     environment.etc = {

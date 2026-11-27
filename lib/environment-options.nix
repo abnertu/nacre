@@ -79,7 +79,7 @@ let
           type = types.nullOr types.str;
           internal = true;
           readOnly = true;
-          description = "The value whose change restarts a unit that reads this entry: its text, the text of its source, or its target. Nix reads a source only when a restart trigger uses it.";
+          description = "The value whose change restarts a unit that reads this entry: its text, the text of a source path, a source store string, or its target. Nix reads a source only when a restart trigger uses it.";
         };
         contentError = mkOption {
           type = types.nullOr types.str;
@@ -107,8 +107,11 @@ let
           trigger =
             if kind == "text" then
               config.text
+            # A Nix path is read as text, so a trigger sees the same value as
+            # for `text`; a store string stays a string, so evaluation never
+            # builds a derivation.
             else if kind == "source" then
-              builtins.readFile config.source
+              if builtins.isPath config.source then builtins.readFile config.source else config.source
             else
               config.target;
           contentError =

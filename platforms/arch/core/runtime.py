@@ -67,7 +67,12 @@ def content_digest(content: Content) -> str:
 
 
 def original_content(original: Original) -> Content:
-    """The content that an adoption saved."""
+    """The content that an adoption saved.
+
+    Raise `Conflict` unless it holds exactly one of text, base64 and target.
+    """
+    if sum(key in original for key in ("text", "base64", "target")) != 1:
+        raise Conflict(f"the saved original of {original['path']} is invalid")
     if "target" in original:
         return ("link", original["target"])
     if "base64" in original:
@@ -319,9 +324,9 @@ class Core(BaseAdapter[CoreRequest]):
 
     def check_declared(self, entry: EtcEntry, converging: bool) -> None:
         """Raise `Conflict` if an unrecorded existing file may not be replaced."""
+        self.check_target(entry)
         if file_key(entry["name"]) in self.records:
             return
-        self.check_target(entry)
         current = self.state(entry["path"])
         if (
             current is None
@@ -709,7 +714,7 @@ class Core(BaseAdapter[CoreRequest]):
             )
         if original["uid"] != self.files.identity[0]:
             os.chown(
-                files.path(original["path"]),
+                files.path(original["path"], symlink_leaf=True),
                 original["uid"],
                 original["gid"],
                 follow_symlinks=False,

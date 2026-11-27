@@ -99,7 +99,7 @@ ln -s /var/cache/nacre-yay "$home/.cache/yay"
 loginctl enable-linger "$user"
 # An operator link that the deployment adopts and withdrawal restores.
 ln -s /usr/share/zoneinfo/UTC /etc/nacre-container-adopted
-chown -h root:wheel /etc/nacre-container-adopted
+chown -h "$user:wheel" /etc/nacre-container-adopted
 EOF
 for _ in $(seq 30); do
   podman exec "$name" test -d /run/user/1000 && break
@@ -194,7 +194,7 @@ if podman exec "$name" test -e /etc/nacre-container-test.conf ||
   fail 'a withdrawn file stayed'
 fi
 if [[ $(podman exec "$name" readlink /etc/nacre-container-adopted) != /usr/share/zoneinfo/UTC ]] ||
-  [[ $(podman exec "$name" stat -c %U:%G /etc/nacre-container-adopted) != root:wheel ]]; then
+  [[ $(podman exec "$name" stat -c %U:%G /etc/nacre-container-adopted) != "$user:wheel" ]]; then
   fail 'the adopted /etc link did not come back with its owner'
 fi
 if ! podman exec "$name" getent passwd nacre-svc >/dev/null ||
