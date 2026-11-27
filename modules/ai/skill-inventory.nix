@@ -47,7 +47,7 @@ let
     "obsidian-bases"
     "obsidian-cli"
     "obsidian-markdown"
-  ] (name: "skills/${name}");
+  ] (name: "plugins/obsidian/skills/${name}");
   bySource.gh = lib.genAttrs [
     "gh"
     "gh-skill"
