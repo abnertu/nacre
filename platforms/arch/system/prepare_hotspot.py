@@ -173,10 +173,11 @@ class Prepare:
         saved = termios.tcgetattr(descriptor)
         quiet = termios.tcgetattr(descriptor)
         quiet[3] &= ~termios.ECHO
-        terminal.write(prompt)
-        terminal.flush()
         try:
+            # Echo goes off before the prompt shows, so no typed key echoes.
             termios.tcsetattr(descriptor, termios.TCSADRAIN, quiet)
+            terminal.write(prompt)
+            terminal.flush()
             line = terminal.readline()
         finally:
             termios.tcsetattr(descriptor, termios.TCSADRAIN, saved)
